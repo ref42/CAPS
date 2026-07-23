@@ -250,11 +250,13 @@ fn App() -> Element {
     let tab = active_tab.read().clone();
     let is_expanded = *expanded.read();
     let queue_len = queue.read().len();
-    let opacity_css = (*opacity.read() as f64 / 100.0).clamp(0.2, 1.0);
+    let opacity_css = (*opacity.read() as f64 / 100.0).clamp(0.1, 1.0);
     let island_scale = (*island_size.read() as f64 / 100.0).clamp(0.85, 1.35);
     let collapsed_width = collapsed_width_for_text(&primary_text, has_music);
+    let stage_width = collapsed_width + ISLAND_BLEED * 2.0;
+    let stage_height = COLLAPSED_H + ISLAND_BLEED * 2.0;
     let stage_style = format!(
-        "--island-opacity: {opacity_css:.2}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
+        "--app-opacity: {opacity_css:.2}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
     );
     let spring_class = spring_style.read().clone();
     let stage_class = if is_expanded {
@@ -593,12 +595,12 @@ fn App() -> Element {
                             div { class: "setting-control",
                                 input {
                                     r#type: "range",
-                                    min: "20",
+                                    min: "10",
                                     max: "100",
                                     value: "{opacity}",
                                     oninput: move |event| {
                                         if let Ok(value) = event.value().parse::<u32>() {
-                                            opacity.set(value.clamp(20, 100));
+                                            opacity.set(value.clamp(10, 100));
                                         }
                                     },
                                 }
@@ -972,10 +974,11 @@ button {
 }
 
 .stage {
-  width: calc(var(--collapsed-width) + var(--island-bleed) * 2);
-  height: calc(56px + var(--island-bleed) * 2);
+  width: var(--stage-width);
+  height: var(--stage-height);
   padding: var(--island-bleed);
   zoom: var(--island-scale);
+  opacity: var(--app-opacity);
   color: rgba(248, 255, 252, 0.96);
   user-select: none;
   -webkit-font-smoothing: antialiased;
@@ -999,7 +1002,7 @@ button {
   gap: 10px;
   padding: 7px 10px 8px 7px;
   border-radius: 999px;
-  background: rgba(5, 8, 9, var(--island-opacity));
+  background: rgba(5, 8, 9, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(22px) saturate(1.25);

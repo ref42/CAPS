@@ -87,7 +87,7 @@ pub fn Island(
     transition_key: u64,
     download: String,
     upload: String,
-    spectrum: [f32; 5],
+    spectrum: [f32; 11],
     activity: String,
     progress: f64,
     is_playing: bool,
@@ -170,22 +170,50 @@ pub fn Island(
 }
 
 #[component]
-fn DottedSpectrum(spectrum: [f32; 5]) -> Element {
+fn DottedSpectrum(spectrum: [f32; 11]) -> Element {
     rsx! {
-        div { class: "spectrum dotted-spectrum",
+        div { class: "spectrum peak-spectrum",
             for (lane_index, value) in spectrum.into_iter().enumerate() {
-                div { class: "spectrum-lane", key: "{lane_index}",
-                    for dot_index in 0..5 {
-                        {
-                            let distance = (dot_index as f32 - 2.0).abs();
-                            let lift = (1.18 - distance * 0.12).max(0.86);
-                            let scale = (0.42 + value * lift).clamp(0.42, 1.72);
-                            let alpha = (0.24 + value * 0.54 - distance * 0.04).clamp(0.22, 0.96);
-                            let delay = (lane_index as i32 * 24) - (dot_index as i32 * 15);
-                            rsx! {
-                                b {
-                                    class: "spectrum-dot",
-                                    style: "--dot-scale: {scale:.3}; --dot-alpha: {alpha:.3}; --dot-delay: {delay}ms;"
+                {
+                    let hue = 44.0 + lane_index as f32 * 15.0;
+                    let active_steps = ((value * 5.4).round() as i32).clamp(1, 7);
+                    rsx! {
+                        div {
+                            class: "spectrum-lane",
+                            key: "{lane_index}",
+                            style: "--lane-hue: {hue:.1}; --lane-value: {value:.3};",
+                            for dot_index in 0..7 {
+                                {
+                                    let level = 7 - dot_index;
+                                    let active = level <= active_steps;
+                                    let head = level == active_steps;
+                                    let distance = (active_steps - level).abs() as f32;
+                                    let alpha = if active {
+                                        (0.92 - distance * 0.095).clamp(0.34, 0.96)
+                                    } else {
+                                        0.12
+                                    };
+                                    let scale = if head {
+                                        (0.95 + value * 0.54).clamp(1.0, 1.62)
+                                    } else if active {
+                                        (0.72 + value * 0.22 - distance * 0.035).clamp(0.58, 1.08)
+                                    } else {
+                                        0.48
+                                    };
+                                    let delay = (lane_index as i32 * 14) - (dot_index as i32 * 10);
+                                    let dot_class = if head {
+                                        "spectrum-dot peak-dot"
+                                    } else if active {
+                                        "spectrum-dot active-dot"
+                                    } else {
+                                        "spectrum-dot"
+                                    };
+                                    rsx! {
+                                        b {
+                                            class: "{dot_class}",
+                                            style: "--dot-scale: {scale:.3}; --dot-alpha: {alpha:.3}; --dot-delay: {delay}ms;"
+                                        }
+                                    }
                                 }
                             }
                         }

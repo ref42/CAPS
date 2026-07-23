@@ -198,10 +198,12 @@ pub fn SettingsPanel(
     volume: u32,
     island_size: u32,
     spring_style: String,
+    message_notifications: bool,
     onopacity: EventHandler<u32>,
     onvolume: EventHandler<u32>,
     onisland_size: EventHandler<u32>,
     onspring_style: EventHandler<String>,
+    onmessage_notifications: EventHandler<bool>,
 ) -> Element {
     rsx! {
         div { class: "panel-section settings",
@@ -271,6 +273,14 @@ pub fn SettingsPanel(
                     }
                 }
             }
+            label { class: "setting toggle-setting",
+                span { "Messages" }
+                input {
+                    r#type: "checkbox",
+                    checked: message_notifications,
+                    onchange: move |event| onmessage_notifications.call(event.checked()),
+                }
+            }
             div { class: "status-text", "Right-click the island to exit CAPS." }
         }
     }
@@ -293,6 +303,11 @@ pub fn Island(
     transition_key: u64,
     lyric_scroll_class: &'static str,
     lyric_scroll_style: String,
+    notification_active: bool,
+    notification_app: String,
+    notification_mark: String,
+    notification_title: String,
+    notification_body: String,
     weather_icon: String,
     weather: String,
     weather_title: String,
@@ -340,6 +355,15 @@ pub fn Island(
                                 }
                             }
                         }
+                    }
+                } else if notification_active {
+                    div { class: "message-alert",
+                        span { class: "message-alert-icon", "{notification_mark}" }
+                        div { class: "message-alert-copy",
+                            span { "{notification_app}" }
+                            strong { "{notification_body}" }
+                        }
+                        span { class: "message-alert-kind", "{notification_title}" }
                     }
                 } else {
                     div { class: "speed-copy idle-speeds",

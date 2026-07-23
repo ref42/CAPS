@@ -7,6 +7,7 @@ mod audio_spectrum;
 mod components;
 mod formatting;
 mod lyrics;
+mod message_notifications;
 mod netease;
 mod storage;
 mod track;
@@ -21,6 +22,7 @@ use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
 use formatting::{format_bytes, format_rate};
 use lyrics::{LyricLine, current_lyric_line};
+use message_notifications::{MessageNotification, NotificationAccess};
 use std::sync::Arc;
 use storage::{AppSettings, AppState};
 use sysinfo::Networks;
@@ -106,6 +108,10 @@ fn App() -> Element {
         let saved_settings = saved_settings.clone();
         move || saved_settings.spring_style.clone()
     });
+    let mut message_notifications_enabled = use_signal({
+        let saved_settings = saved_settings.clone();
+        move || saved_settings.message_notifications
+    });
     let mut volume = use_signal({
         let saved_settings = saved_settings.clone();
         move || saved_settings.volume
@@ -140,6 +146,7 @@ fn App() -> Element {
     let mut total_upload = use_signal(|| 0_u64);
     let mut total_download = use_signal(|| 0_u64);
     let mut lyrics = use_signal(Vec::<LyricLine>::new);
+    let mut message_notification = use_signal(|| None::<MessageNotification>);
 
     {
         let player = player.clone();
@@ -157,6 +164,7 @@ fn App() -> Element {
                 random_count: random_count(),
                 spring_style: spring_style.read().clone(),
                 active_tab: active_tab.read().clone(),
+                message_notifications: message_notifications_enabled(),
             },
             queue: queue.read().clone(),
             current_index: *current_index.read(),
@@ -232,6 +240,68 @@ fn App() -> Element {
             }
         });
     });
+
+    let message_listener_started = use_hook(|| std::cell::Cell::new(false));
+    {
+        let started = message_listener_started;
+        use_effect(move || {
+            if started.get() {
+                return;
+            }
+            started.set(true);
+            spawn(async move {
+                let mut access_checked = false;
+                let mut access_allowed = false;
+                let mut seeded = false;
+                let mut seen = std::collections::HashSet::new();
+                loop {
+                    if !message_notifications_enabled() {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        continue;
+                    }
+                    if !access_checked {
+                        match message_notifications::request_access().await {
+                            NotificationAccess::Allowed => {
+                                access_allowed = true;
+                                status.set("Message notifications enabled.".to_string());
+                            }
+                            NotificationAccess::Denied => {
+                                status
+                                    .set("Windows denied message notification access.".to_string());
+                            }
+                            NotificationAccess::Unavailable => {
+                                status.set(
+                                    "Message notifications are unavailable on this system."
+                                        .to_string(),
+                                );
+                            }
+                        }
+                        access_checked = true;
+                    }
+                    if access_allowed {
+                        let messages = message_notifications::collect_messages(&mut seen).await;
+                        if !seeded {
+                            seeded = true;
+                        } else if let Some(message) = messages.into_iter().last() {
+                            let key = message.key.clone();
+                            message_notification.set(Some(message));
+                            spawn(async move {
+                                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                                if message_notification
+                                    .read()
+                                    .as_ref()
+                                    .is_some_and(|current| current.key == key)
+                                {
+                                    message_notification.set(None);
+                                }
+                            });
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+            });
+        });
+    }
 
     let last_cover_for_color = use_hook(|| std::cell::RefCell::new(String::new()));
     use_effect(move || {
@@ -374,6 +444,11 @@ fn App() -> Element {
         .as_ref()
         .is_some_and(|since| since.elapsed() >= std::time::Duration::from_secs(30));
     let has_music = active_track.is_some() && !is_finished_last && !paused_over_idle_timeout;
+    let idle_message = if has_music {
+        None
+    } else {
+        message_notification.read().clone()
+    };
     let current_title = if state.title.is_empty() {
         active_track
             .as_ref()
@@ -460,6 +535,8 @@ fn App() -> Element {
     };
     let island_class = if has_music {
         "island"
+    } else if idle_message.is_some() {
+        "island idle-island notification-island"
     } else {
         "island idle-island"
     };
@@ -570,6 +647,23 @@ fn App() -> Element {
                 transition_key,
                 lyric_scroll_class,
                 lyric_scroll_style,
+                notification_active: idle_message.is_some(),
+                notification_app: idle_message
+                    .as_ref()
+                    .map(|message| message.app.clone())
+                    .unwrap_or_default(),
+                notification_mark: idle_message
+                    .as_ref()
+                    .map(|message| message.mark.clone())
+                    .unwrap_or_default(),
+                notification_title: idle_message
+                    .as_ref()
+                    .map(|message| message.title.clone())
+                    .unwrap_or_default(),
+                notification_body: idle_message
+                    .as_ref()
+                    .map(|message| message.body.clone())
+                    .unwrap_or_default(),
                 weather_icon: weather_now.read().icon.clone(),
                 weather: weather_now.read().label.clone(),
                 weather_title: weather_now.read().title.clone(),
@@ -718,6 +812,7 @@ fn App() -> Element {
                         volume: volume(),
                         island_size: island_size(),
                         spring_style: spring_style.read().clone(),
+                        message_notifications: message_notifications_enabled(),
                         onopacity: move |value| opacity.set(value),
                         onvolume: {
                             let player = player.clone();
@@ -739,6 +834,9 @@ fn App() -> Element {
                             }
                         },
                         onspring_style: move |value| spring_style.set(value),
+                        onmessage_notifications: move |value| {
+                            message_notifications_enabled.set(value)
+                        },
                     }
                 }
             }

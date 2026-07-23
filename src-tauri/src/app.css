@@ -356,29 +356,97 @@ button {
   justify-self: end;
   width: 38px;
   height: 34px;
-  display: flex;
+  display: grid;
   align-items: center;
   justify-content: center;
-  gap: 2px;
 }
 
 .idle-island .spectrum {
   grid-column: 2;
 }
 
-.spectrum i {
-  width: 4px;
-  height: 24px;
-  min-height: 6px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #fff0a0, #78f2ca);
-  transform-origin: center;
-  transition: transform var(--motion-spectrum) var(--motion-spring);
-  will-change: transform;
+.dotted-spectrum {
+  grid-template-columns: repeat(5, 4px);
+  gap: 3px;
 }
 
-.expanded .spectrum i {
+.spectrum-lane {
   height: 30px;
+  display: grid;
+  grid-template-rows: repeat(5, 1fr);
+  align-items: center;
+  justify-items: center;
+}
+
+.spectrum-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fff0a0, #78f2ca);
+  opacity: var(--dot-alpha);
+  transform: scale(var(--dot-scale));
+  transition: transform var(--motion-spectrum) var(--motion-spring), opacity var(--motion-spectrum) ease;
+  transition-delay: var(--dot-delay);
+  will-change: transform, opacity;
+}
+
+.expanded .spectrum-lane {
+  height: 32px;
+}
+
+.loading-orb {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  contain: paint;
+}
+
+.loading-orb span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(248, 255, 252, 0.94);
+  opacity: var(--orb-alpha);
+  transform: translate3d(var(--orb-x), var(--orb-y), 0) scale(var(--orb-scale));
+  animation: orbDotBreathe 1320ms var(--motion-ease) infinite;
+  animation-delay: var(--orb-delay);
+  will-change: transform, opacity;
+}
+
+.loading-orb i {
+  position: absolute;
+  inset: 5px 9px;
+  border-radius: 50%;
+  border-left: 1px solid rgba(125, 242, 202, 0.88);
+  border-right: 1px solid rgba(255, 240, 160, 0.18);
+  transform-origin: center;
+  animation: orbScan 900ms linear infinite;
+}
+
+.working-orb i {
+  inset: 7px 4px;
+  border-color: rgba(125, 242, 202, 0.55);
+  border-top-color: rgba(255, 240, 160, 0.2);
+  border-bottom-color: rgba(255, 240, 160, 0.2);
+  transform: rotate(62deg);
+  animation: orbOrbit 1450ms linear infinite;
+}
+
+.searching-orb span {
+  animation-duration: 1120ms;
+}
+
+.working-orb span {
+  background: rgba(125, 242, 202, 0.92);
+}
+
+.expanded .loading-orb {
+  width: 36px;
+  height: 36px;
 }
 
 .playback-progress {
@@ -850,11 +918,44 @@ button {
   }
 }
 
+@keyframes orbDotBreathe {
+  0%,
+  100% {
+    opacity: calc(var(--orb-alpha) * 0.72);
+    transform: translate3d(var(--orb-x), var(--orb-y), 0) scale(calc(var(--orb-scale) * 0.86));
+  }
+  46% {
+    opacity: var(--orb-alpha);
+    transform: translate3d(var(--orb-x), var(--orb-y), 0) scale(calc(var(--orb-scale) * 1.18));
+  }
+}
+
+@keyframes orbScan {
+  from {
+    transform: rotate(0deg) scaleX(0.72);
+  }
+  to {
+    transform: rotate(360deg) scaleX(0.72);
+  }
+}
+
+@keyframes orbOrbit {
+  from {
+    transform: rotate(62deg);
+  }
+  to {
+    transform: rotate(422deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .island,
   .panel,
   .cover,
   .spectrum i,
+  .spectrum-dot,
+  .loading-orb span,
+  .loading-orb i,
   button {
     animation: none;
     transition: opacity 120ms ease, background-color 120ms ease;

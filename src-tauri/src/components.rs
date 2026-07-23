@@ -88,6 +88,7 @@ pub fn Island(
     download: String,
     upload: String,
     spectrum: [f32; 5],
+    activity: String,
     progress: f64,
     is_playing: bool,
     ondrag: EventHandler<MouseEvent>,
@@ -154,16 +155,77 @@ pub fn Island(
                     button { onclick: onstop, title: "Stop", "■" }
                 }
             }
-            div { class: "spectrum",
-                for value in spectrum {
-                    i { style: "transform: scaleY({value});" }
-                }
+            if activity.is_empty() {
+                DottedSpectrum { spectrum }
+            } else {
+                LoadingOrb { activity }
             }
             if is_expanded && has_music {
                 div { class: "playback-progress",
                     span { style: "width: {progress}%;" }
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn DottedSpectrum(spectrum: [f32; 5]) -> Element {
+    rsx! {
+        div { class: "spectrum dotted-spectrum",
+            for (lane_index, value) in spectrum.into_iter().enumerate() {
+                div { class: "spectrum-lane", key: "{lane_index}",
+                    for dot_index in 0..5 {
+                        {
+                            let distance = (dot_index as f32 - 2.0).abs();
+                            let lift = (1.18 - distance * 0.12).max(0.86);
+                            let scale = (0.42 + value * lift).clamp(0.42, 1.72);
+                            let alpha = (0.24 + value * 0.54 - distance * 0.04).clamp(0.22, 0.96);
+                            let delay = (lane_index as i32 * 24) - (dot_index as i32 * 15);
+                            rsx! {
+                                b {
+                                    class: "spectrum-dot",
+                                    style: "--dot-scale: {scale:.3}; --dot-alpha: {alpha:.3}; --dot-delay: {delay}ms;"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn LoadingOrb(activity: String) -> Element {
+    let orb_class = if activity == "searching" {
+        "spectrum loading-orb searching-orb"
+    } else {
+        "spectrum loading-orb working-orb"
+    };
+    let dots = [
+        (-8, -9, 0.78, 0.38),
+        (-2, -11, 1.02, 0.62),
+        (6, -10, 0.86, 0.5),
+        (10, -4, 1.18, 0.72),
+        (9, 3, 0.74, 0.42),
+        (4, 9, 1.08, 0.68),
+        (-4, 10, 0.82, 0.5),
+        (-10, 5, 1.0, 0.6),
+        (-11, -2, 0.72, 0.4),
+        (-5, -3, 0.58, 0.34),
+        (1, -1, 0.84, 0.58),
+        (6, 3, 0.64, 0.4),
+    ];
+    rsx! {
+        div { class: "{orb_class}", aria_label: "Loading",
+            for (index, (x, y, scale, alpha)) in dots.into_iter().enumerate() {
+                span {
+                    key: "{index}",
+                    style: "--orb-x: {x}px; --orb-y: {y}px; --orb-scale: {scale}; --orb-alpha: {alpha}; --orb-delay: {-((index as i32) * 84)}ms;"
+                }
+            }
+            i {}
         }
     }
 }

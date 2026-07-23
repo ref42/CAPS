@@ -30,13 +30,13 @@ pub fn start_monitor() {
 
         let stream = match sample_format {
             cpal::SampleFormat::F32 => device.build_input_stream(
-                &config,
+                config.clone(),
                 move |data: &[f32], _: &_| process_data(data, channels),
                 err_fn,
                 None,
             ),
             cpal::SampleFormat::I16 => device.build_input_stream(
-                &config,
+                config.clone(),
                 move |data: &[i16], _: &_| {
                     let f32_data: Vec<f32> =
                         data.iter().map(|&s| s as f32 / i16::MAX as f32).collect();

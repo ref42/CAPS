@@ -4,7 +4,7 @@ use dioxus::desktop::{DesktopContext, LogicalPosition, LogicalSize};
 
 pub const COLLAPSED_W: f64 = 300.0;
 pub const COLLAPSED_H: f64 = 56.0;
-pub const EXPANDED_W: f64 = 430.0;
+pub const EXPANDED_W: f64 = 460.0;
 pub const EXPANDED_H: f64 = 490.0;
 pub const MUSIC_COLLAPSED_W: f64 = EXPANDED_W;
 pub const ISLAND_BLEED: f64 = 18.0;

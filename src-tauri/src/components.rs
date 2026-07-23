@@ -1,3 +1,4 @@
+use crate::audio_spectrum::SPECTRUM_BANDS;
 use crate::track::Track;
 use dioxus::prelude::*;
 
@@ -291,7 +292,7 @@ pub fn Island(
     transition_key: u64,
     download: String,
     upload: String,
-    spectrum: [f32; 5],
+    spectrum: [f32; SPECTRUM_BANDS],
     spectrum_style: String,
     progress: f64,
     is_playing: bool,

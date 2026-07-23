@@ -20,6 +20,7 @@ pub enum AudioCommand {
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct AudioState {
     pub is_playing: bool,
+    pub is_finished: bool,
     pub position: f64,
     pub duration: f64,
     pub path: String,
@@ -163,10 +164,13 @@ fn update_state(
 ) {
     let mut s = state.lock().unwrap();
     if let Some(player) = player {
-        s.is_playing = !player.is_paused() && !player.empty();
+        let is_empty = player.empty();
+        s.is_playing = !player.is_paused() && !is_empty;
+        s.is_finished = is_empty && !title.is_empty();
         s.position = player.get_pos().as_secs_f64();
     } else {
         s.is_playing = false;
+        s.is_finished = false;
         s.position = 0.0;
     }
     s.duration = duration;

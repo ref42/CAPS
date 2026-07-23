@@ -3,9 +3,11 @@ use rustfft::{FftPlanner, num_complex::Complex};
 use std::sync::Mutex;
 use std::thread;
 
-static SPECTRUM: Mutex<[f32; 5]> = Mutex::new([0.28; 5]);
+pub const SPECTRUM_BANDS: usize = 7;
 
-pub fn get_audio_spectrum() -> [f32; 5] {
+static SPECTRUM: Mutex<[f32; SPECTRUM_BANDS]> = Mutex::new([0.28; SPECTRUM_BANDS]);
+
+pub fn get_audio_spectrum() -> [f32; SPECTRUM_BANDS] {
     *SPECTRUM.lock().unwrap()
 }
 
@@ -91,7 +93,7 @@ fn process_data(data: &[f32], channels: u16) {
 
     fft.process(&mut buffer);
 
-    let mut bins = [0.0_f32; 5];
+    let mut bins = [0.0_f32; SPECTRUM_BANDS];
     let half_n = n / 2;
 
     for i in 1..half_n {
@@ -99,14 +101,18 @@ fn process_data(data: &[f32], channels: u16) {
 
         let bin_idx = if i < half_n / 16 {
             0
-        } else if i < half_n / 8 {
+        } else if i < half_n / 10 {
             1
-        } else if i < half_n / 4 {
+        } else if i < half_n / 8 {
             2
-        } else if i < half_n / 2 {
+        } else if i < half_n / 4 {
             3
-        } else {
+        } else if i < half_n / 3 {
             4
+        } else if i < half_n / 2 {
+            5
+        } else {
+            6
         };
 
         if mag > bins[bin_idx] {
@@ -114,11 +120,11 @@ fn process_data(data: &[f32], channels: u16) {
         }
     }
 
-    let mut final_spectrum = [0.28_f32; 5];
-    let eq_weights = [1.7, 1.55, 1.85, 3.6, 5.8];
+    let mut final_spectrum = [0.28_f32; SPECTRUM_BANDS];
+    let eq_weights = [1.7, 1.5, 1.65, 1.95, 2.8, 4.1, 5.8];
     let base_gain = 8.5;
 
-    for i in 0..5 {
+    for i in 0..SPECTRUM_BANDS {
         let energy = bins[i] * eq_weights[i] * base_gain;
 
         let scaled = ((energy + 1.0).log10() * 0.34) + 0.28;
@@ -127,7 +133,7 @@ fn process_data(data: &[f32], channels: u16) {
     }
 
     if let Ok(mut spec) = SPECTRUM.lock() {
-        for i in 0..5 {
+        for i in 0..SPECTRUM_BANDS {
             let rise = final_spectrum[i] > spec[i];
             let old_weight = if rise { 0.28 } else { 0.68 };
             spec[i] = spec[i] * old_weight + final_spectrum[i] * (1.0 - old_weight);

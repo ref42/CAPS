@@ -278,11 +278,59 @@ fn App() -> Element {
         }
     };
 
+    let player_for_finish = player.clone();
+    use_effect(move || {
+        let state = audio_state.read().clone();
+        if !state.is_finished {
+            return;
+        }
+        let Some(index) = *current_index.read() else {
+            return;
+        };
+        let len = queue.read().len();
+        if len == 0 {
+            current_index.set(None);
+            lyrics.set(Vec::new());
+            player_for_finish.send(AudioCommand::Stop);
+            status.set("Queue finished.".to_string());
+            return;
+        }
+        let finished_track_matches_state = queue
+            .read()
+            .get(index)
+            .is_some_and(|track| track.name == state.title && track.artist == state.detail);
+        if !finished_track_matches_state {
+            return;
+        }
+        if index + 1 >= len {
+            current_index.set(None);
+            lyrics.set(Vec::new());
+            player_for_finish.send(AudioCommand::Stop);
+            status.set("Queue finished.".to_string());
+            return;
+        }
+        let next = index + 1;
+        current_index.set(Some(next));
+        if let Some(track) = queue.read().get(next).cloned() {
+            spawn_play(
+                track,
+                player_for_finish.clone(),
+                current_index,
+                status,
+                lyrics,
+            );
+        }
+    });
+
     let state = audio_state.read().clone();
     let active_track = current_index
         .read()
         .and_then(|index| queue.read().get(index).cloned());
-    let has_music = !state.title.is_empty() || active_track.is_some();
+    let is_finished_last = state.is_finished
+        && current_index
+            .read()
+            .is_some_and(|index| index + 1 >= queue.read().len());
+    let has_music = active_track.is_some() && !is_finished_last;
     let current_title = if state.title.is_empty() {
         active_track
             .as_ref()
@@ -525,10 +573,15 @@ fn App() -> Element {
                     QueuePanel {
                         queue: queue.read().clone(),
                         current_index: *current_index.read(),
-                        onclear: move |_| {
-                            queue.set(Vec::new());
-                            current_index.set(None);
-                            status.set("Queue cleared.".to_string());
+                        onclear: {
+                            let player = player.clone();
+                            move |_| {
+                                queue.set(Vec::new());
+                                current_index.set(None);
+                                lyrics.set(Vec::new());
+                                player.send(AudioCommand::Stop);
+                                status.set("Queue cleared.".to_string());
+                            }
                         },
                         onplay: {
                             let player = player.clone();

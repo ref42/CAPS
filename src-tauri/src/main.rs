@@ -256,7 +256,7 @@ fn App() -> Element {
     let stage_width = collapsed_width + ISLAND_BLEED * 2.0;
     let stage_height = COLLAPSED_H + ISLAND_BLEED * 2.0;
     let stage_style = format!(
-        "--app-opacity: {opacity_css:.2}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
+        "--island-opacity: {opacity_css:.2}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
     );
     let spring_class = spring_style.read().clone();
     let stage_class = if is_expanded {
@@ -978,7 +978,6 @@ button {
   height: var(--stage-height);
   padding: var(--island-bleed);
   zoom: var(--island-scale);
-  opacity: var(--app-opacity);
   color: rgba(248, 255, 252, 0.96);
   user-select: none;
   -webkit-font-smoothing: antialiased;
@@ -1002,6 +1001,7 @@ button {
   gap: 10px;
   padding: 7px 10px 8px 7px;
   border-radius: 999px;
+  opacity: var(--island-opacity);
   background: rgba(5, 8, 9, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.08);

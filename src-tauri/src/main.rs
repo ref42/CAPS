@@ -17,7 +17,6 @@ use sysinfo::Networks;
 #[cfg(target_os = "windows")]
 use dioxus::desktop::tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
 
-const LOGO: &str = include_str!("../../src/assets/caps.logo");
 const COLLAPSED_W: f64 = 300.0;
 const COLLAPSED_H: f64 = 56.0;
 const EXPANDED_W: f64 = 430.0;
@@ -272,6 +271,7 @@ fn App() -> Element {
     } else {
         "stage"
     };
+    let core_class = if has_music { "core" } else { "core idle-core" };
     let cover_class = if state.is_playing {
         "cover playing"
     } else {
@@ -355,13 +355,10 @@ fn App() -> Element {
                         }
                     }
                 },
-                div { class: "core",
+                div { class: "{core_class}",
                     if has_music {
                         div { class: "{cover_class}",
                             div { class: "cover-art", style: "{cover_style}" }
-                            if cover_style.is_empty() {
-                                div { class: "logo", dangerous_inner_html: LOGO }
-                            }
                         }
                         div { class: "music-copy",
                             div { class: "lyric-viewport",
@@ -380,13 +377,15 @@ fn App() -> Element {
                             }
                         }
                     } else {
-                        div {
-                            class: "logo speed-logo",
-                            dangerous_inner_html: LOGO,
-                        }
-                        div { class: "speed-copy",
-                            strong { "{download}" }
-                            span { "DOWN" }
+                        div { class: "speed-copy idle-speeds",
+                            div { class: "speed-stat",
+                                strong { "{download}" }
+                                span { "DOWN" }
+                            }
+                            div { class: "speed-stat",
+                                strong { "{upload}" }
+                                span { "UP" }
+                            }
                         }
                     }
                 }
@@ -419,10 +418,6 @@ fn App() -> Element {
                             title: "Stop",
                             "■"
                         }
-                    }
-                } else if !has_music || !state.is_playing {
-                    div { class: "speed-chip",
-                        span { "UP {upload}" }
                     }
                 }
                 div { class: "spectrum",
@@ -1073,16 +1068,9 @@ button {
   gap: 14px;
 }
 
-.logo,
-.logo svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.speed-logo {
-  width: 40px;
-  height: 40px;
+.idle-core {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
 }
 
 .cover {
@@ -1116,14 +1104,21 @@ button {
   animation: albumSpin 9s linear infinite;
 }
 
-.cover .logo {
-  width: 32px;
-  height: 32px;
-  z-index: 1;
-}
-
 .music-copy,
 .speed-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.idle-speeds {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.speed-stat {
   min-width: 0;
   display: grid;
   gap: 2px;
@@ -1198,6 +1193,10 @@ button {
   letter-spacing: 0;
 }
 
+.idle-speeds span {
+  color: rgba(248, 255, 252, 0.7);
+}
+
 .lyric-line {
   color: rgba(248, 255, 252, 0.74);
   clip-path: inset(0 0 0 0);
@@ -1222,21 +1221,6 @@ button {
 
 .expanded .lyric-title {
   font-size: 19px !important;
-}
-
-.speed-chip {
-  grid-column: 2;
-  justify-self: end;
-  height: 28px;
-  min-width: 82px;
-  display: grid;
-  place-items: center;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, var(--softer-alpha));
-  color: #7df2ca;
-  font-size: 11px;
-  font-weight: 800;
 }
 
 .mini-controls {

@@ -530,6 +530,7 @@ fn App() -> Element {
                 visible_primary_text,
                 outgoing_primary_text,
                 transition_key,
+                weather_icon: weather_now.read().icon.clone(),
                 weather: weather_now.read().label.clone(),
                 weather_title: weather_now.read().title.clone(),
                 download: download.read().clone(),

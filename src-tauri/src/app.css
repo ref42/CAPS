@@ -198,7 +198,27 @@ button {
 }
 
 .weather-stat {
-  width: 62px;
+  width: 70px;
+  color: rgba(248, 255, 252, 0.84);
+}
+
+.weather-icon {
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 15px;
+  color: currentColor;
+}
+
+.weather-icon svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.weather-icon path {
+  fill: currentColor;
 }
 
 .speed-arrow {

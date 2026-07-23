@@ -291,6 +291,7 @@ pub fn Island(
     visible_primary_text: String,
     outgoing_primary_text: Option<String>,
     transition_key: u64,
+    weather_icon: String,
     weather: String,
     weather_title: String,
     download: String,
@@ -336,6 +337,7 @@ pub fn Island(
                         div {
                             class: "speed-stat weather-stat",
                             title: "{weather_title}",
+                            span { class: "weather-icon", dangerous_inner_html: "{weather_icon}" }
                             strong { "{weather}" }
                         }
                         div {

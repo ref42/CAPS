@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 #[derive(Clone, Debug)]
 pub struct WeatherNow {
+    pub icon: String,
     pub label: String,
     pub title: String,
 }
@@ -9,6 +10,7 @@ pub struct WeatherNow {
 impl Default for WeatherNow {
     fn default() -> Self {
         Self {
+            icon: include_str!("../../src/assets/weather/unknown.svg").to_string(),
             label: "--°".to_string(),
             title: "Weather unavailable".to_string(),
         }
@@ -61,25 +63,28 @@ async fn fetch_local_weather() -> Option<WeatherNow> {
         .await
         .ok()?;
     let current = forecast.current_weather?;
-    let icon = weather_icon(current.weathercode);
+    let icon = weather_icon(current.weathercode).to_string();
     let temp = current.temperature.round() as i32;
     let city = location.city.unwrap_or_else(|| "Local".to_string());
 
     Some(WeatherNow {
-        label: format!("{icon} {temp}°"),
+        icon,
+        label: format!("{temp}°"),
         title: format!("{city} weather"),
     })
 }
 
 fn weather_icon(code: i32) -> &'static str {
     match code {
-        0 => "☀",
-        1 | 2 => "◐",
-        3 => "☁",
-        45 | 48 => "≋",
-        51 | 53 | 55 | 56 | 57 | 61 | 63 | 65 | 66 | 67 | 80 | 81 | 82 => "☂",
-        71 | 73 | 75 | 77 | 85 | 86 => "＊",
-        95 | 96 | 99 => "ϟ",
-        _ => "◌",
+        0 => include_str!("../../src/assets/weather/clear.svg"),
+        1 | 2 => include_str!("../../src/assets/weather/partly-cloudy.svg"),
+        3 => include_str!("../../src/assets/weather/cloudy.svg"),
+        45 | 48 => include_str!("../../src/assets/weather/fog.svg"),
+        51 | 53 | 55 | 56 | 57 | 61 | 63 | 65 | 66 | 67 | 80 | 81 | 82 => {
+            include_str!("../../src/assets/weather/rain.svg")
+        }
+        71 | 73 | 75 | 77 | 85 | 86 => include_str!("../../src/assets/weather/snow.svg"),
+        95 | 96 | 99 => include_str!("../../src/assets/weather/thunderstorm.svg"),
+        _ => include_str!("../../src/assets/weather/unknown.svg"),
     }
 }

@@ -1010,11 +1010,44 @@ button {
   height: var(--stage-height);
   padding: var(--island-bleed);
   zoom: var(--island-scale);
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --motion-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ui: 260ms;
+  --motion-panel: 260ms;
+  --motion-fast: 80ms;
+  --motion-bg: 160ms;
+  --motion-spectrum: 110ms;
+  --motion-lyric-in: 620ms;
+  --motion-lyric-out: 520ms;
   color: rgba(248, 255, 252, 0.96);
   user-select: none;
   -webkit-font-smoothing: antialiased;
   overflow: visible;
   background: transparent;
+}
+
+.stage.smooth {
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --motion-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ui: 260ms;
+  --motion-panel: 260ms;
+  --motion-fast: 80ms;
+  --motion-bg: 160ms;
+  --motion-spectrum: 110ms;
+  --motion-lyric-in: 620ms;
+  --motion-lyric-out: 520ms;
+}
+
+.stage.bouncy {
+  --motion-ease: cubic-bezier(0.18, 1.15, 0.22, 1);
+  --motion-spring: cubic-bezier(0.12, 1.42, 0.22, 1);
+  --motion-ui: 420ms;
+  --motion-panel: 420ms;
+  --motion-fast: 120ms;
+  --motion-bg: 190ms;
+  --motion-spectrum: 72ms;
+  --motion-lyric-in: 720ms;
+  --motion-lyric-out: 610ms;
 }
 
 .stage.expanded {
@@ -1056,14 +1089,9 @@ button {
   grid-template-columns: minmax(0, 1fr) 40px;
 }
 
-.smooth .island,
-.smooth .panel {
-  transition: width 260ms cubic-bezier(0.2, 0, 0, 1), height 260ms cubic-bezier(0.2, 0, 0, 1), border-radius 260ms cubic-bezier(0.2, 0, 0, 1), opacity 180ms ease, transform 260ms cubic-bezier(0.2, 0, 0, 1);
-}
-
-.bouncy .island,
-.bouncy .panel {
-  transition: width 420ms cubic-bezier(0.18, 1.15, 0.22, 1), height 420ms cubic-bezier(0.18, 1.15, 0.22, 1), border-radius 420ms cubic-bezier(0.18, 1.15, 0.22, 1), opacity 190ms ease, transform 420ms cubic-bezier(0.18, 1.15, 0.22, 1);
+.island,
+.panel {
+  transition: width var(--motion-ui) var(--motion-ease), height var(--motion-ui) var(--motion-ease), border-radius var(--motion-ui) var(--motion-ease), opacity var(--motion-bg) ease, transform var(--motion-panel) var(--motion-ease);
 }
 
 .core {
@@ -1232,12 +1260,12 @@ button {
 }
 
 .lyric-in {
-  animation: lyricWipeIn 620ms cubic-bezier(0.2, 0, 0, 1) both;
+  animation: lyricWipeIn var(--motion-lyric-in) var(--motion-ease) both;
 }
 
 .lyric-out {
   z-index: 1;
-  animation: lyricWipeOut 520ms cubic-bezier(0.36, 0, 0.2, 1) both;
+  animation: lyricWipeOut var(--motion-lyric-out) var(--motion-ease) both;
 }
 
 .expanded .lyric-title {
@@ -1260,7 +1288,7 @@ button {
   color: rgba(248, 255, 252, 0.94);
   font-size: 11px;
   font-weight: 900;
-  transition: transform 80ms ease-out, background-color 160ms ease;
+  transition: transform var(--motion-fast) var(--motion-spring), background-color var(--motion-bg) ease;
 }
 
 .mini-controls button:hover {
@@ -1299,7 +1327,7 @@ button {
   border-radius: 999px;
   background: linear-gradient(180deg, #fff0a0, #78f2ca);
   transform-origin: center;
-  transition: transform 110ms cubic-bezier(0.16, 1.28, 0.28, 1);
+  transition: transform var(--motion-spectrum) var(--motion-spring);
   will-change: transform;
 }
 
@@ -1365,7 +1393,7 @@ button {
   color: rgba(248, 255, 252, 0.62);
   font-size: 11px;
   font-weight: 800;
-  transition: background-color 160ms ease, color 160ms ease, transform 80ms ease;
+  transition: background-color var(--motion-bg) ease, color var(--motion-bg) ease, transform var(--motion-fast) var(--motion-spring);
 }
 
 .tab.active {
@@ -1431,7 +1459,7 @@ button {
   color: rgba(248, 255, 252, 0.88);
   font-size: 12px;
   font-weight: 800;
-  transition: background-color 160ms ease, transform 80ms ease;
+  transition: background-color var(--motion-bg) ease, transform var(--motion-fast) var(--motion-spring);
 }
 
 .random-control {
@@ -1507,7 +1535,7 @@ button {
   border-radius: 11px;
   background: transparent;
   text-align: left;
-  transition: background-color 160ms ease, transform 80ms ease;
+  transition: background-color var(--motion-bg) ease, transform var(--motion-fast) var(--motion-spring);
 }
 
 .queue-song {
@@ -1534,7 +1562,7 @@ button {
   color: rgba(248, 255, 252, 0.62);
   font-size: 18px;
   line-height: 1;
-  transition: background-color 160ms ease, color 160ms ease, transform 80ms ease;
+  transition: background-color var(--motion-bg) ease, color var(--motion-bg) ease, transform var(--motion-fast) var(--motion-spring);
 }
 
 .remove-song:hover {
@@ -1709,6 +1737,7 @@ button {
   color: rgba(248, 255, 252, 0.68);
   font-size: 12px;
   font-weight: 800;
+  transition: background-color var(--motion-bg) ease, color var(--motion-bg) ease, transform var(--motion-fast) var(--motion-spring);
 }
 
 .segmented button.active {

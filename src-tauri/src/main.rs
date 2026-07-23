@@ -40,6 +40,9 @@ struct LyricTransition {
     id: u64,
 }
 
+const DEFAULT_SPECTRUM_FROM: &str = "rgb(255, 196, 224)";
+const DEFAULT_SPECTRUM_TO: &str = "rgb(255, 105, 180)";
+
 fn main() {
     audio_spectrum::start_monitor();
     dioxus::LaunchBuilder::desktop()
@@ -125,8 +128,8 @@ fn App() -> Element {
     let mut spectrum = use_signal(audio_spectrum::get_audio_spectrum);
     let mut spectrum_colors = use_signal(|| {
         (
-            "rgb(255, 240, 160)".to_string(),
-            "rgb(120, 242, 202)".to_string(),
+            DEFAULT_SPECTRUM_FROM.to_string(),
+            DEFAULT_SPECTRUM_TO.to_string(),
         )
     });
     let mut upload = use_signal(|| "0 B/s".to_string());
@@ -242,8 +245,8 @@ fn App() -> Element {
         *last_cover_for_color.borrow_mut() = cover_url.clone();
         if cover_url.is_empty() {
             spectrum_colors.set((
-                "rgb(255, 240, 160)".to_string(),
-                "rgb(120, 242, 202)".to_string(),
+                DEFAULT_SPECTRUM_FROM.to_string(),
+                DEFAULT_SPECTRUM_TO.to_string(),
             ));
             return;
         }
@@ -252,8 +255,8 @@ fn App() -> Element {
                 .await
                 .unwrap_or_else(|| {
                     (
-                        "rgb(255, 240, 160)".to_string(),
-                        "rgb(120, 242, 202)".to_string(),
+                        DEFAULT_SPECTRUM_FROM.to_string(),
+                        DEFAULT_SPECTRUM_TO.to_string(),
                     )
                 });
             spectrum_colors.set(colors);
@@ -546,7 +549,10 @@ fn App() -> Element {
             },
             oncontextmenu: {
                 let desktop = desktop.clone();
-                move |_| desktop.close()
+                move |_| {
+                    storage::clean_song_cache();
+                    desktop.close()
+                }
             },
             Island {
                 island_class,

@@ -97,10 +97,25 @@ pub fn save_state(state: &AppState) {
     }
 }
 
-fn state_path() -> Option<PathBuf> {
+pub fn clean_song_cache() {
+    let Some(path) = song_cache_path() else {
+        return;
+    };
+    let _ = fs::remove_dir_all(path);
+}
+
+fn app_dir() -> Option<PathBuf> {
     let base = std::env::var_os("APPDATA")
         .or_else(|| std::env::var_os("LOCALAPPDATA"))
         .map(PathBuf::from)
         .or_else(|| std::env::current_dir().ok())?;
-    Some(base.join("CAPS").join("state.json"))
+    Some(base.join("CAPS"))
+}
+
+fn state_path() -> Option<PathBuf> {
+    Some(app_dir()?.join("state.json"))
+}
+
+fn song_cache_path() -> Option<PathBuf> {
+    Some(app_dir()?.join("song-cache"))
 }

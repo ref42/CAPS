@@ -127,6 +127,10 @@ button {
   gap: 12px;
 }
 
+.island:not(.idle-island) .core {
+  grid-column: 2 / 4;
+}
+
 .expanded .core {
   grid-template-columns: 52px minmax(0, 1fr);
   gap: 14px;
@@ -243,12 +247,14 @@ button {
   align-self: center;
   display: flex;
   align-items: center;
+  justify-content: center;
   height: 42px;
   overflow: hidden;
 }
 
 .expanded .music-copy {
   height: 52px;
+  padding-right: 151px;
 }
 
 .lyric-viewport {
@@ -282,8 +288,10 @@ button {
   inset: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   min-width: 0;
   max-width: 100%;
+  text-align: center;
   pointer-events: none;
   transform-origin: center;
   line-height: 1;
@@ -299,6 +307,11 @@ button {
   padding-right: 36px;
   text-overflow: clip;
   animation: lyricMarquee var(--lyric-scroll-duration, 5.2s) linear 280ms both;
+}
+
+.music-copy .lyric-marquee {
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .expanded .music-copy strong,
@@ -393,6 +406,7 @@ button {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 5px;
+  z-index: 2;
 }
 
 .mini-controls button {
@@ -440,7 +454,7 @@ button {
   height: 24px;
   min-height: 6px;
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--spectrum-from, #fff0a0), var(--spectrum-to, #78f2ca));
+  background: linear-gradient(180deg, var(--spectrum-from, #ffc4e0), var(--spectrum-to, #ff69b4));
   transform-origin: center;
   transition: transform var(--motion-spectrum) var(--motion-spring);
   will-change: transform;
@@ -473,7 +487,7 @@ button {
 .playback-progress input::-webkit-slider-runnable-track {
   height: 3px;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--spectrum-to, #78f2ca) 0, var(--spectrum-from, #fff0a0) var(--progress, 0%), rgba(255, 255, 255, var(--softer-alpha)) var(--progress, 0%), rgba(255, 255, 255, var(--softer-alpha)) 100%);
+  background: linear-gradient(90deg, var(--spectrum-to, #ff69b4) 0, var(--spectrum-from, #ffc4e0) var(--progress, 0%), rgba(255, 255, 255, var(--softer-alpha)) var(--progress, 0%), rgba(255, 255, 255, var(--softer-alpha)) 100%);
 }
 
 .playback-progress input::-webkit-slider-thumb {
@@ -483,7 +497,7 @@ button {
   border: 0;
   border-radius: 50%;
   appearance: none;
-  background: var(--spectrum-from, #fff0a0);
+  background: var(--spectrum-from, #ffc4e0);
   opacity: 0;
   transition: opacity var(--motion-bg) ease, transform var(--motion-fast) var(--motion-spring);
 }

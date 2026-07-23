@@ -255,8 +255,16 @@ fn App() -> Element {
     let collapsed_width = collapsed_width_for_text(&primary_text, has_music);
     let stage_width = collapsed_width + ISLAND_BLEED * 2.0;
     let stage_height = COLLAPSED_H + ISLAND_BLEED * 2.0;
+    let island_alpha = (opacity_css * 0.92).clamp(0.08, 0.92);
+    let panel_alpha = (opacity_css * 0.86).clamp(0.08, 0.86);
+    let soft_alpha = (opacity_css * 0.16).clamp(0.02, 0.16);
+    let softer_alpha = (opacity_css * 0.08).clamp(0.01, 0.08);
+    let hover_alpha = (opacity_css * 0.15).clamp(0.02, 0.15);
+    let active_alpha = (opacity_css * 0.18).clamp(0.02, 0.18);
+    let green_alpha = (opacity_css * 0.2).clamp(0.03, 0.2);
+    let red_alpha = (opacity_css * 0.22).clamp(0.03, 0.22);
     let stage_style = format!(
-        "--island-opacity: {opacity_css:.2}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
+        "--island-bg-alpha: {island_alpha:.3}; --panel-bg-alpha: {panel_alpha:.3}; --soft-alpha: {soft_alpha:.3}; --softer-alpha: {softer_alpha:.3}; --hover-alpha: {hover_alpha:.3}; --active-alpha: {active_alpha:.3}; --green-alpha: {green_alpha:.3}; --red-alpha: {red_alpha:.3}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
     );
     let spring_class = spring_style.read().clone();
     let stage_class = if is_expanded {
@@ -1001,8 +1009,7 @@ button {
   gap: 10px;
   padding: 7px 10px 8px 7px;
   border-radius: 999px;
-  opacity: var(--island-opacity);
-  background: rgba(5, 8, 9, 0.92);
+  background: rgba(5, 8, 9, var(--island-bg-alpha));
   border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(22px) saturate(1.25);
@@ -1168,7 +1175,7 @@ button {
   place-items: center;
   padding: 0 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, var(--softer-alpha));
   color: #7df2ca;
   font-size: 11px;
   font-weight: 800;
@@ -1186,7 +1193,7 @@ button {
   width: 31px;
   height: 31px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, var(--softer-alpha));
   color: rgba(248, 255, 252, 0.94);
   font-size: 11px;
   font-weight: 900;
@@ -1194,7 +1201,7 @@ button {
 }
 
 .mini-controls button:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, var(--soft-alpha));
 }
 
 .mini-controls button:active,
@@ -1240,7 +1247,7 @@ button {
   bottom: 8px;
   height: 3px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, var(--softer-alpha));
   overflow: hidden;
 }
 
@@ -1260,7 +1267,7 @@ button {
   flex-direction: column;
   gap: 9px;
   border-radius: 22px;
-  background: rgba(19, 24, 26, 0.86);
+  background: rgba(19, 24, 26, var(--panel-bg-alpha));
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34), inset 0 1px rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(24px) saturate(1.2);
@@ -1281,7 +1288,7 @@ button {
   gap: 5px;
   padding: 3px;
   border-radius: 12px;
-  background: rgba(142, 142, 147, 0.15);
+  background: rgba(142, 142, 147, var(--hover-alpha));
 }
 
 .tab {
@@ -1295,7 +1302,7 @@ button {
 }
 
 .tab.active {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, var(--soft-alpha));
   color: rgba(248, 255, 252, 0.96);
 }
 
@@ -1319,7 +1326,7 @@ button {
   padding: 0 10px;
   border-radius: 10px;
   outline: none;
-  background: rgba(142, 142, 147, 0.16);
+  background: rgba(142, 142, 147, var(--soft-alpha));
   color: rgba(248, 255, 252, 0.94);
   font-size: 12px;
   font-weight: 650;
@@ -1333,7 +1340,7 @@ button {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: rgba(48, 209, 88, 0.2);
+  background: rgba(48, 209, 88, var(--green-alpha));
   color: #7df2ca;
   font-size: 18px;
   font-weight: 800;
@@ -1353,7 +1360,7 @@ button {
   height: 30px;
   padding: 0 12px;
   border-radius: 10px;
-  background: rgba(142, 142, 147, 0.18);
+  background: rgba(142, 142, 147, var(--active-alpha));
   color: rgba(248, 255, 252, 0.88);
   font-size: 12px;
   font-weight: 800;
@@ -1382,7 +1389,7 @@ button {
   width: 58px;
   height: 28px;
   border-radius: 8px;
-  background: rgba(142, 142, 147, 0.16);
+  background: rgba(142, 142, 147, var(--soft-alpha));
   color: rgba(248, 255, 252, 0.92);
   text-align: center;
   font-size: 12px;
@@ -1394,7 +1401,7 @@ button {
 .queue-toolbar button:hover,
 .song:hover,
 .segmented button:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, var(--hover-alpha));
 }
 
 .queue-toolbar span {
@@ -1456,7 +1463,7 @@ button {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, var(--softer-alpha));
   color: rgba(248, 255, 252, 0.62);
   font-size: 18px;
   line-height: 1;
@@ -1464,12 +1471,12 @@ button {
 }
 
 .remove-song:hover {
-  background: rgba(255, 69, 58, 0.22);
+  background: rgba(255, 69, 58, var(--red-alpha));
   color: #ff9b94;
 }
 
 .song.active {
-  background: rgba(48, 209, 88, 0.18);
+  background: rgba(48, 209, 88, var(--active-alpha));
 }
 
 .song-cover {
@@ -1533,7 +1540,7 @@ button {
 .speed-grid div,
 .stat-line {
   border-radius: 12px;
-  background: rgba(142, 142, 147, 0.15);
+  background: rgba(142, 142, 147, var(--hover-alpha));
 }
 
 .speed-grid div {
@@ -1623,7 +1630,7 @@ button {
   gap: 4px;
   padding: 3px;
   border-radius: 10px;
-  background: rgba(142, 142, 147, 0.16);
+  background: rgba(142, 142, 147, var(--soft-alpha));
 }
 
 .segmented button {
@@ -1638,7 +1645,7 @@ button {
 }
 
 .segmented button.active {
-  background: rgba(255, 255, 255, 0.17);
+  background: rgba(255, 255, 255, var(--active-alpha));
   color: rgba(248, 255, 252, 0.96);
 }
 

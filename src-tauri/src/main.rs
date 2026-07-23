@@ -133,6 +133,7 @@ fn App() -> Element {
     let mut download = use_signal(|| "0 B/s".to_string());
     let mut weather_now = use_signal(weather::WeatherNow::default);
     let mut activity_energy = use_signal(|| 0.0_f64);
+    let mut paused_since = use_signal(|| None::<std::time::Instant>);
     let mut total_upload = use_signal(|| 0_u64);
     let mut total_download = use_signal(|| 0_u64);
     let mut lyrics = use_signal(Vec::<LyricLine>::new);
@@ -180,6 +181,11 @@ fn App() -> Element {
                 smoothed_energy += (raw_energy - smoothed_energy) * blend;
                 if !next_state.is_playing && smoothed_energy < 0.01 {
                     smoothed_energy = 0.0;
+                }
+                if next_state.is_playing || next_state.is_finished || next_state.title.is_empty() {
+                    paused_since.set(None);
+                } else if paused_since.read().is_none() {
+                    paused_since.set(Some(std::time::Instant::now()));
                 }
                 audio_state.set(next_state);
                 spectrum.set(next_spectrum);
@@ -360,7 +366,11 @@ fn App() -> Element {
         && current_index
             .read()
             .is_some_and(|index| index + 1 >= queue.read().len());
-    let has_music = active_track.is_some() && !is_finished_last;
+    let paused_over_idle_timeout = paused_since
+        .read()
+        .as_ref()
+        .is_some_and(|since| since.elapsed() >= std::time::Duration::from_secs(30));
+    let has_music = active_track.is_some() && !is_finished_last && !paused_over_idle_timeout;
     let current_title = if state.title.is_empty() {
         active_track
             .as_ref()
@@ -390,7 +400,10 @@ fn App() -> Element {
     };
     let lyric_scroll_style = if has_music && lyric_chars > 18 {
         let distance = (lyric_chars.saturating_sub(14) as f64 * 0.62).clamp(5.5, 28.0);
-        format!("--lyric-scroll-distance: -{distance:.2}ch;")
+        let duration = (3.9 + lyric_chars.saturating_sub(18) as f64 * 0.11).clamp(4.2, 6.4);
+        format!(
+            "--lyric-scroll-distance: -{distance:.2}ch; --lyric-scroll-duration: {duration:.2}s;"
+        )
     } else {
         String::new()
     };

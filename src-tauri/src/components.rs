@@ -74,6 +74,208 @@ pub fn StatsPanel(
 }
 
 #[component]
+pub fn SearchPanel(
+    query: String,
+    results: Vec<Track>,
+    random_count: u32,
+    status: String,
+    onfocus: EventHandler<FocusEvent>,
+    onblur: EventHandler<FocusEvent>,
+    onquery: EventHandler<String>,
+    onsearch: EventHandler<String>,
+    onrandom: EventHandler<u32>,
+    onrandom_count: EventHandler<u32>,
+    onadd: EventHandler<Track>,
+) -> Element {
+    let search_from_key = query.trim().to_string();
+    let search_from_click = search_from_key.clone();
+    rsx! {
+        div { class: "panel-section",
+            div { class: "search-row",
+                input {
+                    placeholder: "Search NetEase",
+                    onfocus,
+                    onblur,
+                    oninput: move |event| onquery.call(event.value()),
+                    onkeydown: move |event| {
+                        if event.key() == Key::Enter && !event.is_composing() {
+                            onsearch.call(search_from_key.clone());
+                        }
+                    },
+                }
+                button {
+                    class: "icon-button",
+                    onclick: move |_| onsearch.call(search_from_click.clone()),
+                    "⌕"
+                }
+            }
+            div { class: "random-row",
+                button { onclick: move |_| onrandom.call(random_count),
+                    "Random {random_count}"
+                }
+                button { onclick: move |_| onrandom.call(50), "50" }
+                button { onclick: move |_| onrandom.call(100), "100" }
+            }
+            div { class: "random-control",
+                span { "Random N" }
+                input {
+                    r#type: "range",
+                    min: "1",
+                    max: "100",
+                    value: "{random_count}",
+                    oninput: move |event| {
+                        if let Ok(value) = event.value().parse::<u32>() {
+                            onrandom_count.call(value.clamp(1, 100));
+                        }
+                    },
+                }
+                input {
+                    class: "number-input",
+                    r#type: "number",
+                    min: "1",
+                    max: "100",
+                    value: "{random_count}",
+                    oninput: move |event| {
+                        if let Ok(value) = event.value().parse::<u32>() {
+                            onrandom_count.call(value.clamp(1, 100));
+                        }
+                    },
+                }
+            }
+            div { class: "song-list",
+                for track in results.iter().cloned() {
+                    TrackRow {
+                        track: track.clone(),
+                        action: "+",
+                        active: false,
+                        onclick: move |_| onadd.call(track.clone()),
+                    }
+                }
+                if results.is_empty() {
+                    div { class: "empty", "{status}" }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn QueuePanel(
+    queue: Vec<Track>,
+    current_index: Option<usize>,
+    onclear: EventHandler<MouseEvent>,
+    onplay: EventHandler<usize>,
+    onremove: EventHandler<usize>,
+) -> Element {
+    let queue_len = queue.len();
+    rsx! {
+        div { class: "panel-section",
+            div { class: "queue-toolbar",
+                span { "{queue_len} tracks" }
+                button { onclick: onclear, "Clear" }
+            }
+            div { class: "song-list",
+                for (index, track) in queue.iter().cloned().enumerate() {
+                    QueueTrackRow {
+                        track,
+                        active: current_index.is_some_and(|i| i == index),
+                        onplay: move |_| onplay.call(index),
+                        onremove: move |_| onremove.call(index),
+                    }
+                }
+                if queue.is_empty() {
+                    div { class: "empty", "Queue is empty." }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn SettingsPanel(
+    opacity: u32,
+    volume: u32,
+    island_size: u32,
+    spring_style: String,
+    onopacity: EventHandler<u32>,
+    onvolume: EventHandler<u32>,
+    onisland_size: EventHandler<u32>,
+    onspring_style: EventHandler<String>,
+) -> Element {
+    rsx! {
+        div { class: "panel-section settings",
+            label { class: "setting",
+                span { "Opacity" }
+                div { class: "setting-control",
+                    input {
+                        r#type: "range",
+                        min: "10",
+                        max: "100",
+                        value: "{opacity}",
+                        oninput: move |event| {
+                            if let Ok(value) = event.value().parse::<u32>() {
+                                onopacity.call(value.clamp(10, 100));
+                            }
+                        },
+                    }
+                    output { "{opacity}%" }
+                }
+            }
+            label { class: "setting",
+                span { "Volume" }
+                div { class: "setting-control",
+                    input {
+                        r#type: "range",
+                        min: "0",
+                        max: "100",
+                        value: "{volume}",
+                        oninput: move |event| {
+                            if let Ok(value) = event.value().parse::<u32>() {
+                                onvolume.call(value.clamp(0, 100));
+                            }
+                        },
+                    }
+                    output { "{volume}%" }
+                }
+            }
+            label { class: "setting",
+                span { "Island size" }
+                div { class: "setting-control",
+                    input {
+                        r#type: "range",
+                        min: "85",
+                        max: "135",
+                        value: "{island_size}",
+                        oninput: move |event| {
+                            if let Ok(value) = event.value().parse::<u32>() {
+                                onisland_size.call(value.clamp(85, 135));
+                            }
+                        },
+                    }
+                    output { "{island_size}%" }
+                }
+            }
+            div { class: "setting",
+                span { "Animation" }
+                div { class: "segmented",
+                    button {
+                        class: if spring_style == "smooth" { "active" } else { "" },
+                        onclick: move |_| onspring_style.call("smooth".to_string()),
+                        "Smooth"
+                    }
+                    button {
+                        class: if spring_style == "bouncy" { "active" } else { "" },
+                        onclick: move |_| onspring_style.call("bouncy".to_string()),
+                        "Bouncy"
+                    }
+                }
+            }
+            div { class: "status-text", "Right-click the island to exit CAPS." }
+        }
+    }
+}
+
+#[component]
 pub fn Island(
     island_class: &'static str,
     core_class: &'static str,

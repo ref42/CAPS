@@ -13,7 +13,7 @@ mod windowing;
 
 use actions::{spawn_play, spawn_random_queue, spawn_search};
 use audio::{AudioCommand, AudioPlayer};
-use components::{Island, QueueTrackRow, StatsPanel, Tabs, TrackRow};
+use components::{Island, QueuePanel, SearchPanel, SettingsPanel, StatsPanel, Tabs};
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
 use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
@@ -279,7 +279,6 @@ fn App() -> Element {
     };
     let tab = active_tab.read().clone();
     let is_expanded = *expanded.read();
-    let queue_len = queue.read().len();
     let opacity_css = (*opacity.read() as f64 / 100.0).clamp(0.1, 1.0);
     let island_scale = (*island_size.read() as f64 / 100.0).clamp(0.85, 1.35);
     let collapsed_width = collapsed_width_for_text(&primary_text, has_music);
@@ -432,147 +431,79 @@ fn App() -> Element {
                 }
 
                 if tab == "search" {
-                    div { class: "panel-section",
-                        div { class: "search-row",
-                            input {
-                                placeholder: "Search NetEase",
-                                onfocus: move |_| input_focused.set(true),
-                                onblur: {
-                                    let desktop = desktop.clone();
-                                    move |_| {
-                                        input_focused.set(false);
-                                        if !*pointer_inside.read() {
-                                            expanded.set(false);
-                                            set_island_window(
-                                                &desktop,
-                                                false,
-                                                island_size() as f64 / 100.0,
-                                                collapsed_width,
-                                            );
-                                        }
-                                    }
-                                },
-                                oninput: move |event| query.set(event.value()),
-                                onkeydown: move |event| {
-                                    if event.key() == Key::Enter && !event.is_composing() {
-                                        spawn_search(query.read().trim().to_string(), results, status);
-                                    }
-                                },
-                            }
-                            button {
-                                class: "icon-button",
-                                onclick: move |_| spawn_search(query.read().trim().to_string(), results, status),
-                                "⌕"
-                            }
-                        }
-                        div { class: "random-row",
-                            button { onclick: move |_| load_random(random_count()),
-                                "Random {random_count}"
-                            }
-                            button { onclick: move |_| load_random(50), "50" }
-                            button { onclick: move |_| load_random(100), "100" }
-                        }
-                        div { class: "random-control",
-                            span { "Random N" }
-                            input {
-                                r#type: "range",
-                                min: "1",
-                                max: "100",
-                                value: "{random_count}",
-                                oninput: move |event| {
-                                    if let Ok(value) = event.value().parse::<u32>() {
-                                        random_count.set(value.clamp(1, 100));
-                                    }
-                                },
-                            }
-                            input {
-                                class: "number-input",
-                                r#type: "number",
-                                min: "1",
-                                max: "100",
-                                value: "{random_count}",
-                                oninput: move |event| {
-                                    if let Ok(value) = event.value().parse::<u32>() {
-                                        random_count.set(value.clamp(1, 100));
-                                    }
-                                },
-                            }
-                        }
-                        div { class: "song-list",
-                            for track in results.read().iter().cloned() {
-                                TrackRow {
-                                    track: track.clone(),
-                                    action: "+",
-                                    active: false,
-                                    onclick: move |_| {
-                                        let mut next = queue.read().clone();
-                                        next.push(track.clone());
-                                        let added = next.len();
-                                        queue.set(next);
-                                        status.set(format!("Queued {added} tracks."));
-                                    },
+                    SearchPanel {
+                        query: query.read().clone(),
+                        results: results.read().clone(),
+                        random_count: random_count(),
+                        status: status.read().clone(),
+                        onfocus: move |_| input_focused.set(true),
+                        onblur: {
+                            let desktop = desktop.clone();
+                            move |_| {
+                                input_focused.set(false);
+                                if !*pointer_inside.read() {
+                                    expanded.set(false);
+                                    set_island_window(
+                                        &desktop,
+                                        false,
+                                        island_size() as f64 / 100.0,
+                                        collapsed_width,
+                                    );
                                 }
                             }
-                            if results.read().is_empty() {
-                                div { class: "empty", "{status}" }
-                            }
-                        }
+                        },
+                        onquery: move |value| query.set(value),
+                        onsearch: move |text| spawn_search(text, results, status),
+                        onrandom: move |count| load_random(count),
+                        onrandom_count: move |value| random_count.set(value),
+                        onadd: move |track| {
+                            let mut next = queue.read().clone();
+                            next.push(track);
+                            let added = next.len();
+                            queue.set(next);
+                            status.set(format!("Queued {added} tracks."));
+                        },
                     }
                 } else if tab == "queue" {
-                    div { class: "panel-section",
-                        div { class: "queue-toolbar",
-                            span { "{queue_len} tracks" }
-                            button {
-                                onclick: move |_| {
-                                    queue.set(Vec::new());
-                                    current_index.set(None);
-                                    status.set("Queue cleared.".to_string());
-                                },
-                                "Clear"
-                            }
-                        }
-                        div { class: "song-list",
-                            for (index , track) in queue.read().iter().cloned().enumerate() {
-                                QueueTrackRow {
-                                    track,
-                                    active: current_index.read().is_some_and(|i| i == index),
-                                    onplay: {
-                                        let player = player.clone();
-                                        move |_| {
-                                            let list = queue.read().clone();
-                                            if let Some(track) = list.get(index).cloned() {
-                                                current_index.set(Some(index));
-                                                spawn_play(track, player.clone(), current_index, status, lyrics);
-                                            }
-                                        }
-                                    },
-                                    onremove: {
-                                        let player = player.clone();
-                                        move |_| {
-                                            let mut list = queue.read().clone();
-                                            if index < list.len() {
-                                                list.remove(index);
-                                                queue.set(list);
-                                                let current = *current_index.read();
-                                                match current {
-                                                    Some(i) if i == index => {
-                                                        current_index.set(None);
-                                                        lyrics.set(Vec::new());
-                                                        player.send(AudioCommand::Stop);
-                                                        status.set("Removed current track.".to_string());
-                                                    }
-                                                    Some(i) if i > index => current_index.set(Some(i - 1)),
-                                                    _ => {}
-                                                }
-                                            }
-                                        }
-                                    },
+                    QueuePanel {
+                        queue: queue.read().clone(),
+                        current_index: *current_index.read(),
+                        onclear: move |_| {
+                            queue.set(Vec::new());
+                            current_index.set(None);
+                            status.set("Queue cleared.".to_string());
+                        },
+                        onplay: {
+                            let player = player.clone();
+                            move |index| {
+                                let list = queue.read().clone();
+                                if let Some(track) = list.get(index).cloned() {
+                                    current_index.set(Some(index));
+                                    spawn_play(track, player.clone(), current_index, status, lyrics);
                                 }
                             }
-                            if queue.read().is_empty() {
-                                div { class: "empty", "Queue is empty." }
+                        },
+                        onremove: {
+                            let player = player.clone();
+                            move |index| {
+                                let mut list = queue.read().clone();
+                                if index < list.len() {
+                                    list.remove(index);
+                                    queue.set(list);
+                                    let current = *current_index.read();
+                                    match current {
+                                        Some(i) if i == index => {
+                                            current_index.set(None);
+                                            lyrics.set(Vec::new());
+                                            player.send(AudioCommand::Stop);
+                                            status.set("Removed current track.".to_string());
+                                        }
+                                        Some(i) if i > index => current_index.set(Some(i - 1)),
+                                        _ => {}
+                                    }
+                                }
                             }
-                        }
+                        },
                     }
                 } else if tab == "stats" {
                     StatsPanel {
@@ -584,89 +515,32 @@ fn App() -> Element {
                         status: status.read().clone(),
                     }
                 } else {
-                    div { class: "panel-section settings",
-                        label { class: "setting",
-                            span { "Opacity" }
-                            div { class: "setting-control",
-                                input {
-                                    r#type: "range",
-                                    min: "10",
-                                    max: "100",
-                                    value: "{opacity}",
-                                    oninput: move |event| {
-                                        if let Ok(value) = event.value().parse::<u32>() {
-                                            opacity.set(value.clamp(10, 100));
-                                        }
-                                    },
-                                }
-                                output { "{opacity}%" }
+                    SettingsPanel {
+                        opacity: opacity(),
+                        volume: volume(),
+                        island_size: island_size(),
+                        spring_style: spring_style.read().clone(),
+                        onopacity: move |value| opacity.set(value),
+                        onvolume: {
+                            let player = player.clone();
+                            move |value| {
+                                volume.set(value);
+                                player.send(AudioCommand::SetVolume(value as f32 / 100.0));
                             }
-                        }
-                        label { class: "setting",
-                            span { "Volume" }
-                            div { class: "setting-control",
-                                input {
-                                    r#type: "range",
-                                    min: "0",
-                                    max: "100",
-                                    value: "{volume}",
-                                    oninput: {
-                                        let player = player.clone();
-                                        move |event| {
-                                            if let Ok(value) = event.value().parse::<u32>() {
-                                                let value = value.clamp(0, 100);
-                                                volume.set(value);
-                                                player.send(AudioCommand::SetVolume(value as f32 / 100.0));
-                                            }
-                                        }
-                                    },
-                                }
-                                output { "{volume}%" }
+                        },
+                        onisland_size: {
+                            let desktop = desktop.clone();
+                            move |value| {
+                                island_size.set(value);
+                                set_island_window(
+                                    &desktop,
+                                    expanded(),
+                                    value as f64 / 100.0,
+                                    collapsed_width,
+                                );
                             }
-                        }
-                        label { class: "setting",
-                            span { "Island size" }
-                            div { class: "setting-control",
-                                input {
-                                    r#type: "range",
-                                    min: "85",
-                                    max: "135",
-                                    value: "{island_size}",
-                                    oninput: {
-                                        let desktop = desktop.clone();
-                                        move |event| {
-                                            if let Ok(value) = event.value().parse::<u32>() {
-                                                let value = value.clamp(85, 135);
-                                                island_size.set(value);
-                                                set_island_window(
-                                                    &desktop,
-                                                    expanded(),
-                                                    value as f64 / 100.0,
-                                                    collapsed_width,
-                                                );
-                                            }
-                                        }
-                                    },
-                                }
-                                output { "{island_size}%" }
-                            }
-                        }
-                        div { class: "setting",
-                            span { "Animation" }
-                            div { class: "segmented",
-                                button {
-                                    class: if spring_style.read().as_str() == "smooth" { "active" } else { "" },
-                                    onclick: move |_| spring_style.set("smooth".to_string()),
-                                    "Smooth"
-                                }
-                                button {
-                                    class: if spring_style.read().as_str() == "bouncy" { "active" } else { "" },
-                                    onclick: move |_| spring_style.set("bouncy".to_string()),
-                                    "Bouncy"
-                                }
-                            }
-                        }
-                        div { class: "status-text", "Right-click the island to exit CAPS." }
+                        },
+                        onspring_style: move |value| spring_style.set(value),
                     }
                 }
             }

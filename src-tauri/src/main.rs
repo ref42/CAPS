@@ -17,7 +17,7 @@ use sysinfo::Networks;
 #[cfg(target_os = "windows")]
 use dioxus::desktop::tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
 
-const LOGO: &str = include_str!("../../src/assets/qiuniu.logo");
+const LOGO: &str = include_str!("../../src/assets/caps.logo");
 const COLLAPSED_W: f64 = 300.0;
 const COLLAPSED_H: f64 = 56.0;
 const EXPANDED_W: f64 = 430.0;
@@ -56,7 +56,7 @@ fn main() {
 
 fn desktop_config() -> Config {
     let mut window = WindowBuilder::new()
-        .with_title("QiuNiu Island")
+        .with_title("CAPS")
         .with_inner_size(LogicalSize::new(
             COLLAPSED_W + ISLAND_BLEED * 2.0,
             COLLAPSED_H + ISLAND_BLEED * 2.0,
@@ -220,7 +220,7 @@ fn App() -> Element {
         active_track
             .as_ref()
             .map(|track| track.name.clone())
-            .unwrap_or_else(|| "QiuNiu".to_string())
+            .unwrap_or_else(|| "CAPS".to_string())
     } else {
         state.title.clone()
     };
@@ -703,7 +703,7 @@ fn App() -> Element {
                                 }
                             }
                         }
-                        div { class: "status-text", "Right-click the island to exit QiuNiu." }
+                        div { class: "status-text", "Right-click the island to exit CAPS." }
                     }
                 }
             }

@@ -1,10 +1,12 @@
-# QiuNiu
+# CAPS
 
-QiuNiu is a Rust desktop music island built with Dioxus Desktop.
+CAPS is a Rust desktop music island built with Dioxus Desktop.
 
-The app searches NetEase Music, adds tracks to a local queue, plays public stream URLs directly, shows compact playback state, displays network speed, and includes random queue loading for 50 or 100 tracks.
+It searches NetEase Music, adds tracks to a local queue, plays public stream URLs directly, shows compact playback state, displays synced lyrics, renders an FFT spectrum, displays network speed when idle, and includes random queue loading.
 
-Logo: `src/assets/qiuniu.logo`
+CAPS runs as a small always-on-top capsule instead of a normal music app window. Hover the island to open search, queue, stats, and settings. Right-click the island to exit.
+
+Logo: `src/assets/caps.logo`
 
 Author: ref42
 

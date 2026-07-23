@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="CAPS logo">
+  <defs>
+    <linearGradient id="shell" x1="28" y1="72" x2="228" y2="184" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0a1112"/>
+      <stop offset="0.56" stop-color="#172023"/>
+      <stop offset="1" stop-color="#050809"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="30" y1="76" x2="226" y2="181" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7df2ca"/>
+      <stop offset="0.52" stop-color="#465158"/>
+      <stop offset="1" stop-color="#fff0a0"/>
+    </linearGradient>
+    <linearGradient id="pulse" x1="76" y1="82" x2="183" y2="178" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#78f2ca"/>
+      <stop offset="0.5" stop-color="#a7f0b8"/>
+      <stop offset="1" stop-color="#fff0a0"/>
+    </linearGradient>
+    <filter id="lift" x="-18%" y="-28%" width="136%" height="156%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#000" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+  <rect width="256" height="256" rx="60" fill="#111819"/>
+  <rect x="24" y="74" width="208" height="108" rx="54" fill="url(#rim)" opacity="0.85" filter="url(#lift)"/>
+  <rect x="29" y="79" width="198" height="98" rx="49" fill="url(#shell)"/>
+  <rect x="42" y="93" width="70" height="70" rx="35" fill="#e9f4ee" opacity="0.95"/>
+  <path d="M59 135c13-31 33-45 63-42" fill="none" stroke="#172023" stroke-width="7" stroke-linecap="round" opacity="0.84"/>
+  <path d="M60 123c21 8 38 21 51 40" fill="none" stroke="#c8a953" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+  <path d="M129 132h15l12-25 20 44 12-19h17" fill="none" stroke="url(#pulse)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="179" y="104" width="8" height="49" rx="4" fill="#78f2ca"/>
+  <rect x="193" y="94" width="8" height="69" rx="4" fill="#a6f0b5"/>
+  <rect x="207" y="107" width="8" height="43" rx="4" fill="#fff0a0"/>
+</svg>

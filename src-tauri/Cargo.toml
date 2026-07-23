@@ -1,7 +1,7 @@
 [package]
-name = "qiuniu"
+name = "caps"
 version = "1.0.0"
-description = "QiuNiu — music player and system widget"
+description = "CAPS - capsule music island for desktop"
 authors = ["ref42"]
 edition = "2024"
 

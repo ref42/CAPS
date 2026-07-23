@@ -7,6 +7,7 @@ mod components;
 mod formatting;
 mod lyrics;
 mod netease;
+mod storage;
 mod track;
 mod windowing;
 
@@ -19,6 +20,7 @@ use dioxus::prelude::*;
 use formatting::{format_bytes, format_rate};
 use lyrics::{LyricLine, current_lyric_line};
 use std::sync::Arc;
+use storage::{AppSettings, AppState};
 use sysinfo::Networks;
 use track::Track;
 use windowing::{
@@ -81,20 +83,40 @@ fn desktop_config() -> Config {
 #[component]
 fn App() -> Element {
     let desktop = dioxus::desktop::window();
+    let saved_state = use_hook(storage::load_state);
+    let saved_settings = saved_state.settings.clone();
     let player = use_hook(|| Arc::new(AudioPlayer::spawn()));
     let mut expanded = use_signal(|| false);
     let mut pointer_inside = use_signal(|| false);
     let mut input_focused = use_signal(|| false);
-    let mut active_tab = use_signal(|| "search".to_string());
-    let mut opacity = use_signal(|| 92_u32);
-    let mut spring_style = use_signal(|| "smooth".to_string());
-    let mut volume = use_signal(|| 100_u32);
-    let mut island_size = use_signal(|| 100_u32);
-    let mut random_count = use_signal(|| 50_u32);
+    let mut active_tab = use_signal({
+        let saved_settings = saved_settings.clone();
+        move || saved_settings.active_tab.clone()
+    });
+    let mut opacity = use_signal({
+        let saved_settings = saved_settings.clone();
+        move || saved_settings.opacity
+    });
+    let mut spring_style = use_signal({
+        let saved_settings = saved_settings.clone();
+        move || saved_settings.spring_style.clone()
+    });
+    let mut volume = use_signal({
+        let saved_settings = saved_settings.clone();
+        move || saved_settings.volume
+    });
+    let mut island_size = use_signal({
+        let saved_settings = saved_settings.clone();
+        move || saved_settings.island_size
+    });
+    let mut random_count = use_signal(move || saved_settings.random_count);
     let mut query = use_signal(String::new);
     let results = use_signal(Vec::<Track>::new);
-    let mut queue = use_signal(Vec::<Track>::new);
-    let mut current_index = use_signal(|| None::<usize>);
+    let mut queue = use_signal({
+        let saved_state = saved_state.clone();
+        move || saved_state.queue.clone()
+    });
+    let mut current_index = use_signal(move || saved_state.current_index);
     let mut status =
         use_signal(|| "Search NetEase, add songs, then play from the island.".to_string());
     let mut audio_state = use_signal(|| player.get_state());
@@ -104,6 +126,28 @@ fn App() -> Element {
     let mut total_upload = use_signal(|| 0_u64);
     let mut total_download = use_signal(|| 0_u64);
     let mut lyrics = use_signal(Vec::<LyricLine>::new);
+
+    {
+        let player = player.clone();
+        use_effect(move || {
+            player.send(AudioCommand::SetVolume(volume() as f32 / 100.0));
+        });
+    }
+
+    use_effect(move || {
+        storage::save_state(&AppState {
+            settings: AppSettings {
+                opacity: opacity(),
+                volume: volume(),
+                island_size: island_size(),
+                random_count: random_count(),
+                spring_style: spring_style.read().clone(),
+                active_tab: active_tab.read().clone(),
+            },
+            queue: queue.read().clone(),
+            current_index: *current_index.read(),
+        });
+    });
 
     let player_for_state = player.clone();
     use_effect(move || {
@@ -153,7 +197,7 @@ fn App() -> Element {
         }
     };
 
-    let load_random = move |count: u32| spawn_random_queue(count, queue, status);
+    let load_random = move |count: u32| spawn_random_queue(count, queue, current_index, status);
 
     let player_for_next = player.clone();
     let play_next = move |_| {
@@ -165,7 +209,13 @@ fn App() -> Element {
         let next = (*current_index.read()).map(|i| (i + 1) % len).unwrap_or(0);
         current_index.set(Some(next));
         if let Some(track) = queue.read().get(next).cloned() {
-            spawn_play(track, player_for_next.clone(), status, lyrics);
+            spawn_play(
+                track,
+                player_for_next.clone(),
+                current_index,
+                status,
+                lyrics,
+            );
         }
     };
 
@@ -181,7 +231,13 @@ fn App() -> Element {
             .unwrap_or(0);
         current_index.set(Some(prev));
         if let Some(track) = queue.read().get(prev).cloned() {
-            spawn_play(track, player_for_prev.clone(), status, lyrics);
+            spawn_play(
+                track,
+                player_for_prev.clone(),
+                current_index,
+                status,
+                lyrics,
+            );
         }
     };
 
@@ -486,7 +542,7 @@ fn App() -> Element {
                                             let list = queue.read().clone();
                                             if let Some(track) = list.get(index).cloned() {
                                                 current_index.set(Some(index));
-                                                spawn_play(track, player.clone(), status, lyrics);
+                                                spawn_play(track, player.clone(), current_index, status, lyrics);
                                             }
                                         }
                                     },

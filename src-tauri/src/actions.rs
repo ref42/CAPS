@@ -8,6 +8,7 @@ use std::sync::Arc;
 pub fn spawn_play(
     track: Track,
     player: Arc<AudioPlayer>,
+    mut current_index: Signal<Option<usize>>,
     mut status: Signal<String>,
     mut lyrics: Signal<Vec<LyricLine>>,
 ) {
@@ -20,11 +21,15 @@ pub fn spawn_play(
             {
                 Ok(info) => info.url.unwrap_or_default(),
                 Err(err) => {
+                    player.send(AudioCommand::Stop);
+                    current_index.set(None);
                     status.set(err);
                     return;
                 }
             };
         if url.is_empty() {
+            player.send(AudioCommand::Stop);
+            current_index.set(None);
             status.set("No playable stream for this track.".to_string());
             return;
         }
@@ -41,9 +46,17 @@ pub fn spawn_play(
                         lyrics.set(parse_lrc(response.lyric.as_deref().unwrap_or_default()));
                     }
                 }
-                Err(err) => status.set(format!("Stream read failed: {err}")),
+                Err(err) => {
+                    player.send(AudioCommand::Stop);
+                    current_index.set(None);
+                    status.set(format!("Stream read failed: {err}"));
+                }
             },
-            Err(err) => status.set(format!("Stream request failed: {err}")),
+            Err(err) => {
+                player.send(AudioCommand::Stop);
+                current_index.set(None);
+                status.set(format!("Stream request failed: {err}"));
+            }
         }
     });
 }
@@ -67,7 +80,12 @@ pub fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: S
     });
 }
 
-pub fn spawn_random_queue(count: u32, mut queue: Signal<Vec<Track>>, mut status: Signal<String>) {
+pub fn spawn_random_queue(
+    count: u32,
+    mut queue: Signal<Vec<Track>>,
+    mut current_index: Signal<Option<usize>>,
+    mut status: Signal<String>,
+) {
     spawn(async move {
         status.set(format!("Loading random {count}..."));
         match netease::random_netease_queue(Some(count), None).await {
@@ -75,6 +93,7 @@ pub fn spawn_random_queue(count: u32, mut queue: Signal<Vec<Track>>, mut status:
                 let tracks = items.into_iter().map(Track::from).collect::<Vec<_>>();
                 let loaded = tracks.len();
                 queue.set(tracks);
+                current_index.set(None);
                 status.set(format!("Queued {loaded} random tracks."));
             }
             Err(err) => status.set(err),

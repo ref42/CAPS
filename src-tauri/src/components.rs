@@ -301,12 +301,15 @@ pub fn Island(
     spectrum: [f32; SPECTRUM_BANDS],
     spectrum_style: String,
     progress: f64,
+    progress_style: String,
+    duration: f64,
     is_playing: bool,
     ondrag: EventHandler<MouseEvent>,
     onprev: EventHandler<MouseEvent>,
     onplaypause: EventHandler<MouseEvent>,
     onnext: EventHandler<MouseEvent>,
     onstop: EventHandler<MouseEvent>,
+    onseek: EventHandler<f64>,
 ) -> Element {
     rsx! {
         section {
@@ -384,7 +387,21 @@ pub fn Island(
             }
             if is_expanded && has_music {
                 div { class: "playback-progress",
-                    span { style: "width: {progress}%;" }
+                    input {
+                        r#type: "range",
+                        min: "0",
+                        max: "100",
+                        step: "0.1",
+                        value: "{progress}",
+                        style: "{progress_style}",
+                        oninput: move |event| {
+                            if duration > 0.0 {
+                                if let Ok(value) = event.value().parse::<f64>() {
+                                    onseek.call((value.clamp(0.0, 100.0) / 100.0) * duration);
+                                }
+                            }
+                        },
+                    }
                 }
             }
         }

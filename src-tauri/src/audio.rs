@@ -13,6 +13,7 @@ pub enum AudioCommand {
         detail: String,
     },
     PlayPause,
+    Seek(f64),
     SetVolume(f32),
     Stop,
 }
@@ -77,8 +78,13 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                 title,
                 detail,
             }) => {
+                let byte_len = bytes.len() as u64;
                 let cursor = std::io::Cursor::new(bytes);
-                let source = match rodio::Decoder::try_from(cursor) {
+                let source = match rodio::Decoder::builder()
+                    .with_data(cursor)
+                    .with_byte_len(byte_len)
+                    .build()
+                {
                     Ok(source) => source,
                     Err(e) => {
                         log::error!("audio: decode stream: {e}");
@@ -128,6 +134,24 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                 if let Some(player) = &player {
                     player.set_volume(volume);
                 }
+            }
+            Ok(AudioCommand::Seek(position)) => {
+                if let Some(player) = &player {
+                    let target = if duration_secs > 0.0 {
+                        position.clamp(0.0, duration_secs)
+                    } else {
+                        position.max(0.0)
+                    };
+                    let _ = player.try_seek(Duration::from_secs_f64(target));
+                }
+                update_state(
+                    &state,
+                    &player,
+                    duration_secs,
+                    &current_path,
+                    &current_title,
+                    &current_detail,
+                );
             }
             Ok(AudioCommand::Stop) => {
                 if let Some(player) = player.take() {

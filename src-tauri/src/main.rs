@@ -424,6 +424,13 @@ fn App() -> Element {
     } else {
         0.0
     };
+    let progress_style = {
+        let colors = spectrum_colors.read();
+        format!(
+            "--progress: {progress:.2}%; --spectrum-from: {}; --spectrum-to: {};",
+            colors.0, colors.1
+        )
+    };
     let tab = active_tab.read().clone();
     let is_expanded = *expanded.read();
     let opacity_css = (*opacity.read() as f64 / 100.0).clamp(0.1, 1.0);
@@ -565,6 +572,8 @@ fn App() -> Element {
                 spectrum: *spectrum.read(),
                 spectrum_style,
                 progress,
+                progress_style,
+                duration: state.duration,
                 is_playing: state.is_playing,
                 ondrag: {
                     let desktop = desktop.clone();
@@ -592,7 +601,11 @@ fn App() -> Element {
                         player.send(AudioCommand::Stop);
                         status.set("Stopped.".to_string());
                     }
-                }
+                },
+                onseek: {
+                    let player = player.clone();
+                    move |position| player.send(AudioCommand::Seek(position))
+                },
             }
 
             section { class: "panel",

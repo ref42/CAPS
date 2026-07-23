@@ -94,13 +94,13 @@ mod platform {
             .and_then(|info| info.DisplayName().ok())
             .map(|value| value.to_string())
             .unwrap_or_else(|| app_id.clone());
-        let source = normalize_source(&app_name, &app_id)?;
+        let texts = notification_texts(&notification);
+        let source = normalize_source(&app_name, &app_id, &texts)?;
         let id = notification.Id().unwrap_or_default();
         let key = format!("{app_id}:{id}");
         if !seen.insert(key.clone()) {
             return None;
         }
-        let texts = notification_texts(&notification);
         let sender = texts
             .iter()
             .find(|text| likely_sender(text, &source.app))
@@ -171,9 +171,13 @@ mod platform {
             && normalized.chars().count() <= 32
     }
 
-    fn normalize_source(app_name: &str, app_id: &str) -> Option<MessageSource> {
-        let haystack = format!("{app_name} {app_id}").to_lowercase();
-        if haystack.contains("wechat") || haystack.contains("weixin") || haystack.contains("微信")
+    fn normalize_source(app_name: &str, app_id: &str, texts: &[String]) -> Option<MessageSource> {
+        let haystack = format!("{app_name} {app_id} {}", texts.join(" ")).to_lowercase();
+        if haystack.contains("wechat")
+            || haystack.contains("weixin")
+            || haystack.contains("微信")
+            || haystack.contains("file transfer")
+            || haystack.contains("文件传输助手")
         {
             Some(MessageSource {
                 app: "WeChat".to_string(),

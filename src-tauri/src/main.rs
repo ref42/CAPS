@@ -252,7 +252,6 @@ fn App() -> Element {
             spawn(async move {
                 let mut access_checked = false;
                 let mut access_allowed = false;
-                let mut seeded = false;
                 let mut seen = std::collections::HashSet::new();
                 loop {
                     if !message_notifications_enabled() {
@@ -280,9 +279,7 @@ fn App() -> Element {
                     }
                     if access_allowed {
                         let messages = message_notifications::collect_messages(&mut seen).await;
-                        if !seeded {
-                            seeded = true;
-                        } else if let Some(message) = messages.into_iter().last() {
+                        if let Some(message) = messages.into_iter().last() {
                             let key = message.key.clone();
                             message_notification.set(Some(message));
                             spawn(async move {
@@ -297,7 +294,7 @@ fn App() -> Element {
                             });
                         }
                     }
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 }
             });
         });

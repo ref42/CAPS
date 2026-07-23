@@ -271,6 +271,11 @@ fn App() -> Element {
     } else {
         "stage"
     };
+    let island_class = if has_music {
+        "island"
+    } else {
+        "island idle-island"
+    };
     let core_class = if has_music { "core" } else { "core idle-core" };
     let cover_class = if state.is_playing {
         "cover playing"
@@ -342,7 +347,7 @@ fn App() -> Element {
                 move |_| desktop.close()
             },
             section {
-                class: "island",
+                class: "{island_class}",
                 onmousedown: {
                     let desktop = desktop.clone();
                     move |event| {
@@ -389,7 +394,7 @@ fn App() -> Element {
                         }
                     }
                 }
-                if is_expanded {
+                if is_expanded && has_music {
                     div { class: "mini-controls",
                         button { onclick: play_prev, title: "Previous", "⏮" }
                         button {
@@ -425,7 +430,7 @@ fn App() -> Element {
                         i { style: "transform: scaleY({value});" }
                     }
                 }
-                if is_expanded {
+                if is_expanded && has_music {
                     div { class: "playback-progress",
                         span { style: "width: {progress}%;" }
                     }
@@ -1043,6 +1048,14 @@ button {
   border-radius: 34px;
 }
 
+.idle-island {
+  grid-template-columns: minmax(0, 1fr) 38px;
+}
+
+.expanded .idle-island {
+  grid-template-columns: minmax(0, 1fr) 40px;
+}
+
 .smooth .island,
 .smooth .panel {
   transition: width 260ms cubic-bezier(0.2, 0, 0, 1), height 260ms cubic-bezier(0.2, 0, 0, 1), border-radius 260ms cubic-bezier(0.2, 0, 0, 1), opacity 180ms ease, transform 260ms cubic-bezier(0.2, 0, 0, 1);
@@ -1071,6 +1084,10 @@ button {
 .idle-core {
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
+}
+
+.expanded .idle-core {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .cover {
@@ -1115,11 +1132,15 @@ button {
   height: 42px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
+}
+
+.expanded .idle-speeds {
+  height: 52px;
 }
 
 .speed-stat {
-  min-width: 0;
+  min-width: 72px;
   display: grid;
   gap: 2px;
 }
@@ -1265,6 +1286,10 @@ button {
   align-items: center;
   justify-content: center;
   gap: 2px;
+}
+
+.idle-island .spectrum {
+  grid-column: 2;
 }
 
 .spectrum i {

@@ -5,8 +5,10 @@ mod audio_spectrum;
 mod netease;
 
 use audio::{AudioCommand, AudioPlayer};
+use dioxus::desktop::tao::dpi::PhysicalPosition;
 use dioxus::desktop::tao::window::Window;
 use dioxus::desktop::{Config, DesktopContext, LogicalPosition, LogicalSize, WindowBuilder};
+use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
 use serde_json::Value;
 use std::sync::Arc;
@@ -28,6 +30,12 @@ struct Track {
     artist: String,
     album: String,
     cover: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct LyricLine {
+    time: f64,
+    text: String,
 }
 
 fn main() {
@@ -93,6 +101,7 @@ fn App() -> Element {
     let mut download = use_signal(|| "0 B/s".to_string());
     let mut total_upload = use_signal(|| 0_u64);
     let mut total_download = use_signal(|| 0_u64);
+    let mut lyrics = use_signal(Vec::<LyricLine>::new);
 
     let player_for_state = player.clone();
     use_effect(move || {
@@ -177,7 +186,7 @@ fn App() -> Element {
         let next = (*current_index.read()).map(|i| (i + 1) % len).unwrap_or(0);
         current_index.set(Some(next));
         if let Some(track) = queue.read().get(next).cloned() {
-            spawn_play(track, player_for_next.clone(), status);
+            spawn_play(track, player_for_next.clone(), status, lyrics);
         }
     };
 
@@ -193,7 +202,7 @@ fn App() -> Element {
             .unwrap_or(0);
         current_index.set(Some(prev));
         if let Some(track) = queue.read().get(prev).cloned() {
-            spawn_play(track, player_for_prev.clone(), status);
+            spawn_play(track, player_for_prev.clone(), status, lyrics);
         }
     };
 
@@ -217,6 +226,17 @@ fn App() -> Element {
             .unwrap_or_else(|| "NetEase island player".to_string())
     } else {
         state.detail.clone()
+    };
+    let current_lyric = current_lyric_line(&lyrics.read(), state.position).unwrap_or_default();
+    let island_subtitle = if current_lyric.is_empty() {
+        current_detail.clone()
+    } else {
+        current_lyric.clone()
+    };
+    let subtitle_class = if current_lyric.is_empty() {
+        "artist-line"
+    } else {
+        "lyric-line"
     };
     let cover_style = active_track
         .as_ref()
@@ -271,19 +291,27 @@ fn App() -> Element {
                 class: "{glow_class}",
                 onmousedown: {
                     let desktop = desktop.clone();
-                    move |_| desktop.drag()
+                    move |event| {
+                        if event.modifiers().shift() && event.trigger_button().is_some_and(|button| button == MouseButton::Primary) {
+                            desktop.drag();
+                        }
+                    }
                 },
                 div { class: "core",
                     if has_music {
                         div { class: "{cover_class}",
-                            style: "{cover_style}",
+                            div { class: "cover-art", style: "{cover_style}" }
                             if cover_style.is_empty() {
                                 div { class: "logo", dangerous_inner_html: LOGO }
                             }
                         }
                         div { class: "music-copy",
                             strong { "{current_title}" }
-                            span { "{current_detail}" }
+                            span {
+                                class: "{subtitle_class}",
+                                key: "{island_subtitle}",
+                                "{island_subtitle}"
+                            }
                         }
                     } else {
                         div { class: "logo speed-logo", dangerous_inner_html: LOGO }
@@ -310,6 +338,7 @@ fn App() -> Element {
                                 let player = player.clone();
                                 move |_| {
                                     current_index.set(None);
+                                    lyrics.set(Vec::new());
                                     player.send(AudioCommand::Stop);
                                     status.set("Stopped.".to_string());
                                 }
@@ -438,7 +467,7 @@ fn App() -> Element {
                                             let list = queue.read().clone();
                                             if let Some(track) = list.get(index).cloned() {
                                                 current_index.set(Some(index));
-                                                spawn_play(track, player.clone(), status);
+                                                spawn_play(track, player.clone(), status, lyrics);
                                             }
                                         }
                                     }
@@ -539,9 +568,15 @@ fn TrackRow(
     }
 }
 
-fn spawn_play(track: Track, player: Arc<AudioPlayer>, mut status: Signal<String>) {
+fn spawn_play(
+    track: Track,
+    player: Arc<AudioPlayer>,
+    mut status: Signal<String>,
+    mut lyrics: Signal<Vec<LyricLine>>,
+) {
     spawn(async move {
         status.set(format!("Loading {}...", track.name));
+        lyrics.set(Vec::new());
         let url =
             match netease::get_netease_song_url(track.id.clone(), Some("exhigh".to_string()), None)
                 .await
@@ -565,12 +600,60 @@ fn spawn_play(track: Track, player: Arc<AudioPlayer>, mut status: Signal<String>
                         detail: track.artist.clone(),
                     });
                     status.set(format!("Playing {}.", track.name));
+                    if let Ok(response) = netease::get_netease_lyric(track.id.clone(), None).await {
+                        lyrics.set(parse_lrc(response.lyric.as_deref().unwrap_or_default()));
+                    }
                 }
                 Err(err) => status.set(format!("Stream read failed: {err}")),
             },
             Err(err) => status.set(format!("Stream request failed: {err}")),
         }
     });
+}
+
+fn parse_lrc(text: &str) -> Vec<LyricLine> {
+    let mut lines = Vec::new();
+    for raw in text.lines() {
+        let mut rest = raw.trim();
+        let mut times = Vec::new();
+        while let Some(after_open) = rest.strip_prefix('[') {
+            let Some((stamp, after_stamp)) = after_open.split_once(']') else {
+                break;
+            };
+            if let Some(time) = parse_lrc_time(stamp) {
+                times.push(time);
+            }
+            rest = after_stamp.trim_start();
+        }
+        let lyric = rest.trim();
+        if lyric.is_empty() {
+            continue;
+        }
+        for time in times {
+            lines.push(LyricLine {
+                time,
+                text: lyric.to_string(),
+            });
+        }
+    }
+    lines.sort_by(|a, b| a.time.total_cmp(&b.time));
+    lines
+}
+
+fn parse_lrc_time(text: &str) -> Option<f64> {
+    let (minutes, seconds) = text.split_once(':')?;
+    let minutes = minutes.parse::<f64>().ok()?;
+    let seconds = seconds.parse::<f64>().ok()?;
+    Some(minutes * 60.0 + seconds)
+}
+
+fn current_lyric_line(lines: &[LyricLine], position: f64) -> Option<String> {
+    let target = position + 0.55;
+    lines
+        .iter()
+        .take_while(|line| line.time <= target)
+        .last()
+        .map(|line| line.text.clone())
 }
 
 fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: Signal<String>) {
@@ -598,9 +681,17 @@ fn set_island_window(desktop: &DesktopContext, expanded: bool) {
     } else {
         (COLLAPSED_W, COLLAPSED_H)
     };
+    let old_size = desktop.inner_size();
+    let old_position = desktop.outer_position().ok();
+    let scale = desktop.scale_factor();
     desktop.set_inner_size(LogicalSize::new(width, height));
     desktop.set_always_on_top(true);
-    place_top_center(desktop, width);
+    if let Some(position) = old_position {
+        let old_width = old_size.width as i32;
+        let new_width = (width * scale).round() as i32;
+        let x = position.x + (old_width - new_width) / 2;
+        desktop.set_outer_position(PhysicalPosition::new(x, position.y));
+    }
 }
 
 fn place_top_center(window: &Window, width: f64) {
@@ -749,9 +840,9 @@ button {
 
 .expanded .island {
   width: 392px;
-  height: 76px;
-  grid-template-columns: 1fr 116px 54px;
-  padding: 9px 14px 9px 10px;
+  height: 72px;
+  grid-template-columns: minmax(0, 1fr) 126px 32px;
+  padding: 8px 11px 11px 9px;
   border-radius: 30px;
 }
 
@@ -775,8 +866,8 @@ button {
 }
 
 .expanded .core {
-  grid-template-columns: 46px 1fr;
-  gap: 11px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
 }
 
 .logo,
@@ -796,8 +887,7 @@ button {
   height: 30px;
   border-radius: 50%;
   background: linear-gradient(135deg, #14352f, #d8b45b);
-  background-position: center;
-  background-size: cover;
+  position: relative;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -805,18 +895,28 @@ button {
 }
 
 .expanded .cover {
-  width: 46px;
-  height: 46px;
-  border-radius: 11px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
 }
 
-.cover.playing {
-  animation: coverPulse 1800ms ease-in-out infinite;
+.cover-art {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-position: center;
+  background-size: cover;
+  will-change: transform;
+}
+
+.cover.playing .cover-art {
+  animation: albumSpin 9s linear infinite;
 }
 
 .cover .logo {
   width: 26px;
   height: 26px;
+  z-index: 1;
 }
 
 .music-copy,
@@ -845,6 +945,7 @@ button {
 
 .music-copy span,
 .speed-copy span {
+  display: block;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -854,6 +955,12 @@ button {
   line-height: 1.1;
   font-weight: 650;
   letter-spacing: 0;
+}
+
+.lyric-line {
+  color: rgba(248, 255, 252, 0.74);
+  animation: lyricMaterialize 260ms cubic-bezier(0.2, 0, 0, 1);
+  will-change: opacity, filter, transform;
 }
 
 .speed-chip {
@@ -872,16 +979,16 @@ button {
 .mini-controls {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  gap: 4px;
 }
 
 .mini-controls button {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.09);
   color: rgba(248, 255, 252, 0.94);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 900;
   transition: transform 80ms ease-out, background-color 160ms ease;
 }
@@ -901,32 +1008,34 @@ button {
 }
 
 .spectrum {
-  height: 26px;
+  width: 32px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
 }
 
 .spectrum i {
   width: 3px;
-  height: 20px;
+  height: 18px;
   min-height: 6px;
   border-radius: 999px;
   background: linear-gradient(180deg, #fff0a0, #78f2ca);
   transform-origin: center;
-  transition: transform 80ms linear;
+  transition: transform 110ms cubic-bezier(0.16, 1.28, 0.28, 1);
+  will-change: transform;
 }
 
 .expanded .spectrum i {
-  height: 30px;
+  height: 24px;
 }
 
 .playback-progress {
   position: absolute;
   left: 18px;
   right: 18px;
-  bottom: 9px;
+  bottom: 7px;
   height: 3px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
@@ -1258,12 +1367,25 @@ button {
   line-height: 1.36;
 }
 
-@keyframes coverPulse {
-  0%, 100% {
-    transform: scale(1);
+@keyframes albumSpin {
+  from {
+    transform: rotate(0deg);
   }
-  50% {
-    transform: scale(1.055);
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes lyricMaterialize {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
   }
 }
 

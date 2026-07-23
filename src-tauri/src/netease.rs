@@ -34,6 +34,14 @@ pub struct NeteaseSongUrl {
     pub vip_label: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct NeteaseLyricResponse {
+    pub lyric: Option<String>,
+    pub tlyric: Option<String>,
+    pub yrc: Option<String>,
+    pub source: Option<String>,
+}
+
 fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(UA)
@@ -223,6 +231,46 @@ pub async fn get_netease_song_url(
         ),
         logged_in: Some(false),
         vip_label: None,
+    })
+}
+
+pub async fn get_netease_lyric(
+    id: String,
+    _api_base_url: Option<String>,
+) -> Result<NeteaseLyricResponse, String> {
+    let id = id.trim();
+    if id.is_empty() {
+        return Err("Missing NetEase song id".to_string());
+    }
+    let body: Value = client()?
+        .get(format!(
+            "{NETEASE_ORIGIN}/api/song/lyric?id={}&lv=-1&kv=-1&tv=-1",
+            urlencoding::encode(id)
+        ))
+        .send()
+        .await
+        .map_err(|e| format!("NetEase lyric unavailable: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("Invalid NetEase lyric response: {e}"))?;
+
+    Ok(NeteaseLyricResponse {
+        lyric: body
+            .get("lrc")
+            .and_then(|lrc| lrc.get("lyric"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        tlyric: body
+            .get("tlyric")
+            .and_then(|lrc| lrc.get("lyric"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        yrc: body
+            .get("yrc")
+            .and_then(|lrc| lrc.get("lyric"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        source: Some("netease_direct".to_string()),
     })
 }
 

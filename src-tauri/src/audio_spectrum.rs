@@ -3,7 +3,7 @@ use rustfft::{FftPlanner, num_complex::Complex};
 use std::sync::Mutex;
 use std::thread;
 
-static SPECTRUM: Mutex<[f32; 5]> = Mutex::new([0.35; 5]);
+static SPECTRUM: Mutex<[f32; 5]> = Mutex::new([0.28; 5]);
 
 pub fn get_audio_spectrum() -> [f32; 5] {
     *SPECTRUM.lock().unwrap()
@@ -114,21 +114,23 @@ fn process_data(data: &[f32], channels: u16) {
         }
     }
 
-    let mut final_spectrum = [0.35_f32; 5];
-    let eq_weights = [1.2, 1.1, 1.5, 3.0, 5.0];
-    let base_gain = 5.0;
+    let mut final_spectrum = [0.28_f32; 5];
+    let eq_weights = [1.7, 1.55, 1.85, 3.6, 5.8];
+    let base_gain = 8.5;
 
     for i in 0..5 {
         let energy = bins[i] * eq_weights[i] * base_gain;
 
-        let scaled = ((energy + 1.0).log10() * 0.20) + 0.35;
+        let scaled = ((energy + 1.0).log10() * 0.34) + 0.28;
 
-        final_spectrum[i] = scaled.clamp(0.35, 0.95);
+        final_spectrum[i] = scaled.clamp(0.22, 1.22);
     }
 
     if let Ok(mut spec) = SPECTRUM.lock() {
         for i in 0..5 {
-            spec[i] = spec[i] * 0.6 + final_spectrum[i] * 0.4;
+            let rise = final_spectrum[i] > spec[i];
+            let old_weight = if rise { 0.28 } else { 0.68 };
+            spec[i] = spec[i] * old_weight + final_spectrum[i] * (1.0 - old_weight);
         }
     }
 }

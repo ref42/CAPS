@@ -291,6 +291,8 @@ pub fn Island(
     visible_primary_text: String,
     outgoing_primary_text: Option<String>,
     transition_key: u64,
+    lyric_scroll_class: &'static str,
+    lyric_scroll_style: String,
     weather_icon: String,
     weather: String,
     weather_title: String,
@@ -325,10 +327,14 @@ pub fn Island(
                                     "{outgoing_text}"
                                 }
                             }
-                            strong {
-                                class: "{primary_class} lyric-layer lyric-in",
+                            div {
+                                class: "lyric-layer lyric-in {lyric_scroll_class}",
+                                style: "{lyric_scroll_style}",
                                 key: "in-{transition_key}-{visible_primary_text}",
-                                "{visible_primary_text}"
+                                strong {
+                                    class: "{primary_class}",
+                                    "{visible_primary_text}"
+                                }
                             }
                         }
                     }

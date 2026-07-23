@@ -198,22 +198,22 @@ button {
 }
 
 .weather-stat {
-  width: 70px;
+  width: 78px;
   color: rgba(248, 255, 252, 0.84);
 }
 
 .weather-icon {
-  width: 15px;
-  height: 15px;
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
-  flex: 0 0 15px;
+  flex: 0 0 22px;
   color: currentColor;
 }
 
 .weather-icon svg {
-  width: 15px;
-  height: 15px;
+  width: 22px;
+  height: 22px;
   display: block;
 }
 
@@ -257,7 +257,7 @@ button {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 10%, #000 90%, transparent 100%);
 }
 
 .expanded .lyric-viewport {
@@ -287,6 +287,18 @@ button {
   pointer-events: none;
   transform-origin: center;
   line-height: 1;
+}
+
+.music-copy .lyric-layer strong {
+  display: block;
+}
+
+.music-copy .lyric-marquee strong {
+  width: max-content;
+  max-width: none;
+  padding-right: 36px;
+  text-overflow: clip;
+  animation: lyricMarquee 9s ease-in-out 850ms infinite;
 }
 
 .expanded .music-copy strong,
@@ -907,6 +919,17 @@ button {
   }
 }
 
+@keyframes lyricMarquee {
+  0%,
+  14% {
+    transform: translate3d(0, 0, 0);
+  }
+  78%,
+  100% {
+    transform: translate3d(var(--lyric-scroll-distance, -12ch), 0, 0);
+  }
+}
+
 @keyframes activityLoading {
   0%,
   100% {
@@ -933,5 +956,9 @@ button {
   .activity-dot.live {
     opacity: 0.9;
     transform: translateZ(0) scale(1);
+  }
+
+  .music-copy .lyric-marquee strong {
+    animation: none;
   }
 }

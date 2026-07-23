@@ -382,6 +382,18 @@ fn App() -> Element {
     } else {
         "plain-title"
     };
+    let lyric_chars = primary_text.chars().count();
+    let lyric_scroll_class = if has_music && lyric_chars > 18 {
+        "lyric-marquee"
+    } else {
+        ""
+    };
+    let lyric_scroll_style = if has_music && lyric_chars > 18 {
+        let distance = (lyric_chars.saturating_sub(14) as f64 * 0.62).clamp(5.5, 28.0);
+        format!("--lyric-scroll-distance: -{distance:.2}ch;")
+    } else {
+        String::new()
+    };
     let cover_style = active_track
         .as_ref()
         .filter(|track| !track.cover.is_empty())
@@ -530,6 +542,8 @@ fn App() -> Element {
                 visible_primary_text,
                 outgoing_primary_text,
                 transition_key,
+                lyric_scroll_class,
+                lyric_scroll_style,
                 weather_icon: weather_now.read().icon.clone(),
                 weather: weather_now.read().label.clone(),
                 weather_title: weather_now.read().title.clone(),

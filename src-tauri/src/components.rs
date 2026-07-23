@@ -87,8 +87,7 @@ pub fn Island(
     transition_key: u64,
     download: String,
     upload: String,
-    spectrum: [f32; 11],
-    activity: String,
+    spectrum: [f32; 5],
     progress: f64,
     is_playing: bool,
     ondrag: EventHandler<MouseEvent>,
@@ -155,105 +154,16 @@ pub fn Island(
                     button { onclick: onstop, title: "Stop", "■" }
                 }
             }
-            if activity.is_empty() {
-                DottedSpectrum { spectrum }
-            } else {
-                LoadingOrb { activity }
+            div { class: "spectrum",
+                for value in spectrum {
+                    i { style: "transform: scaleY({value});" }
+                }
             }
             if is_expanded && has_music {
                 div { class: "playback-progress",
                     span { style: "width: {progress}%;" }
                 }
             }
-        }
-    }
-}
-
-#[component]
-fn DottedSpectrum(spectrum: [f32; 11]) -> Element {
-    rsx! {
-        div { class: "spectrum peak-spectrum",
-            for (lane_index, value) in spectrum.into_iter().enumerate() {
-                {
-                    let hue = 44.0 + lane_index as f32 * 15.0;
-                    let active_steps = ((value * 5.4).round() as i32).clamp(1, 7);
-                    rsx! {
-                        div {
-                            class: "spectrum-lane",
-                            key: "{lane_index}",
-                            style: "--lane-hue: {hue:.1}; --lane-value: {value:.3};",
-                            for dot_index in 0..7 {
-                                {
-                                    let level = 7 - dot_index;
-                                    let active = level <= active_steps;
-                                    let head = level == active_steps;
-                                    let distance = (active_steps - level).abs() as f32;
-                                    let alpha = if active {
-                                        (0.92 - distance * 0.095).clamp(0.34, 0.96)
-                                    } else {
-                                        0.12
-                                    };
-                                    let scale = if head {
-                                        (0.95 + value * 0.54).clamp(1.0, 1.62)
-                                    } else if active {
-                                        (0.72 + value * 0.22 - distance * 0.035).clamp(0.58, 1.08)
-                                    } else {
-                                        0.48
-                                    };
-                                    let delay = (lane_index as i32 * 14) - (dot_index as i32 * 10);
-                                    let dot_class = if head {
-                                        "spectrum-dot peak-dot"
-                                    } else if active {
-                                        "spectrum-dot active-dot"
-                                    } else {
-                                        "spectrum-dot"
-                                    };
-                                    rsx! {
-                                        b {
-                                            class: "{dot_class}",
-                                            style: "--dot-scale: {scale:.3}; --dot-alpha: {alpha:.3}; --dot-delay: {delay}ms;"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn LoadingOrb(activity: String) -> Element {
-    let orb_class = if activity == "searching" {
-        "spectrum loading-orb searching-orb"
-    } else {
-        "spectrum loading-orb working-orb"
-    };
-    let dots = [
-        (-8, -9, 0.78, 0.38),
-        (-2, -11, 1.02, 0.62),
-        (6, -10, 0.86, 0.5),
-        (10, -4, 1.18, 0.72),
-        (9, 3, 0.74, 0.42),
-        (4, 9, 1.08, 0.68),
-        (-4, 10, 0.82, 0.5),
-        (-10, 5, 1.0, 0.6),
-        (-11, -2, 0.72, 0.4),
-        (-5, -3, 0.58, 0.34),
-        (1, -1, 0.84, 0.58),
-        (6, 3, 0.64, 0.4),
-    ];
-    rsx! {
-        div { class: "{orb_class}", aria_label: "Loading",
-            for (index, (x, y, scale, alpha)) in dots.into_iter().enumerate() {
-                span {
-                    key: "{index}",
-                    style: "--orb-x: {x}px; --orb-y: {y}px; --orb-scale: {scale}; --orb-alpha: {alpha}; --orb-delay: {-((index as i32) * 84)}ms;"
-                }
-            }
-            i {}
         }
     }
 }

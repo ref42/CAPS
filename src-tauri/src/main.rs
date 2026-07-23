@@ -313,14 +313,6 @@ fn App() -> Element {
     } else {
         "cover"
     };
-    let status_text = status.read().clone();
-    let activity = if status_text.starts_with("Searching") {
-        "searching"
-    } else if status_text.starts_with("Loading") {
-        "working"
-    } else {
-        ""
-    };
     let lyric_transition = use_hook(|| {
         std::cell::RefCell::new(LyricTransition {
             current: primary_text.clone(),
@@ -399,7 +391,6 @@ fn App() -> Element {
                 download: download.read().clone(),
                 upload: upload.read().clone(),
                 spectrum: *spectrum.read(),
-                activity: activity.to_string(),
                 progress,
                 is_playing: state.is_playing,
                 ondrag: {

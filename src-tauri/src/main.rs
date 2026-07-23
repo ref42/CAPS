@@ -1,17 +1,23 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod actions;
 mod audio;
 mod audio_spectrum;
+mod components;
+mod formatting;
 mod lyrics;
 mod netease;
 mod track;
 mod windowing;
 
+use actions::{spawn_play, spawn_random_queue, spawn_search};
 use audio::{AudioCommand, AudioPlayer};
+use components::{Island, QueueTrackRow, StatsPanel, Tabs, TrackRow};
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
 use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
-use lyrics::{LyricLine, current_lyric_line, parse_lrc};
+use formatting::{format_bytes, format_rate};
+use lyrics::{LyricLine, current_lyric_line};
 use std::sync::Arc;
 use sysinfo::Networks;
 use track::Track;
@@ -147,22 +153,7 @@ fn App() -> Element {
         }
     };
 
-    let load_random = move |count: u32| {
-        let mut queue = queue;
-        let mut status = status;
-        spawn(async move {
-            status.set(format!("Loading random {count}..."));
-            match netease::random_netease_queue(Some(count), None).await {
-                Ok(items) => {
-                    let tracks = items.into_iter().map(Track::from).collect::<Vec<_>>();
-                    let loaded = tracks.len();
-                    queue.set(tracks);
-                    status.set(format!("Queued {loaded} random tracks."));
-                }
-                Err(err) => status.set(err),
-            }
-        });
-    };
+    let load_random = move |count: u32| spawn_random_queue(count, queue, status);
 
     let player_for_next = player.clone();
     let play_next = move |_| {
@@ -330,11 +321,25 @@ fn App() -> Element {
                 let desktop = desktop.clone();
                 move |_| desktop.close()
             },
-            section {
-                class: "{island_class}",
-                onmousedown: {
+            Island {
+                island_class,
+                core_class,
+                cover_class,
+                cover_style,
+                has_music,
+                is_expanded,
+                primary_class,
+                visible_primary_text,
+                outgoing_primary_text,
+                transition_key,
+                download: download.read().clone(),
+                upload: upload.read().clone(),
+                spectrum: *spectrum.read(),
+                progress,
+                is_playing: state.is_playing,
+                ondrag: {
                     let desktop = desktop.clone();
-                    move |event| {
+                    move |event: MouseEvent| {
                         if event.modifiers().shift()
                             && event
                                 .trigger_button()
@@ -344,109 +349,30 @@ fn App() -> Element {
                         }
                     }
                 },
-                div { class: "{core_class}",
-                    if has_music {
-                        div { class: "{cover_class}",
-                            div { class: "cover-art", style: "{cover_style}" }
-                        }
-                        div { class: "music-copy",
-                            div { class: "lyric-viewport",
-                                if let Some(outgoing_text) = outgoing_primary_text {
-                                    strong {
-                                        class: "{primary_class} lyric-layer lyric-out",
-                                        key: "out-{transition_key}",
-                                        "{outgoing_text}"
-                                    }
-                                }
-                                strong {
-                                    class: "{primary_class} lyric-layer lyric-in",
-                                    key: "in-{transition_key}-{visible_primary_text}",
-                                    "{visible_primary_text}"
-                                }
-                            }
-                        }
-                    } else {
-                        div { class: "speed-copy idle-speeds",
-                            div {
-                                class: "speed-stat download-stat",
-                                title: "Download speed",
-                                span { class: "speed-arrow", "↓" }
-                                strong { "{download}" }
-                            }
-                            div {
-                                class: "speed-stat upload-stat",
-                                title: "Upload speed",
-                                span { class: "speed-arrow", "↑" }
-                                strong { "{upload}" }
-                            }
-                        }
-                    }
-                }
-                if is_expanded && has_music {
-                    div { class: "mini-controls",
-                        button { onclick: play_prev, title: "Previous", "⏮" }
-                        button {
-                            onclick: {
-                                let player = player.clone();
-                                move |_| player.send(AudioCommand::PlayPause)
-                            },
-                            title: "Play/Pause",
-                            if state.is_playing {
-                                "Ⅱ"
-                            } else {
-                                "▶"
-                            }
-                        }
-                        button { onclick: play_next, title: "Next", "⏭" }
-                        button {
-                            onclick: {
-                                let player = player.clone();
-                                move |_| {
-                                    current_index.set(None);
-                                    lyrics.set(Vec::new());
-                                    player.send(AudioCommand::Stop);
-                                    status.set("Stopped.".to_string());
-                                }
-                            },
-                            title: "Stop",
-                            "■"
-                        }
-                    }
-                }
-                div { class: "spectrum",
-                    for value in spectrum.read().iter() {
-                        i { style: "transform: scaleY({value});" }
-                    }
-                }
-                if is_expanded && has_music {
-                    div { class: "playback-progress",
-                        span { style: "width: {progress}%;" }
+                onprev: play_prev,
+                onplaypause: {
+                    let player = player.clone();
+                    move |_| player.send(AudioCommand::PlayPause)
+                },
+                onnext: play_next,
+                onstop: {
+                    let player = player.clone();
+                    move |_| {
+                        current_index.set(None);
+                        lyrics.set(Vec::new());
+                        player.send(AudioCommand::Stop);
+                        status.set("Stopped.".to_string());
                     }
                 }
             }
 
             section { class: "panel",
-                div { class: "tabs",
-                    button {
-                        class: if tab == "search" { "tab active" } else { "tab" },
-                        onclick: move |_| active_tab.set("search".to_string()),
-                        "Search"
-                    }
-                    button {
-                        class: if tab == "queue" { "tab active" } else { "tab" },
-                        onclick: move |_| active_tab.set("queue".to_string()),
-                        "Queue"
-                    }
-                    button {
-                        class: if tab == "stats" { "tab active" } else { "tab" },
-                        onclick: move |_| active_tab.set("stats".to_string()),
-                        "Stats"
-                    }
-                    button {
-                        class: if tab == "settings" { "tab active" } else { "tab" },
-                        onclick: move |_| active_tab.set("settings".to_string()),
-                        "Settings"
-                    }
+                Tabs {
+                    tab: tab.clone(),
+                    onsearch: move |_| active_tab.set("search".to_string()),
+                    onqueue: move |_| active_tab.set("queue".to_string()),
+                    onstats: move |_| active_tab.set("stats".to_string()),
+                    onsettings: move |_| active_tab.set("settings".to_string()),
                 }
 
                 if tab == "search" {
@@ -593,30 +519,13 @@ fn App() -> Element {
                         }
                     }
                 } else if tab == "stats" {
-                    div { class: "panel-section stats",
-                        div { class: "speed-grid",
-                            div {
-                                span { "Upload" }
-                                strong { "{upload}" }
-                            }
-                            div {
-                                span { "Download" }
-                                strong { "{download}" }
-                            }
-                        }
-                        div { class: "stat-line",
-                            span { "Total up" }
-                            strong { "{format_bytes(*total_upload.read())}" }
-                        }
-                        div { class: "stat-line",
-                            span { "Total down" }
-                            strong { "{format_bytes(*total_download.read())}" }
-                        }
-                        div { class: "stat-line",
-                            span { "This month" }
-                            strong { "{format_bytes(total_upload() + total_download())}" }
-                        }
-                        div { class: "status-text", "{status}" }
+                    StatsPanel {
+                        upload: upload.read().clone(),
+                        download: download.read().clone(),
+                        total_upload: format_bytes(*total_upload.read()),
+                        total_download: format_bytes(*total_download.read()),
+                        month_total: format_bytes(total_upload() + total_download()),
+                        status: status.read().clone(),
                     }
                 } else {
                     div { class: "panel-section settings",
@@ -709,152 +618,11 @@ fn App() -> Element {
     }
 }
 
-#[component]
-fn TrackRow(
-    track: Track,
-    action: &'static str,
-    active: bool,
-    onclick: EventHandler<MouseEvent>,
-) -> Element {
-    let cover_style = if track.cover.is_empty() {
-        String::new()
-    } else {
-        format!("background-image: url('{}');", track.cover)
-    };
-    rsx! {
-        button { class: if active { "song active" } else { "song" }, onclick,
-            span { class: "song-cover", style: "{cover_style}" }
-            span { class: "song-copy",
-                strong { "{track.name}" }
-                small { "{track.artist}" }
-            }
-            span { class: "song-action", "{action}" }
-        }
-    }
-}
-
-#[component]
-fn QueueTrackRow(
-    track: Track,
-    active: bool,
-    onplay: EventHandler<MouseEvent>,
-    onremove: EventHandler<MouseEvent>,
-) -> Element {
-    let cover_style = if track.cover.is_empty() {
-        String::new()
-    } else {
-        format!("background-image: url('{}');", track.cover)
-    };
-    rsx! {
-        div { class: if active { "song queue-song active" } else { "song queue-song" },
-            button { class: "queue-main", onclick: onplay,
-                span { class: "song-cover", style: "{cover_style}" }
-                span { class: "song-copy",
-                    strong { "{track.name}" }
-                    small { "{track.artist}" }
-                }
-            }
-            button { class: "remove-song", onclick: onremove, title: "Remove", "×" }
-        }
-    }
-}
-
-fn spawn_play(
-    track: Track,
-    player: Arc<AudioPlayer>,
-    mut status: Signal<String>,
-    mut lyrics: Signal<Vec<LyricLine>>,
-) {
-    spawn(async move {
-        status.set(format!("Loading {}...", track.name));
-        lyrics.set(Vec::new());
-        let url =
-            match netease::get_netease_song_url(track.id.clone(), Some("exhigh".to_string()), None)
-                .await
-            {
-                Ok(info) => info.url.unwrap_or_default(),
-                Err(err) => {
-                    status.set(err);
-                    return;
-                }
-            };
-        if url.is_empty() {
-            status.set("No playable stream for this track.".to_string());
-            return;
-        }
-        match reqwest::get(&url).await {
-            Ok(response) => match response.bytes().await {
-                Ok(bytes) => {
-                    player.send(AudioCommand::LoadBytes {
-                        bytes: bytes.to_vec(),
-                        title: track.name.clone(),
-                        detail: track.artist.clone(),
-                    });
-                    status.set(format!("Playing {}.", track.name));
-                    if let Ok(response) = netease::get_netease_lyric(track.id.clone(), None).await {
-                        lyrics.set(parse_lrc(response.lyric.as_deref().unwrap_or_default()));
-                    }
-                }
-                Err(err) => status.set(format!("Stream read failed: {err}")),
-            },
-            Err(err) => status.set(format!("Stream request failed: {err}")),
-        }
-    });
-}
-
 fn collapsed_width_for_text(_text: &str, has_music: bool) -> f64 {
     if has_music {
         MUSIC_COLLAPSED_W
     } else {
         COLLAPSED_W
-    }
-}
-
-fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: Signal<String>) {
-    if text.is_empty() {
-        status.set("Type a song name first.".to_string());
-        return;
-    }
-    spawn(async move {
-        status.set("Searching NetEase...".to_string());
-        match netease::search_netease_songs(text, Some(18), None).await {
-            Ok(items) => {
-                let tracks = items.into_iter().map(Track::from).collect::<Vec<_>>();
-                let count = tracks.len();
-                results.set(tracks);
-                status.set(format!("Found {count} tracks."));
-            }
-            Err(err) => status.set(err),
-        }
-    });
-}
-
-fn format_rate(bytes: u64) -> String {
-    const KB: f64 = 1024.0;
-    const MB: f64 = KB * 1024.0;
-    let value = bytes as f64;
-    if value >= MB {
-        format!("{:.1} MB/s", value / MB)
-    } else if value >= KB {
-        format!("{:.0} KB/s", value / KB)
-    } else {
-        format!("{bytes} B/s")
-    }
-}
-
-fn format_bytes(bytes: u64) -> String {
-    const KB: f64 = 1024.0;
-    const MB: f64 = KB * 1024.0;
-    const GB: f64 = MB * 1024.0;
-    let value = bytes as f64;
-    if value >= GB {
-        format!("{:.2} GB", value / GB)
-    } else if value >= MB {
-        format!("{:.1} MB", value / MB)
-    } else if value >= KB {
-        format!("{:.0} KB", value / KB)
-    } else {
-        format!("{bytes} B")
     }
 }
 

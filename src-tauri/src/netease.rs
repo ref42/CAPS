@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashSet;
 
 const NETEASE_ORIGIN: &str = "https://music.163.com";
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -176,6 +177,73 @@ fn shuffle<T>(items: &mut [T], state: &mut u64) {
     }
 }
 
+async fn playable_song_ids(
+    client: &reqwest::Client,
+    songs: &[NeteaseSong],
+    quality: &str,
+) -> Result<HashSet<String>, String> {
+    let ids = songs
+        .iter()
+        .map(|song| song_id(&song.id))
+        .filter(|id| !id.is_empty())
+        .collect::<Vec<_>>();
+    let mut playable = HashSet::new();
+
+    if ids.is_empty() {
+        return Ok(playable);
+    }
+
+    let br = bitrate(quality);
+    for chunk in ids.chunks(50) {
+        let ids_json = format!("[{}]", chunk.join(","));
+        let body: Value = client
+            .get(format!(
+                "{NETEASE_ORIGIN}/api/song/enhance/player/url?ids={}&br={}",
+                urlencoding::encode(&ids_json),
+                br
+            ))
+            .send()
+            .await
+            .map_err(|e| format!("NetEase playable filter unavailable: {e}"))?
+            .json()
+            .await
+            .unwrap_or(Value::Null);
+
+        if let Some(items) = body.get("data").and_then(Value::as_array) {
+            for item in items {
+                let id = item.get("id").map(song_id).unwrap_or_default();
+                let url = item.get("url").and_then(Value::as_str).unwrap_or_default();
+                let code_ok = item.get("code").and_then(Value::as_i64).unwrap_or(200) == 200;
+                if !id.is_empty() && !url.is_empty() && code_ok {
+                    playable.insert(id);
+                }
+            }
+        }
+    }
+
+    Ok(playable)
+}
+
+async fn filter_playable_songs(
+    client: &reqwest::Client,
+    songs: Vec<NeteaseSong>,
+) -> Result<Vec<NeteaseSong>, String> {
+    let playable = playable_song_ids(client, &songs, "exhigh").await?;
+    Ok(songs
+        .into_iter()
+        .filter(|song| playable.contains(&song_id(&song.id)))
+        .collect())
+}
+
+fn bitrate(quality: &str) -> u32 {
+    match quality {
+        "lossless" => 1_411_000,
+        "hires" => 1_999_000,
+        "standard" => 128_000,
+        _ => 320_000,
+    }
+}
+
 pub async fn search_netease_songs(
     keywords: String,
     limit: Option<u32>,
@@ -185,7 +253,13 @@ pub async fn search_netease_songs(
     if keywords.is_empty() {
         return Ok(Vec::new());
     }
-    search_direct(&client()?, &keywords, limit.unwrap_or(12).clamp(1, 50)).await
+    let client = client()?;
+    let target = limit.unwrap_or(12).clamp(1, 50);
+    let raw_limit = target.saturating_mul(3).clamp(target, 50);
+    let songs = search_direct(&client, &keywords, raw_limit).await?;
+    let mut playable = filter_playable_songs(&client, songs).await?;
+    playable.truncate(target as usize);
+    Ok(playable)
 }
 
 pub async fn get_netease_song_url(
@@ -198,12 +272,8 @@ pub async fn get_netease_song_url(
         return Err("Missing NetEase song id".to_string());
     }
 
-    let br = match quality.as_deref().unwrap_or("exhigh") {
-        "lossless" => 1_411_000,
-        "hires" => 1_999_000,
-        "standard" => 128_000,
-        _ => 320_000,
-    };
+    let quality = quality.unwrap_or_else(|| "exhigh".to_string());
+    let br = bitrate(&quality);
 
     let body: Value = client()?
         .get(format!(
@@ -230,7 +300,7 @@ pub async fn get_netease_song_url(
             url: Some(url),
             playable: Some(true),
             trial: Some(data.get("freeTrialInfo").is_some_and(|v| !v.is_null())),
-            level: Some(quality.unwrap_or_else(|| "exhigh".to_string())),
+            level: Some(quality),
             quality: Some(format!("{}k", br / 1000)),
             reason: None,
             message: None,
@@ -239,22 +309,11 @@ pub async fn get_netease_song_url(
         });
     }
 
-    Ok(NeteaseSongUrl {
-        url: Some(format!("{NETEASE_ORIGIN}/song/media/outer/url?id={id}.mp3")),
-        playable: Some(true),
-        trial: Some(false),
-        level: Some("outer".to_string()),
-        quality: Some("public".to_string()),
-        reason: data
-            .get("code")
-            .and_then(Value::as_i64)
-            .map(|code| format!("netease_code_{code}")),
-        message: Some(
-            "Using NetEase public stream fallback; restricted tracks may not play.".to_string(),
-        ),
-        logged_in: Some(false),
-        vip_label: None,
-    })
+    Err(data
+        .get("code")
+        .and_then(Value::as_i64)
+        .map(|code| format!("This track is not directly playable. NetEase code: {code}."))
+        .unwrap_or_else(|| "This track is not directly playable.".to_string()))
 }
 
 pub async fn get_netease_lyric(
@@ -325,12 +384,11 @@ pub async fn random_netease_queue(
 
     shuffle(&mut seed_pool, &mut random_state);
 
-    for seed in seed_pool.iter().cycle().take(seed_pool.len() * 3) {
-        if songs.len() >= target as usize {
+    for seed in seed_pool.iter().cycle().take(seed_pool.len() * 4) {
+        if songs.len() >= target as usize * 3 {
             break;
         }
-        let remaining = target as usize - songs.len();
-        let limit = remaining.max(20).min(50) as u32;
+        let limit = target.max(30).min(50);
         let page = (next_random(&mut random_state) % 8) as u32;
         let offset = page * limit;
         if let Ok(mut found) = search_direct_offset(&client, seed, limit, offset).await {
@@ -339,12 +397,13 @@ pub async fn random_netease_queue(
         }
     }
 
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
     songs.retain(|song| {
         let id = song_id(&song.id);
         !id.is_empty() && seen.insert(id)
     });
-    shuffle(&mut songs, &mut random_state);
-    songs.truncate(target as usize);
-    Ok(songs)
+    let mut playable = filter_playable_songs(&client, songs).await?;
+    shuffle(&mut playable, &mut random_state);
+    playable.truncate(target as usize);
+    Ok(playable)
 }

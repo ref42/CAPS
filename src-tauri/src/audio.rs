@@ -13,6 +13,7 @@ pub enum AudioCommand {
         detail: String,
     },
     PlayPause,
+    SetVolume(f32),
     Stop,
 }
 
@@ -66,7 +67,7 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
     let mut current_path = String::new();
     let mut current_title = String::new();
     let mut current_detail = String::new();
-    let volume = 1.0_f32;
+    let mut volume = 1.0_f32;
 
     loop {
         match rx.recv_timeout(Duration::from_millis(100)) {
@@ -120,6 +121,12 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                     &current_title,
                     &current_detail,
                 );
+            }
+            Ok(AudioCommand::SetVolume(value)) => {
+                volume = value.clamp(0.0, 2.0);
+                if let Some(player) = &player {
+                    player.set_volume(volume);
+                }
             }
             Ok(AudioCommand::Stop) => {
                 if let Some(player) = player.take() {

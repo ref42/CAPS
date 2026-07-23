@@ -18,10 +18,10 @@ use sysinfo::Networks;
 use dioxus::desktop::tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
 
 const LOGO: &str = include_str!("../../src/assets/qiuniu.logo");
-const COLLAPSED_W: f64 = 210.0;
-const COLLAPSED_H: f64 = 40.0;
-const EXPANDED_W: f64 = 392.0;
-const EXPANDED_H: f64 = 454.0;
+const COLLAPSED_W: f64 = 300.0;
+const COLLAPSED_H: f64 = 56.0;
+const EXPANDED_W: f64 = 430.0;
+const EXPANDED_H: f64 = 490.0;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Track {
@@ -89,6 +89,8 @@ fn App() -> Element {
     let mut media_island = use_signal(|| true);
     let mut glow_border = use_signal(|| true);
     let mut spring_style = use_signal(|| "smooth".to_string());
+    let mut volume = use_signal(|| 100_u32);
+    let mut random_count = use_signal(|| 50_u32);
     let mut query = use_signal(String::new);
     let results = use_signal(Vec::<Track>::new);
     let mut queue = use_signal(Vec::<Track>::new);
@@ -419,8 +421,35 @@ fn App() -> Element {
                             }
                         }
                         div { class: "random-row",
-                            button { onclick: move |_| load_random(50), "Random 50" }
-                            button { onclick: move |_| load_random(100), "Random 100" }
+                            button { onclick: move |_| load_random(random_count()), "Random {random_count}" }
+                            button { onclick: move |_| load_random(50), "50" }
+                            button { onclick: move |_| load_random(100), "100" }
+                        }
+                        div { class: "random-control",
+                            span { "Random N" }
+                            input {
+                                r#type: "range",
+                                min: "1",
+                                max: "100",
+                                value: "{random_count}",
+                                oninput: move |event| {
+                                    if let Ok(value) = event.value().parse::<u32>() {
+                                        random_count.set(value.clamp(1, 100));
+                                    }
+                                }
+                            }
+                            input {
+                                class: "number-input",
+                                r#type: "number",
+                                min: "1",
+                                max: "100",
+                                value: "{random_count}",
+                                oninput: move |event| {
+                                    if let Ok(value) = event.value().parse::<u32>() {
+                                        random_count.set(value.clamp(1, 100));
+                                    }
+                                }
+                            }
                         }
                         div { class: "song-list",
                             for track in results.read().iter().cloned() {
@@ -457,17 +486,37 @@ fn App() -> Element {
                         }
                         div { class: "song-list",
                             for (index, track) in queue.read().iter().cloned().enumerate() {
-                                TrackRow {
+                                QueueTrackRow {
                                     track,
-                                    action: "Play",
                                     active: current_index.read().is_some_and(|i| i == index),
-                                    onclick: {
+                                    onplay: {
                                         let player = player.clone();
                                         move |_| {
                                             let list = queue.read().clone();
                                             if let Some(track) = list.get(index).cloned() {
                                                 current_index.set(Some(index));
                                                 spawn_play(track, player.clone(), status, lyrics);
+                                            }
+                                        }
+                                    },
+                                    onremove: {
+                                        let player = player.clone();
+                                        move |_| {
+                                            let mut list = queue.read().clone();
+                                            if index < list.len() {
+                                                list.remove(index);
+                                                queue.set(list);
+                                                let current = *current_index.read();
+                                                match current {
+                                                    Some(i) if i == index => {
+                                                        current_index.set(None);
+                                                        lyrics.set(Vec::new());
+                                                        player.send(AudioCommand::Stop);
+                                                        status.set("Removed current track.".to_string());
+                                                    }
+                                                    Some(i) if i > index => current_index.set(Some(i - 1)),
+                                                    _ => {}
+                                                }
                                             }
                                         }
                                     }
@@ -504,6 +553,26 @@ fn App() -> Element {
                                     }
                                 }
                             }
+                        }
+                        label { class: "setting",
+                            span { "Volume" }
+                            input {
+                                r#type: "range",
+                                min: "0",
+                                max: "100",
+                                value: "{volume}",
+                                oninput: {
+                                    let player = player.clone();
+                                    move |event| {
+                                        if let Ok(value) = event.value().parse::<u32>() {
+                                            let value = value.clamp(0, 100);
+                                            volume.set(value);
+                                            player.send(AudioCommand::SetVolume(value as f32 / 100.0));
+                                        }
+                                    }
+                                }
+                            }
+                            output { "{volume}%" }
                         }
                         label { class: "setting",
                             span { "Media island" }
@@ -564,6 +633,32 @@ fn TrackRow(
                 small { "{track.artist}" }
             }
             span { class: "song-action", "{action}" }
+        }
+    }
+}
+
+#[component]
+fn QueueTrackRow(
+    track: Track,
+    active: bool,
+    onplay: EventHandler<MouseEvent>,
+    onremove: EventHandler<MouseEvent>,
+) -> Element {
+    let cover_style = if track.cover.is_empty() {
+        String::new()
+    } else {
+        format!("background-image: url('{}');", track.cover)
+    };
+    rsx! {
+        div { class: if active { "song queue-song active" } else { "song queue-song" },
+            button { class: "queue-main", onclick: onplay,
+                span { class: "song-cover", style: "{cover_style}" }
+                span { class: "song-copy",
+                    strong { "{track.name}" }
+                    small { "{track.artist}" }
+                }
+            }
+            button { class: "remove-song", onclick: onremove, title: "Remove", "×" }
         }
     }
 }
@@ -794,8 +889,8 @@ button {
 }
 
 .stage {
-  width: 210px;
-  height: 40px;
+  width: 300px;
+  height: 56px;
   color: rgba(248, 255, 252, 0.96);
   user-select: none;
   -webkit-font-smoothing: antialiased;
@@ -804,19 +899,19 @@ button {
 }
 
 .stage.expanded {
-  width: 392px;
-  height: 454px;
+  width: 430px;
+  height: 490px;
 }
 
 .island {
   position: relative;
-  width: 210px;
-  height: 40px;
+  width: 300px;
+  height: 56px;
   display: grid;
-  grid-template-columns: 1fr auto 42px;
+  grid-template-columns: minmax(0, 1fr) 82px 38px;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px 4px 5px;
+  gap: 10px;
+  padding: 7px 10px 8px 7px;
   border-radius: 999px;
   background: rgba(5, 8, 9, var(--island-opacity));
   border: 1px solid rgba(118, 244, 207, 0.2);
@@ -839,11 +934,11 @@ button {
 }
 
 .expanded .island {
-  width: 392px;
-  height: 72px;
-  grid-template-columns: minmax(0, 1fr) 126px 32px;
-  padding: 8px 11px 11px 9px;
-  border-radius: 30px;
+  width: 430px;
+  height: 86px;
+  grid-template-columns: minmax(0, 1fr) 142px 40px;
+  padding: 10px 13px 13px 10px;
+  border-radius: 34px;
 }
 
 .smooth .island,
@@ -860,14 +955,14 @@ button {
   min-width: 0;
   height: 100%;
   display: grid;
-  grid-template-columns: 30px 1fr;
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
 }
 
 .expanded .core {
-  grid-template-columns: 42px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
 }
 
 .logo,
@@ -878,13 +973,13 @@ button {
 }
 
 .speed-logo {
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
 }
 
 .cover {
-  width: 30px;
-  height: 30px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   background: linear-gradient(135deg, #14352f, #d8b45b);
   position: relative;
@@ -895,8 +990,8 @@ button {
 }
 
 .expanded .cover {
-  width: 42px;
-  height: 42px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
 }
 
@@ -914,8 +1009,8 @@ button {
 }
 
 .cover .logo {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   z-index: 1;
 }
 
@@ -933,6 +1028,7 @@ button {
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 12.5px;
+  max-width: 100%;
   line-height: 1.05;
   font-weight: 760;
   letter-spacing: 0;
@@ -940,7 +1036,7 @@ button {
 
 .expanded .music-copy strong,
 .expanded .speed-copy strong {
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .music-copy span,
@@ -959,32 +1055,33 @@ button {
 
 .lyric-line {
   color: rgba(248, 255, 252, 0.74);
-  animation: lyricMaterialize 260ms cubic-bezier(0.2, 0, 0, 1);
-  will-change: opacity, filter, transform;
+  animation: lyricWipe 520ms cubic-bezier(0.2, 0, 0, 1);
+  clip-path: inset(0 0 0 0);
+  will-change: opacity, filter, transform, clip-path;
 }
 
 .speed-chip {
-  height: 23px;
-  min-width: 72px;
+  height: 28px;
+  min-width: 82px;
   display: grid;
   place-items: center;
   padding: 0 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
   color: #7df2ca;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .mini-controls {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
+  gap: 5px;
 }
 
 .mini-controls button {
-  width: 28px;
-  height: 28px;
+  width: 31px;
+  height: 31px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.09);
   color: rgba(248, 255, 252, 0.94);
@@ -1008,8 +1105,8 @@ button {
 }
 
 .spectrum {
-  width: 32px;
-  height: 28px;
+  width: 38px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1017,8 +1114,8 @@ button {
 }
 
 .spectrum i {
-  width: 3px;
-  height: 18px;
+  width: 4px;
+  height: 24px;
   min-height: 6px;
   border-radius: 999px;
   background: linear-gradient(180deg, #fff0a0, #78f2ca);
@@ -1028,14 +1125,14 @@ button {
 }
 
 .expanded .spectrum i {
-  height: 24px;
+  height: 30px;
 }
 
 .playback-progress {
   position: absolute;
   left: 18px;
   right: 18px;
-  bottom: 7px;
+  bottom: 8px;
   height: 3px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
@@ -1050,8 +1147,8 @@ button {
 }
 
 .panel {
-  width: 392px;
-  height: 366px;
+  width: 430px;
+  height: 396px;
   margin-top: 8px;
   padding: 10px;
   display: flex;
@@ -1138,7 +1235,8 @@ button {
 }
 
 .random-row,
-.queue-toolbar {
+.queue-toolbar,
+.random-control {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1155,6 +1253,36 @@ button {
   font-size: 12px;
   font-weight: 800;
   transition: background-color 160ms ease, transform 80ms ease;
+}
+
+.random-control {
+  min-height: 34px;
+  padding: 0 2px;
+}
+
+.random-control span {
+  color: rgba(248, 255, 252, 0.62);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.random-control input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: #34c759;
+}
+
+.number-input {
+  width: 58px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(142, 142, 147, 0.16);
+  color: rgba(248, 255, 252, 0.92);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  outline: none;
 }
 
 .random-row button:hover,
@@ -1201,6 +1329,38 @@ button {
   background: transparent;
   text-align: left;
   transition: background-color 160ms ease, transform 80ms ease;
+}
+
+.queue-song {
+  grid-template-columns: 1fr 30px;
+  padding: 4px 5px 4px 7px;
+}
+
+.queue-main {
+  min-width: 0;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  align-items: center;
+  gap: 9px;
+  background: transparent;
+  text-align: left;
+}
+
+.remove-song {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(248, 255, 252, 0.62);
+  font-size: 18px;
+  line-height: 1;
+  transition: background-color 160ms ease, color 160ms ease, transform 80ms ease;
+}
+
+.remove-song:hover {
+  background: rgba(255, 69, 58, 0.22);
+  color: #ff9b94;
 }
 
 .song.active {
@@ -1324,6 +1484,14 @@ button {
   font-weight: 780;
 }
 
+.setting output {
+  min-width: 42px;
+  text-align: right;
+  color: rgba(248, 255, 252, 0.62);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .setting input[type="range"] {
   width: 154px;
   accent-color: #34c759;
@@ -1376,15 +1544,21 @@ button {
   }
 }
 
-@keyframes lyricMaterialize {
+@keyframes lyricWipe {
   from {
     opacity: 0;
-    filter: blur(8px);
-    transform: translateY(4px);
+    filter: blur(10px);
+    clip-path: inset(0 100% 0 0);
+    transform: translateY(3px);
+  }
+  55% {
+    opacity: 1;
+    filter: blur(2px);
   }
   to {
     opacity: 1;
     filter: blur(0);
+    clip-path: inset(0 0 0 0);
     transform: translateY(0);
   }
 }

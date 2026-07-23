@@ -41,15 +41,7 @@ pub async fn local_weather() -> WeatherNow {
 }
 
 async fn fetch_local_weather() -> Option<WeatherNow> {
-    let location = reqwest::get("https://ipwho.is/")
-        .await
-        .ok()?
-        .json::<LocationResponse>()
-        .await
-        .ok()?;
-    if !location.success {
-        return None;
-    }
+    let location = fetch_location().await?;
 
     let latitude = location.latitude?;
     let longitude = location.longitude?;
@@ -72,6 +64,41 @@ async fn fetch_local_weather() -> Option<WeatherNow> {
         label: format!("{temp}°"),
         title: format!("{city} weather"),
     })
+}
+
+async fn fetch_location() -> Option<LocationResponse> {
+    if let Some(location) = reqwest::get("https://ipwho.is/")
+        .await
+        .ok()?
+        .json::<LocationResponse>()
+        .await
+        .ok()
+        .filter(|location| location.success)
+    {
+        return Some(location);
+    }
+    if let Some(location) = reqwest::get("https://ipapi.co/json/")
+        .await
+        .ok()?
+        .json::<IpApiResponse>()
+        .await
+        .ok()
+    {
+        return Some(LocationResponse {
+            success: true,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            city: location.city,
+        });
+    }
+    None
+}
+
+#[derive(Deserialize)]
+struct IpApiResponse {
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+    city: Option<String>,
 }
 
 fn weather_icon(code: i32) -> &'static str {

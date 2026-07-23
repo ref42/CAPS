@@ -112,10 +112,6 @@ button {
   grid-template-columns: 10px minmax(0, 1fr) 52px;
 }
 
-.notification-island {
-  grid-template-columns: 10px minmax(0, 1fr);
-}
-
 .island,
 .panel {
   transition: width var(--motion-ui) var(--motion-ease), height var(--motion-ui) var(--motion-ease), border-radius var(--motion-ui) var(--motion-ease), opacity var(--motion-bg) ease, transform var(--motion-panel) var(--motion-ease);
@@ -318,9 +314,12 @@ button {
   text-align: left;
 }
 
-.expanded .music-copy strong,
-.expanded .speed-copy strong {
+.expanded .music-copy strong {
   font-size: 16px;
+}
+
+.expanded .speed-copy strong {
+  font-size: 12.5px;
 }
 
 .music-copy span,
@@ -343,72 +342,6 @@ button {
 
 .idle-speeds strong {
   font-size: 12px;
-}
-
-.message-alert {
-  height: 42px;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  animation: messageAlertIn 520ms var(--motion-spring) both;
-}
-
-.expanded .message-alert {
-  height: 52px;
-}
-
-.message-alert-icon {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: linear-gradient(145deg, rgba(255, 196, 224, 0.96), rgba(255, 105, 180, 0.9));
-  color: rgba(29, 8, 18, 0.92);
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 1;
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.35);
-}
-
-.message-alert-copy {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.message-alert-copy span,
-.message-alert-kind {
-  overflow: hidden;
-  color: rgba(248, 255, 252, 0.58);
-  font-size: 10.5px;
-  font-weight: 760;
-  line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.message-alert-copy strong {
-  min-width: 0;
-  overflow: hidden;
-  color: rgba(248, 255, 252, 0.96);
-  font-size: 13px;
-  font-weight: 790;
-  line-height: 1.08;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.message-alert-kind {
-  justify-self: end;
-  max-width: 68px;
-  color: rgba(248, 255, 252, 0.5);
-}
-
-.notification-island .spectrum {
-  display: none;
 }
 
 .lyric-line {
@@ -497,7 +430,7 @@ button {
 .mini-controls button:active,
 .tab:active,
 .song:active,
-.random-row button:active,
+.random-add:active,
 .queue-toolbar button:active,
 .segmented button:active,
 .icon-button:active {
@@ -591,8 +524,8 @@ button {
   gap: 9px;
   border-radius: 22px;
   background: rgba(19, 24, 26, var(--panel-bg-alpha));
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34), inset 0 1px rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(24px) saturate(1.2);
   opacity: 0;
   transform: translateY(-8px) scale(0.985);
@@ -638,15 +571,18 @@ button {
 }
 
 .search-row {
-  display: grid;
-  grid-template-columns: 1fr 34px;
-  gap: 7px;
+  display: block;
+}
+
+.search-field {
+  position: relative;
 }
 
 .search-row input {
+  width: 100%;
   height: 34px;
   min-width: 0;
-  padding: 0 10px;
+  padding: 0 36px 0 10px;
   border-radius: 10px;
   outline: none;
   background: rgba(142, 142, 147, var(--soft-alpha));
@@ -659,26 +595,24 @@ button {
   box-shadow: inset 0 0 0 1px rgba(121, 244, 205, 0.55);
 }
 
-.icon-button {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: rgba(48, 209, 88, var(--green-alpha));
+.search-icon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
   color: #7df2ca;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 800;
+  pointer-events: none;
 }
 
-.random-row,
 .queue-toolbar,
 .random-control {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
 
-.random-row button,
 .queue-toolbar button {
   height: 30px;
   padding: 0 12px;
@@ -691,8 +625,11 @@ button {
 }
 
 .random-control {
-  min-height: 34px;
+  min-height: 42px;
   padding: 0 2px;
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) 78px;
+  gap: 10px;
 }
 
 .random-control span {
@@ -703,24 +640,62 @@ button {
 }
 
 .random-control input[type="range"] {
-  flex: 1;
   min-width: 0;
-  accent-color: #34c759;
+  width: 100%;
+  height: 28px;
+  margin: 7px 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
 }
 
-.number-input {
-  width: 58px;
-  height: 28px;
-  border-radius: 8px;
+.random-control input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #34c759 0 var(--random-progress, 7%), rgba(255, 255, 255, 0.16) var(--random-progress, 7%) 100%);
+}
+
+.random-control input[type="range"]::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 0;
+  border-radius: 50%;
+  appearance: none;
+  background: #34c759;
+}
+
+.random-control input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #34c759 0 var(--random-progress, 7%), rgba(255, 255, 255, 0.16) var(--random-progress, 7%) 100%);
+}
+
+.random-control input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: #34c759;
+}
+
+.random-add {
+  height: 34px;
+  border-radius: 10px;
   background: rgba(142, 142, 147, var(--soft-alpha));
   color: rgba(248, 255, 252, 0.92);
-  text-align: center;
   font-size: 12px;
   font-weight: 800;
-  outline: none;
+  letter-spacing: 0;
+  border: 0;
+  box-shadow: none;
+  transition: transform var(--motion-fast) var(--motion-spring), background-color var(--motion-bg) ease;
 }
 
-.random-row button:hover,
+.random-add:hover {
+  background: rgba(255, 255, 255, var(--hover-alpha));
+}
+
 .queue-toolbar button:hover,
 .song:hover,
 .segmented button:hover {
@@ -1048,24 +1023,6 @@ button {
   }
 }
 
-@keyframes messageAlertIn {
-  from {
-    opacity: 0;
-    filter: blur(8px);
-    transform: translate3d(0, -7px, 0) scale(0.96);
-  }
-  48% {
-    opacity: 0.98;
-    filter: blur(1.5px);
-    transform: translate3d(0, 1px, 0) scale(1.015);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
 @keyframes activityLoading {
   0%,
   100% {
@@ -1095,10 +1052,6 @@ button {
   }
 
   .music-copy .lyric-marquee strong {
-    animation: none;
-  }
-
-  .message-alert {
     animation: none;
   }
 }

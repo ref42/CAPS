@@ -40,6 +40,13 @@ struct LyricLine {
     text: String,
 }
 
+#[derive(Clone)]
+struct LyricTransition {
+    current: String,
+    outgoing: Option<String>,
+    id: u64,
+}
+
 fn main() {
     audio_spectrum::start_monitor();
     dioxus::LaunchBuilder::desktop()
@@ -270,32 +277,27 @@ fn App() -> Element {
     } else {
         "cover"
     };
-    let mut visible_primary = use_signal(|| primary_text.clone());
-    let mut outgoing_primary = use_signal(|| None::<String>);
-    let mut lyric_transition_id = use_signal(|| 0_u64);
-
-    {
-        let next_primary = primary_text.clone();
-        use_effect(move || {
-            let current = visible_primary();
-            if current != next_primary {
-                if !current.is_empty() {
-                    outgoing_primary.set(Some(current));
-                }
-                visible_primary.set(next_primary.clone());
-                lyric_transition_id.set(lyric_transition_id().wrapping_add(1));
-                let mut outgoing_primary = outgoing_primary;
-                spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(520)).await;
-                    outgoing_primary.set(None);
-                });
-            }
-        });
-    }
-
-    let visible_primary_text = visible_primary.read().clone();
-    let outgoing_primary_text = outgoing_primary.read().clone();
-    let transition_key = lyric_transition_id();
+    let lyric_transition = use_hook(|| {
+        std::cell::RefCell::new(LyricTransition {
+            current: primary_text.clone(),
+            outgoing: None,
+            id: 0,
+        })
+    });
+    let (visible_primary_text, outgoing_primary_text, transition_key) = {
+        let mut transition = lyric_transition.borrow_mut();
+        if transition.current != primary_text {
+            transition.outgoing =
+                (!transition.current.is_empty()).then(|| transition.current.clone());
+            transition.current = primary_text.clone();
+            transition.id = transition.id.wrapping_add(1);
+        }
+        (
+            transition.current.clone(),
+            transition.outgoing.clone(),
+            transition.id,
+        )
+    };
     let window_size_cache = use_hook(|| std::cell::RefCell::new(None::<(bool, i32, u32)>));
 
     {
@@ -463,7 +465,6 @@ fn App() -> Element {
                     div { class: "panel-section",
                         div { class: "search-row",
                             input {
-                                value: "{query}",
                                 placeholder: "Search NetEase",
                                 onfocus: move |_| input_focused.set(true),
                                 onblur: {
@@ -478,7 +479,7 @@ fn App() -> Element {
                                 },
                                 oninput: move |event| query.set(event.value()),
                                 onkeydown: move |event| {
-                                    if event.key() == Key::Enter {
+                                    if event.key() == Key::Enter && !event.is_composing() {
                                         spawn_search(query.read().trim().to_string(), results, status);
                                     }
                                 },

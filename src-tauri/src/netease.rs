@@ -125,10 +125,19 @@ async fn search_direct(
     keywords: &str,
     limit: u32,
 ) -> Result<Vec<NeteaseSong>, String> {
+    search_direct_offset(client, keywords, limit, 0).await
+}
+
+async fn search_direct_offset(
+    client: &reqwest::Client,
+    keywords: &str,
+    limit: u32,
+    offset: u32,
+) -> Result<Vec<NeteaseSong>, String> {
     let params = [
         ("s", keywords.to_string()),
         ("type", "1".to_string()),
-        ("offset", "0".to_string()),
+        ("offset", offset.to_string()),
         ("total", "true".to_string()),
         ("limit", limit.to_string()),
         ("csrf_token", String::new()),
@@ -151,6 +160,20 @@ async fn search_direct(
         .unwrap_or_default();
 
     Ok(songs.iter().filter_map(map_song).collect())
+}
+
+fn next_random(state: &mut u64) -> u64 {
+    *state ^= *state << 13;
+    *state ^= *state >> 7;
+    *state ^= *state << 17;
+    *state
+}
+
+fn shuffle<T>(items: &mut [T], state: &mut u64) {
+    for index in (1..items.len()).rev() {
+        let swap = (next_random(state) as usize) % (index + 1);
+        items.swap(index, swap);
+    }
 }
 
 pub async fn search_netease_songs(
@@ -293,19 +316,25 @@ pub async fn random_netease_queue(
     ];
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos() as usize)
+        .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
+    let mut random_state = now ^ ((std::process::id() as u64) << 32) ^ 0x9e37_79b9_7f4a_7c15;
     let client = client()?;
     let mut songs = Vec::new();
+    let mut seed_pool = seeds.to_vec();
 
-    for offset in 0..seeds.len() {
+    shuffle(&mut seed_pool, &mut random_state);
+
+    for seed in seed_pool.iter().cycle().take(seed_pool.len() * 3) {
         if songs.len() >= target as usize {
             break;
         }
-        let seed = seeds[(now + offset * 3) % seeds.len()];
         let remaining = target as usize - songs.len();
-        let limit = remaining.max(12).min(50) as u32;
-        if let Ok(mut found) = search_direct(&client, seed, limit).await {
+        let limit = remaining.max(20).min(50) as u32;
+        let page = (next_random(&mut random_state) % 8) as u32;
+        let offset = page * limit;
+        if let Ok(mut found) = search_direct_offset(&client, seed, limit, offset).await {
+            shuffle(&mut found, &mut random_state);
             songs.append(&mut found);
         }
     }
@@ -315,10 +344,7 @@ pub async fn random_netease_queue(
         let id = song_id(&song.id);
         !id.is_empty() && seen.insert(id)
     });
-    if !songs.is_empty() {
-        let rotate = now % songs.len();
-        songs.rotate_left(rotate);
-    }
+    shuffle(&mut songs, &mut random_state);
     songs.truncate(target as usize);
     Ok(songs)
 }

@@ -1171,20 +1171,17 @@ button {
   min-width: 92px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 
 .speed-arrow {
-  width: 16px;
-  height: 16px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, var(--softer-alpha));
+  width: 12px;
+  display: inline-block;
   color: rgba(248, 255, 252, 0.76);
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 900;
-  line-height: 1;
+  line-height: 0.9;
+  text-align: center;
 }
 
 .download-stat .speed-arrow {

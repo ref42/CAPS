@@ -383,13 +383,13 @@ fn App() -> Element {
                         }
                     } else {
                         div { class: "speed-copy idle-speeds",
-                            div { class: "speed-stat",
+                            div { class: "speed-stat download-stat", title: "Download speed",
+                                span { class: "speed-arrow", "↓" }
                                 strong { "{download}" }
-                                span { "DOWN" }
                             }
-                            div { class: "speed-stat",
+                            div { class: "speed-stat upload-stat", title: "Upload speed",
+                                span { class: "speed-arrow", "↑" }
                                 strong { "{upload}" }
-                                span { "UP" }
                             }
                         }
                     }
@@ -1160,7 +1160,7 @@ button {
   height: 42px;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
 }
 
 .expanded .idle-speeds {
@@ -1168,9 +1168,31 @@ button {
 }
 
 .speed-stat {
-  min-width: 72px;
+  min-width: 92px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.speed-arrow {
+  width: 16px;
+  height: 16px;
   display: grid;
-  gap: 2px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, var(--softer-alpha));
+  color: rgba(248, 255, 252, 0.76);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.download-stat .speed-arrow {
+  color: rgba(248, 255, 252, 0.82);
+}
+
+.upload-stat .speed-arrow {
+  color: #7df2ca;
 }
 
 .music-copy {
@@ -1244,6 +1266,10 @@ button {
 
 .idle-speeds span {
   color: rgba(248, 255, 252, 0.7);
+}
+
+.idle-speeds strong {
+  font-size: 12px;
 }
 
 .lyric-line {

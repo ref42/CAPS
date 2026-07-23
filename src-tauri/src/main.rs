@@ -90,8 +90,6 @@ fn App() -> Element {
     let mut input_focused = use_signal(|| false);
     let mut active_tab = use_signal(|| "search".to_string());
     let mut opacity = use_signal(|| 92_u32);
-    let mut media_island = use_signal(|| true);
-    let mut glow_border = use_signal(|| true);
     let mut spring_style = use_signal(|| "smooth".to_string());
     let mut volume = use_signal(|| 100_u32);
     let mut island_size = use_signal(|| 100_u32);
@@ -209,7 +207,7 @@ fn App() -> Element {
     let active_track = current_index
         .read()
         .and_then(|index| queue.read().get(index).cloned());
-    let has_music = media_island() && (!state.title.is_empty() || active_track.is_some());
+    let has_music = !state.title.is_empty() || active_track.is_some();
     let current_title = if state.title.is_empty() {
         active_track
             .as_ref()
@@ -264,11 +262,6 @@ fn App() -> Element {
     } else {
         "stage"
     };
-    let glow_class = if glow_border() {
-        "island glow"
-    } else {
-        "island"
-    };
     let cover_class = if state.is_playing {
         "cover playing"
     } else {
@@ -318,7 +311,7 @@ fn App() -> Element {
                 move |_| desktop.close()
             },
             section {
-                class: "{glow_class}",
+                class: "island",
                 onmousedown: {
                     let desktop = desktop.clone();
                     move |event| {
@@ -654,22 +647,6 @@ fn App() -> Element {
                                     },
                                 }
                                 output { "{island_size}%" }
-                            }
-                        }
-                        label { class: "setting",
-                            span { "Media island" }
-                            input {
-                                r#type: "checkbox",
-                                checked: media_island(),
-                                onchange: move |_| media_island.set(!media_island()),
-                            }
-                        }
-                        label { class: "setting",
-                            span { "Glow border" }
-                            input {
-                                r#type: "checkbox",
-                                checked: glow_border(),
-                                onchange: move |_| glow_border.set(!glow_border()),
                             }
                         }
                         div { class: "setting",
@@ -1023,23 +1000,10 @@ button {
   padding: 7px 10px 8px 7px;
   border-radius: 999px;
   background: rgba(5, 8, 9, var(--island-opacity));
-  border: 1px solid rgba(118, 244, 207, 0.2);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28), inset 0 1px rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(22px) saturate(1.25);
   overflow: hidden;
-}
-
-.island.glow::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(90deg, rgba(121, 244, 205, 0.75), rgba(226, 194, 91, 0.65), rgba(121, 244, 205, 0.5));
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
-  opacity: 0.55;
 }
 
 .expanded .island {

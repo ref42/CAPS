@@ -144,21 +144,13 @@ fn App() -> Element {
         });
     });
 
-    let mut expand_window = {
-        let desktop = desktop.clone();
-        move || {
-            expanded.set(true);
-            set_island_window(&desktop, true, island_size() as f64 / 100.0);
-        }
+    let mut expand_window = move || {
+        expanded.set(true);
     };
 
-    let mut collapse_window = {
-        let desktop = desktop.clone();
-        move || {
-            if !*input_focused.read() {
-                expanded.set(false);
-                set_island_window(&desktop, false, island_size() as f64 / 100.0);
-            }
+    let mut collapse_window = move || {
+        if !*input_focused.read() {
+            expanded.set(false);
         }
     };
 
@@ -270,8 +262,10 @@ fn App() -> Element {
     let queue_len = queue.read().len();
     let opacity_css = (*opacity.read() as f64 / 100.0).clamp(0.2, 1.0);
     let island_scale = (*island_size.read() as f64 / 100.0).clamp(0.85, 1.35);
-    let stage_style =
-        format!("--island-opacity: {opacity_css:.2}; --island-scale: {island_scale:.2};");
+    let collapsed_width = collapsed_width_for_text(&primary_text, has_music);
+    let stage_style = format!(
+        "--island-opacity: {opacity_css:.2}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px;"
+    );
     let spring_class = spring_style.read().clone();
     let stage_class = if is_expanded {
         "stage expanded"
@@ -288,6 +282,31 @@ fn App() -> Element {
     } else {
         "cover"
     };
+    let window_size_cache = use_hook(|| std::cell::RefCell::new(None::<(bool, i32, u32)>));
+
+    {
+        let desktop = desktop.clone();
+        let cache = window_size_cache.clone();
+        use_effect(move || {
+            let width_key = if expanded() {
+                EXPANDED_W.round() as i32
+            } else {
+                collapsed_width.round() as i32
+            };
+            let size_key = island_size();
+            let expanded_key = expanded();
+            let next = (expanded_key, width_key, size_key);
+            if *cache.borrow() != Some(next) {
+                *cache.borrow_mut() = Some(next);
+                set_island_window(
+                    &desktop,
+                    expanded_key,
+                    size_key as f64 / 100.0,
+                    collapsed_width,
+                );
+            }
+        });
+    }
 
     rsx! {
         style { "{APP_CSS}" }
@@ -431,7 +450,7 @@ fn App() -> Element {
                                         input_focused.set(false);
                                         if !*pointer_inside.read() {
                                             expanded.set(false);
-                                            set_island_window(&desktop, false, island_size() as f64 / 100.0);
+                                            set_island_window(&desktop, false, island_size() as f64 / 100.0, collapsed_width);
                                         }
                                     }
                                 },
@@ -638,7 +657,7 @@ fn App() -> Element {
                                             if let Ok(value) = event.value().parse::<u32>() {
                                                 let value = value.clamp(85, 135);
                                                 island_size.set(value);
-                                                set_island_window(&desktop, expanded(), value as f64 / 100.0);
+                                                set_island_window(&desktop, expanded(), value as f64 / 100.0, collapsed_width);
                                             }
                                         }
                                     },
@@ -823,6 +842,19 @@ fn current_lyric_line(lines: &[LyricLine], position: f64) -> Option<String> {
         .map(|line| line.text.clone())
 }
 
+fn collapsed_width_for_text(text: &str, has_music: bool) -> f64 {
+    if !has_music {
+        return COLLAPSED_W;
+    }
+
+    let text_width = text
+        .chars()
+        .map(|ch| if ch.is_ascii() { 7.4 } else { 15.2 })
+        .sum::<f64>();
+
+    (138.0 + text_width).clamp(COLLAPSED_W, 540.0)
+}
+
 fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: Signal<String>) {
     if text.is_empty() {
         status.set("Type a song name first.".to_string());
@@ -842,12 +874,17 @@ fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: Signa
     });
 }
 
-fn set_island_window(desktop: &DesktopContext, expanded: bool, size_scale: f64) {
+fn set_island_window(
+    desktop: &DesktopContext,
+    expanded: bool,
+    size_scale: f64,
+    collapsed_width: f64,
+) {
     let size_scale = size_scale.clamp(0.85, 1.35);
     let (base_width, base_height) = if expanded {
         (EXPANDED_W, EXPANDED_H)
     } else {
-        (COLLAPSED_W, COLLAPSED_H)
+        (collapsed_width.max(COLLAPSED_W), COLLAPSED_H)
     };
     let width = base_width * size_scale;
     let height = base_height * size_scale;
@@ -964,7 +1001,7 @@ button {
 }
 
 .stage {
-  width: 300px;
+  width: var(--collapsed-width);
   height: 56px;
   zoom: var(--island-scale);
   color: rgba(248, 255, 252, 0.96);
@@ -981,10 +1018,10 @@ button {
 
 .island {
   position: relative;
-  width: 300px;
+  width: var(--collapsed-width);
   height: 56px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 82px 38px;
+  grid-template-columns: minmax(0, 1fr) auto 38px;
   align-items: center;
   gap: 10px;
   padding: 7px 10px 8px 7px;
@@ -1028,6 +1065,7 @@ button {
 }
 
 .core {
+  grid-column: 1;
   min-width: 0;
   height: 100%;
   display: grid;
@@ -1153,6 +1191,8 @@ button {
 }
 
 .speed-chip {
+  grid-column: 2;
+  justify-self: end;
   height: 28px;
   min-width: 82px;
   display: grid;
@@ -1166,6 +1206,8 @@ button {
 }
 
 .mini-controls {
+  grid-column: 2;
+  justify-self: end;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 5px;
@@ -1197,6 +1239,8 @@ button {
 }
 
 .spectrum {
+  grid-column: 3;
+  justify-self: end;
   width: 38px;
   height: 34px;
   display: flex;

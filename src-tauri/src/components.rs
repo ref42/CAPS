@@ -292,6 +292,7 @@ pub fn Island(
     download: String,
     upload: String,
     spectrum: [f32; 5],
+    spectrum_style: String,
     progress: f64,
     is_playing: bool,
     ondrag: EventHandler<MouseEvent>,
@@ -359,7 +360,7 @@ pub fn Island(
                     button { onclick: onstop, title: "Stop", "■" }
                 }
             }
-            div { class: "spectrum",
+            div { class: "spectrum", style: "{spectrum_style}",
                 for value in spectrum {
                     i { style: "transform: scaleY({value});" }
                 }

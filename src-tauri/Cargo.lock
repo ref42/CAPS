@@ -337,6 +337,7 @@ version = "1.0.0"
 dependencies = [
  "cpal 0.18.1",
  "dioxus",
+ "image",
  "log",
  "reqwest",
  "rodio",

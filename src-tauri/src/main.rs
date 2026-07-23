@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod actions;
+mod album_color;
 mod audio;
 mod audio_spectrum;
 mod components;
@@ -121,6 +122,12 @@ fn App() -> Element {
         use_signal(|| "Search NetEase, add songs, then play from the island.".to_string());
     let mut audio_state = use_signal(|| player.get_state());
     let mut spectrum = use_signal(audio_spectrum::get_audio_spectrum);
+    let mut spectrum_colors = use_signal(|| {
+        (
+            "rgb(255, 240, 160)".to_string(),
+            "rgb(120, 242, 202)".to_string(),
+        )
+    });
     let mut upload = use_signal(|| "0 B/s".to_string());
     let mut download = use_signal(|| "0 B/s".to_string());
     let mut total_upload = use_signal(|| 0_u64);
@@ -184,6 +191,36 @@ fn App() -> Element {
                 last_tx = tx;
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
+        });
+    });
+
+    let last_cover_for_color = use_hook(|| std::cell::RefCell::new(String::new()));
+    use_effect(move || {
+        let cover_url = current_index
+            .read()
+            .and_then(|index| queue.read().get(index).map(|track| track.cover.clone()))
+            .unwrap_or_default();
+        if *last_cover_for_color.borrow() == cover_url {
+            return;
+        }
+        *last_cover_for_color.borrow_mut() = cover_url.clone();
+        if cover_url.is_empty() {
+            spectrum_colors.set((
+                "rgb(255, 240, 160)".to_string(),
+                "rgb(120, 242, 202)".to_string(),
+            ));
+            return;
+        }
+        spawn(async move {
+            let colors = album_color::spectrum_colors(cover_url)
+                .await
+                .unwrap_or_else(|| {
+                    (
+                        "rgb(255, 240, 160)".to_string(),
+                        "rgb(120, 242, 202)".to_string(),
+                    )
+                });
+            spectrum_colors.set(colors);
         });
     });
 
@@ -272,6 +309,13 @@ fn App() -> Element {
         .filter(|track| !track.cover.is_empty())
         .map(|track| format!("background-image: url('{}');", track.cover))
         .unwrap_or_default();
+    let spectrum_style = {
+        let colors = spectrum_colors.read();
+        format!(
+            "--spectrum-from: {}; --spectrum-to: {};",
+            colors.0, colors.1
+        )
+    };
     let progress = if state.duration > 0.0 {
         (state.position / state.duration * 100.0).clamp(0.0, 100.0)
     } else {
@@ -402,6 +446,7 @@ fn App() -> Element {
                 download: download.read().clone(),
                 upload: upload.read().clone(),
                 spectrum: *spectrum.read(),
+                spectrum_style,
                 progress,
                 is_playing: state.is_playing,
                 ondrag: {

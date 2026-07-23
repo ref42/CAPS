@@ -341,14 +341,14 @@ button {
 
 .activity-dot.loading {
   background: #ffcf70;
-  opacity: 0.92;
-  animation: activityLoading 820ms var(--motion-spring) infinite;
+  opacity: 0.86;
+  animation: activityLoading 1120ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .activity-dot.live {
   background: #ff5f68;
-  opacity: 0.95;
-  animation: activityBreath 1450ms cubic-bezier(0.2, 0, 0, 1) infinite;
+  opacity: 0.9;
+  animation: activityBreath 1880ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .mini-controls {
@@ -404,7 +404,7 @@ button {
   height: 24px;
   min-height: 6px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #fff0a0, #78f2ca);
+  background: linear-gradient(180deg, var(--spectrum-from, #fff0a0), var(--spectrum-to, #78f2ca));
   transform-origin: center;
   transition: transform var(--motion-spectrum) var(--motion-spring);
   will-change: transform;
@@ -887,27 +887,23 @@ button {
   0%,
   100% {
     opacity: 0.58;
-    transform: translateZ(0) scale(0.82);
+    transform: translateZ(0) scale(0.9);
   }
-  44% {
-    opacity: 1;
-    transform: translateZ(0) scale(1.22);
-  }
-  68% {
-    opacity: 0.78;
-    transform: translateZ(0) scale(0.96);
+  50% {
+    opacity: 0.98;
+    transform: translateZ(0) scale(1.1);
   }
 }
 
 @keyframes activityLoading {
   0%,
   100% {
-    opacity: 0.5;
-    transform: translateZ(0) scale(0.82);
+    opacity: 0.48;
+    transform: translateZ(0) scale(0.88);
   }
   50% {
-    opacity: 1;
-    transform: translateZ(0) scale(1.16);
+    opacity: 0.96;
+    transform: translateZ(0) scale(1.08);
   }
 }
 

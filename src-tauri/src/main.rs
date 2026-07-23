@@ -230,22 +230,10 @@ fn App() -> Element {
     } else {
         current_title.clone()
     };
-    let secondary_text = if has_music && current_lyric.is_empty() {
-        "Playing".to_string()
-    } else if has_music {
-        current_detail.clone()
-    } else {
-        current_detail.clone()
-    };
     let primary_class = if has_music && !current_lyric.is_empty() {
         "lyric-title"
     } else {
         "plain-title"
-    };
-    let secondary_class = if has_music && !current_lyric.is_empty() {
-        "artist-line subtle"
-    } else {
-        "artist-line"
     };
     let cover_style = active_track
         .as_ref()
@@ -353,7 +341,6 @@ fn App() -> Element {
                                 key: "{primary_text}",
                                 "{primary_text}"
                             }
-                            span { class: "{secondary_class}", "{secondary_text}" }
                         }
                     } else {
                         div {
@@ -1135,6 +1122,16 @@ button {
   gap: 2px;
 }
 
+.music-copy {
+  align-self: center;
+  align-content: center;
+  min-height: 42px;
+}
+
+.expanded .music-copy {
+  min-height: 52px;
+}
+
 .music-copy strong,
 .speed-copy strong {
   min-width: 0;
@@ -1184,10 +1181,6 @@ button {
 
 .expanded .lyric-title {
   font-size: 19px !important;
-}
-
-.artist-line.subtle {
-  opacity: 0.62;
 }
 
 .speed-chip {

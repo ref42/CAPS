@@ -1065,12 +1065,12 @@ button {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .expanded .core {
   grid-template-columns: 52px minmax(0, 1fr);
-  gap: 12px;
+  gap: 14px;
 }
 
 .logo,
@@ -1131,25 +1131,27 @@ button {
 
 .music-copy {
   align-self: center;
-  align-content: center;
-  min-height: 42px;
+  display: flex;
+  align-items: center;
+  height: 42px;
   overflow: hidden;
 }
 
 .expanded .music-copy {
-  min-height: 52px;
+  height: 52px;
 }
 
 .lyric-viewport {
   position: relative;
   min-width: 0;
-  height: 24px;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 22px), transparent 100%);
 }
 
 .expanded .lyric-viewport {
-  height: 30px;
+  height: 100%;
 }
 
 .music-copy strong,
@@ -1168,9 +1170,13 @@ button {
 .music-copy .lyric-layer {
   position: absolute;
   inset: 0;
-  display: block;
+  display: flex;
+  align-items: center;
   min-width: 0;
   max-width: 100%;
+  pointer-events: none;
+  transform-origin: center;
+  line-height: 1;
 }
 
 .expanded .music-copy strong,
@@ -1206,11 +1212,12 @@ button {
 }
 
 .lyric-in {
-  animation: lyricFlowIn 560ms cubic-bezier(0.2, 0, 0, 1);
+  animation: lyricWipeIn 620ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 .lyric-out {
-  animation: lyricFlowOut 520ms cubic-bezier(0.2, 0, 0, 1) forwards;
+  z-index: 1;
+  animation: lyricWipeOut 520ms cubic-bezier(0.36, 0, 0.2, 1) both;
 }
 
 .expanded .lyric-title {
@@ -1717,38 +1724,45 @@ button {
   }
 }
 
-@keyframes lyricFlowIn {
+@keyframes lyricWipeIn {
   from {
     opacity: 0;
-    filter: blur(8px);
+    filter: blur(6px);
     clip-path: inset(0 0 0 100%);
-    transform: translateX(12px);
+    transform: translate3d(18px, 0, 0);
   }
-  45% {
-    opacity: 1;
-    filter: blur(2px);
-    clip-path: inset(0 0 0 18%);
+  42% {
+    opacity: 0.82;
+    filter: blur(2.5px);
+    clip-path: inset(0 0 0 32%);
+    transform: translate3d(6px, 0, 0);
   }
   to {
     opacity: 1;
     filter: blur(0);
     clip-path: inset(0 0 0 0);
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 
-@keyframes lyricFlowOut {
+@keyframes lyricWipeOut {
   from {
     opacity: 1;
     filter: blur(0);
     clip-path: inset(0 0 0 0);
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
+  }
+  38% {
+    opacity: 0.58;
+    filter: blur(2px);
+    clip-path: inset(0 42% 0 0);
+    transform: translate3d(-7px, 0, 0);
   }
   to {
     opacity: 0;
-    filter: blur(8px);
+    filter: blur(6px);
     clip-path: inset(0 100% 0 0);
-    transform: translateX(-12px);
+    transform: translate3d(-18px, 0, 0);
   }
 }
 

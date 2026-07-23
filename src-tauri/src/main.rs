@@ -10,6 +10,7 @@ mod lyrics;
 mod netease;
 mod storage;
 mod track;
+mod weather;
 mod windowing;
 
 use actions::{spawn_play, spawn_random_queue, spawn_search};
@@ -130,6 +131,7 @@ fn App() -> Element {
     });
     let mut upload = use_signal(|| "0 B/s".to_string());
     let mut download = use_signal(|| "0 B/s".to_string());
+    let mut weather_now = use_signal(weather::WeatherNow::default);
     let mut activity_energy = use_signal(|| 0.0_f64);
     let mut total_upload = use_signal(|| 0_u64);
     let mut total_download = use_signal(|| 0_u64);
@@ -209,6 +211,15 @@ fn App() -> Element {
                 last_rx = rx;
                 last_tx = tx;
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        });
+    });
+
+    use_effect(move || {
+        spawn(async move {
+            loop {
+                weather_now.set(weather::local_weather().await);
+                tokio::time::sleep(std::time::Duration::from_secs(20 * 60)).await;
             }
         });
     });
@@ -519,6 +530,8 @@ fn App() -> Element {
                 visible_primary_text,
                 outgoing_primary_text,
                 transition_key,
+                weather: weather_now.read().label.clone(),
+                weather_title: weather_now.read().title.clone(),
                 download: download.read().clone(),
                 upload: upload.read().clone(),
                 spectrum: *spectrum.read(),

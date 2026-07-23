@@ -183,7 +183,7 @@ button {
   height: 42px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .expanded .idle-speeds {
@@ -191,10 +191,14 @@ button {
 }
 
 .speed-stat {
-  min-width: 92px;
+  width: 82px;
   display: flex;
   align-items: center;
   gap: 5px;
+}
+
+.weather-stat {
+  width: 62px;
 }
 
 .speed-arrow {

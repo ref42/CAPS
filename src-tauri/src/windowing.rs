@@ -2,7 +2,7 @@ use dioxus::desktop::tao::dpi::PhysicalPosition;
 use dioxus::desktop::tao::window::Window;
 use dioxus::desktop::{DesktopContext, LogicalPosition, LogicalSize};
 
-pub const COLLAPSED_W: f64 = 300.0;
+pub const COLLAPSED_W: f64 = 380.0;
 pub const COLLAPSED_H: f64 = 56.0;
 pub const EXPANDED_W: f64 = 460.0;
 pub const EXPANDED_H: f64 = 490.0;

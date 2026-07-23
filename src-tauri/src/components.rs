@@ -291,6 +291,8 @@ pub fn Island(
     visible_primary_text: String,
     outgoing_primary_text: Option<String>,
     transition_key: u64,
+    weather: String,
+    weather_title: String,
     download: String,
     upload: String,
     spectrum: [f32; SPECTRUM_BANDS],
@@ -331,6 +333,11 @@ pub fn Island(
                     }
                 } else {
                     div { class: "speed-copy idle-speeds",
+                        div {
+                            class: "speed-stat weather-stat",
+                            title: "{weather_title}",
+                            strong { "{weather}" }
+                        }
                         div {
                             class: "speed-stat download-stat",
                             title: "Download speed",

@@ -1,0 +1,85 @@
+use serde::Deserialize;
+
+#[derive(Clone, Debug)]
+pub struct WeatherNow {
+    pub label: String,
+    pub title: String,
+}
+
+impl Default for WeatherNow {
+    fn default() -> Self {
+        Self {
+            label: "--°".to_string(),
+            title: "Weather unavailable".to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct LocationResponse {
+    success: bool,
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+    city: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ForecastResponse {
+    current_weather: Option<CurrentWeather>,
+}
+
+#[derive(Deserialize)]
+struct CurrentWeather {
+    temperature: f64,
+    weathercode: i32,
+}
+
+pub async fn local_weather() -> WeatherNow {
+    fetch_local_weather().await.unwrap_or_default()
+}
+
+async fn fetch_local_weather() -> Option<WeatherNow> {
+    let location = reqwest::get("https://ipwho.is/")
+        .await
+        .ok()?
+        .json::<LocationResponse>()
+        .await
+        .ok()?;
+    if !location.success {
+        return None;
+    }
+
+    let latitude = location.latitude?;
+    let longitude = location.longitude?;
+    let url = format!(
+        "https://api.open-meteo.com/v1/forecast?latitude={latitude:.4}&longitude={longitude:.4}&current_weather=true&temperature_unit=celsius"
+    );
+    let forecast = reqwest::get(url)
+        .await
+        .ok()?
+        .json::<ForecastResponse>()
+        .await
+        .ok()?;
+    let current = forecast.current_weather?;
+    let icon = weather_icon(current.weathercode);
+    let temp = current.temperature.round() as i32;
+    let city = location.city.unwrap_or_else(|| "Local".to_string());
+
+    Some(WeatherNow {
+        label: format!("{icon} {temp}°"),
+        title: format!("{city} weather"),
+    })
+}
+
+fn weather_icon(code: i32) -> &'static str {
+    match code {
+        0 => "☀",
+        1 | 2 => "◐",
+        3 => "☁",
+        45 | 48 => "≋",
+        51 | 53 | 55 | 56 | 57 | 61 | 63 | 65 | 66 | 67 | 80 | 81 | 82 => "☂",
+        71 | 73 | 75 | 77 | 85 | 86 => "＊",
+        95 | 96 | 99 => "ϟ",
+        _ => "◌",
+    }
+}

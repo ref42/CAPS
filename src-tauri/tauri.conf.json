@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "QiuNiu",
+  "version": "1.0.0",
+  "identifier": "com.ref42.qiuniu",
+  "build": {
+    "beforeDevCommand": "npm run dev:clean",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "title": "QiuNiu Console",
+        "width": 900,
+        "height": 680,
+        "resizable": false,
+        "center": true,
+        "maximized": false,
+        "maximizable": false,
+        "label": "main",
+        "url": "/",
+        "visible": false,
+        "decorations": false,
+        "transparent": true
+      },
+      {
+        "title": "QiuNiu Island",
+        "width": 210,
+        "height": 36,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "maximized": false,
+        "maximizable": false,
+        "skipTaskbar": true,
+        "shadow": false,
+        "label": "widget",
+        "url": "/widget"
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

@@ -306,6 +306,16 @@ fn App() -> Element {
     } else {
         "island idle-island"
     };
+    let is_loading = status.read().starts_with("Loading") || status.read().starts_with("Searching");
+    let (activity_class, activity_title) = if is_loading {
+        ("activity-dot loading", "Loading")
+    } else if state.is_playing {
+        ("activity-dot live", "Playing")
+    } else if has_music {
+        ("activity-dot paused", "Paused")
+    } else {
+        ("activity-dot idle", "Idle")
+    };
     let core_class = if has_music { "core" } else { "core idle-core" };
     let cover_class = if state.is_playing {
         "cover playing"
@@ -378,6 +388,8 @@ fn App() -> Element {
             },
             Island {
                 island_class,
+                activity_class,
+                activity_title,
                 core_class,
                 cover_class,
                 cover_style,

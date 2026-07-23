@@ -278,6 +278,8 @@ pub fn SettingsPanel(
 #[component]
 pub fn Island(
     island_class: &'static str,
+    activity_class: &'static str,
+    activity_title: &'static str,
     core_class: &'static str,
     cover_class: &'static str,
     cover_style: String,
@@ -302,6 +304,7 @@ pub fn Island(
         section {
             class: "{island_class}",
             onmousedown: ondrag,
+            div { class: "{activity_class}", title: "{activity_title}" }
             div { class: "{core_class}",
                 if has_music {
                     div { class: "{cover_class}",

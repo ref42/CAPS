@@ -34,14 +34,6 @@ pub struct NeteaseSongUrl {
     pub vip_label: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct NeteaseLyricResponse {
-    pub lyric: Option<String>,
-    pub tlyric: Option<String>,
-    pub yrc: Option<String>,
-    pub source: Option<String>,
-}
-
 fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(UA)
@@ -66,7 +58,10 @@ fn song_id(value: &Value) -> String {
 }
 
 fn text(value: Option<&Value>) -> String {
-    value.and_then(Value::as_str).unwrap_or_default().to_string()
+    value
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn first_string(value: &Value, keys: &[&str]) -> String {
@@ -96,7 +91,10 @@ fn map_song(song: &Value) -> Option<NeteaseSong> {
     if name.is_empty() {
         return None;
     }
-    let album = song.get("al").or_else(|| song.get("album")).unwrap_or(&Value::Null);
+    let album = song
+        .get("al")
+        .or_else(|| song.get("album"))
+        .unwrap_or(&Value::Null);
     Some(NeteaseSong {
         provider: Some("netease".to_string()),
         source: Some("netease".to_string()),
@@ -147,7 +145,6 @@ async fn search_direct(
     Ok(songs.iter().filter_map(map_song).collect())
 }
 
-#[tauri::command]
 pub async fn search_netease_songs(
     keywords: String,
     limit: Option<u32>,
@@ -160,7 +157,6 @@ pub async fn search_netease_songs(
     search_direct(&client()?, &keywords, limit.unwrap_or(12).clamp(1, 50)).await
 }
 
-#[tauri::command]
 pub async fn get_netease_song_url(
     id: String,
     quality: Option<String>,
@@ -212,8 +208,6 @@ pub async fn get_netease_song_url(
         });
     }
 
-    
-    
     Ok(NeteaseSongUrl {
         url: Some(format!("{NETEASE_ORIGIN}/song/media/outer/url?id={id}.mp3")),
         playable: Some(true),
@@ -224,54 +218,14 @@ pub async fn get_netease_song_url(
             .get("code")
             .and_then(Value::as_i64)
             .map(|code| format!("netease_code_{code}")),
-        message: Some("Using NetEase public stream fallback; restricted tracks may not play.".to_string()),
+        message: Some(
+            "Using NetEase public stream fallback; restricted tracks may not play.".to_string(),
+        ),
         logged_in: Some(false),
         vip_label: None,
     })
 }
 
-#[tauri::command]
-pub async fn get_netease_lyric(
-    id: String,
-    _api_base_url: Option<String>,
-) -> Result<NeteaseLyricResponse, String> {
-    let id = id.trim();
-    if id.is_empty() {
-        return Err("Missing NetEase song id".to_string());
-    }
-    let body: Value = client()?
-        .get(format!(
-            "{NETEASE_ORIGIN}/api/song/lyric?id={}&lv=-1&kv=-1&tv=-1",
-            urlencoding::encode(id)
-        ))
-        .send()
-        .await
-        .map_err(|e| format!("NetEase lyric unavailable: {e}"))?
-        .json()
-        .await
-        .map_err(|e| format!("Invalid NetEase lyric response: {e}"))?;
-
-    Ok(NeteaseLyricResponse {
-        lyric: body
-            .get("lrc")
-            .and_then(|lrc| lrc.get("lyric"))
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        tlyric: body
-            .get("tlyric")
-            .and_then(|lrc| lrc.get("lyric"))
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        yrc: body
-            .get("yrc")
-            .and_then(|lrc| lrc.get("lyric"))
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        source: Some("netease_direct".to_string()),
-    })
-}
-
-#[tauri::command]
 pub async fn random_netease_queue(
     count: Option<u32>,
     _api_base_url: Option<String>,

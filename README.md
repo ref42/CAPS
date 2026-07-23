@@ -1,6 +1,8 @@
 # QiuNiu
 
-QiuNiu is a Tauri 2, Rust, Vue 3 desktop island for music search, queue playback, network speed, system status, and compact controls.
+QiuNiu is a Rust desktop music island built with Dioxus Desktop.
+
+The app searches NetEase Music, adds tracks to a local queue, plays public stream URLs directly, shows compact playback state, displays network speed, and includes random queue loading for 50 or 100 tracks.
 
 Logo: `src/assets/qiuniu.logo`
 
@@ -9,24 +11,29 @@ Author: ref42
 ## Run
 
 ```powershell
-npm.cmd install
-npm.cmd run tauri dev
+cargo run --manifest-path src-tauri\Cargo.toml
+```
+
+## Check
+
+```powershell
+cargo check --manifest-path src-tauri\Cargo.toml
 ```
 
 ## Build
 
 ```powershell
-npm.cmd run build
-npm.cmd run tauri build
+cargo build --manifest-path src-tauri\Cargo.toml --release
 ```
 
 ## Tech
 
-- Tauri 2
 - Rust
-- Vue 3
-- TypeScript
-- Vite
+- Dioxus Desktop
+- Rodio
+- CPAL
+- Reqwest
+- Sysinfo
 
 ## License
 

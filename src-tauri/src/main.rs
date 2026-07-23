@@ -90,6 +90,7 @@ fn App() -> Element {
     let mut glow_border = use_signal(|| true);
     let mut spring_style = use_signal(|| "smooth".to_string());
     let mut volume = use_signal(|| 100_u32);
+    let mut island_size = use_signal(|| 100_u32);
     let mut random_count = use_signal(|| 50_u32);
     let mut query = use_signal(String::new);
     let results = use_signal(Vec::<Track>::new);
@@ -147,7 +148,7 @@ fn App() -> Element {
         let desktop = desktop.clone();
         move || {
             expanded.set(true);
-            set_island_window(&desktop, true);
+            set_island_window(&desktop, true, island_size() as f64 / 100.0);
         }
     };
 
@@ -156,7 +157,7 @@ fn App() -> Element {
         move || {
             if !*input_focused.read() {
                 expanded.set(false);
-                set_island_window(&desktop, false);
+                set_island_window(&desktop, false, island_size() as f64 / 100.0);
             }
         }
     };
@@ -230,15 +231,29 @@ fn App() -> Element {
         state.detail.clone()
     };
     let current_lyric = current_lyric_line(&lyrics.read(), state.position).unwrap_or_default();
-    let island_subtitle = if current_lyric.is_empty() {
+    let primary_text = if has_music && !current_lyric.is_empty() {
+        current_lyric.clone()
+    } else if has_music {
         current_detail.clone()
     } else {
-        current_lyric.clone()
+        current_title.clone()
     };
-    let subtitle_class = if current_lyric.is_empty() {
-        "artist-line"
+    let secondary_text = if has_music && current_lyric.is_empty() {
+        "Playing".to_string()
+    } else if has_music {
+        current_detail.clone()
     } else {
-        "lyric-line"
+        current_detail.clone()
+    };
+    let primary_class = if has_music && !current_lyric.is_empty() {
+        "lyric-title"
+    } else {
+        "plain-title"
+    };
+    let secondary_class = if has_music && !current_lyric.is_empty() {
+        "artist-line subtle"
+    } else {
+        "artist-line"
     };
     let cover_style = active_track
         .as_ref()
@@ -254,7 +269,9 @@ fn App() -> Element {
     let is_expanded = *expanded.read();
     let queue_len = queue.read().len();
     let opacity_css = (*opacity.read() as f64 / 100.0).clamp(0.2, 1.0);
-    let stage_style = format!("--island-opacity: {opacity_css:.2};");
+    let island_scale = (*island_size.read() as f64 / 100.0).clamp(0.85, 1.35);
+    let stage_style =
+        format!("--island-opacity: {opacity_css:.2}; --island-scale: {island_scale:.2};");
     let spring_class = spring_style.read().clone();
     let stage_class = if is_expanded {
         "stage expanded"
@@ -294,7 +311,11 @@ fn App() -> Element {
                 onmousedown: {
                     let desktop = desktop.clone();
                     move |event| {
-                        if event.modifiers().shift() && event.trigger_button().is_some_and(|button| button == MouseButton::Primary) {
+                        if event.modifiers().shift()
+                            && event
+                                .trigger_button()
+                                .is_some_and(|button| button == MouseButton::Primary)
+                        {
                             desktop.drag();
                         }
                     }
@@ -308,15 +329,18 @@ fn App() -> Element {
                             }
                         }
                         div { class: "music-copy",
-                            strong { "{current_title}" }
-                            span {
-                                class: "{subtitle_class}",
-                                key: "{island_subtitle}",
-                                "{island_subtitle}"
+                            strong {
+                                class: "{primary_class}",
+                                key: "{primary_text}",
+                                "{primary_text}"
                             }
+                            span { class: "{secondary_class}", "{secondary_text}" }
                         }
                     } else {
-                        div { class: "logo speed-logo", dangerous_inner_html: LOGO }
+                        div {
+                            class: "logo speed-logo",
+                            dangerous_inner_html: LOGO,
+                        }
                         div { class: "speed-copy",
                             strong { "{download}" }
                             span { "DOWN" }
@@ -332,7 +356,11 @@ fn App() -> Element {
                                 move |_| player.send(AudioCommand::PlayPause)
                             },
                             title: "Play/Pause",
-                            if state.is_playing { "Ⅱ" } else { "▶" }
+                            if state.is_playing {
+                                "Ⅱ"
+                            } else {
+                                "▶"
+                            }
                         }
                         button { onclick: play_next, title: "Next", "⏭" }
                         button {
@@ -349,7 +377,7 @@ fn App() -> Element {
                             "■"
                         }
                     }
-                } else {
+                } else if !has_music || !state.is_playing {
                     div { class: "speed-chip",
                         span { "UP {upload}" }
                     }
@@ -403,7 +431,7 @@ fn App() -> Element {
                                         input_focused.set(false);
                                         if !*pointer_inside.read() {
                                             expanded.set(false);
-                                            set_island_window(&desktop, false);
+                                            set_island_window(&desktop, false, island_size() as f64 / 100.0);
                                         }
                                     }
                                 },
@@ -412,7 +440,7 @@ fn App() -> Element {
                                     if event.key() == Key::Enter {
                                         spawn_search(query.read().trim().to_string(), results, status);
                                     }
-                                }
+                                },
                             }
                             button {
                                 class: "icon-button",
@@ -421,7 +449,9 @@ fn App() -> Element {
                             }
                         }
                         div { class: "random-row",
-                            button { onclick: move |_| load_random(random_count()), "Random {random_count}" }
+                            button { onclick: move |_| load_random(random_count()),
+                                "Random {random_count}"
+                            }
                             button { onclick: move |_| load_random(50), "50" }
                             button { onclick: move |_| load_random(100), "100" }
                         }
@@ -436,7 +466,7 @@ fn App() -> Element {
                                     if let Ok(value) = event.value().parse::<u32>() {
                                         random_count.set(value.clamp(1, 100));
                                     }
-                                }
+                                },
                             }
                             input {
                                 class: "number-input",
@@ -448,7 +478,7 @@ fn App() -> Element {
                                     if let Ok(value) = event.value().parse::<u32>() {
                                         random_count.set(value.clamp(1, 100));
                                     }
-                                }
+                                },
                             }
                         }
                         div { class: "song-list",
@@ -463,7 +493,7 @@ fn App() -> Element {
                                         let added = next.len();
                                         queue.set(next);
                                         status.set(format!("Queued {added} tracks."));
-                                    }
+                                    },
                                 }
                             }
                             if results.read().is_empty() {
@@ -485,7 +515,7 @@ fn App() -> Element {
                             }
                         }
                         div { class: "song-list",
-                            for (index, track) in queue.read().iter().cloned().enumerate() {
+                            for (index , track) in queue.read().iter().cloned().enumerate() {
                                 QueueTrackRow {
                                     track,
                                     active: current_index.read().is_some_and(|i| i == index),
@@ -519,7 +549,7 @@ fn App() -> Element {
                                                 }
                                             }
                                         }
-                                    }
+                                    },
                                 }
                             }
                             if queue.read().is_empty() {
@@ -530,56 +560,98 @@ fn App() -> Element {
                 } else if tab == "stats" {
                     div { class: "panel-section stats",
                         div { class: "speed-grid",
-                            div { span { "Upload" } strong { "{upload}" } }
-                            div { span { "Download" } strong { "{download}" } }
+                            div {
+                                span { "Upload" }
+                                strong { "{upload}" }
+                            }
+                            div {
+                                span { "Download" }
+                                strong { "{download}" }
+                            }
                         }
-                        div { class: "stat-line", span { "Total up" } strong { "{format_bytes(*total_upload.read())}" } }
-                        div { class: "stat-line", span { "Total down" } strong { "{format_bytes(*total_download.read())}" } }
-                        div { class: "stat-line", span { "This month" } strong { "{format_bytes(total_upload() + total_download())}" } }
+                        div { class: "stat-line",
+                            span { "Total up" }
+                            strong { "{format_bytes(*total_upload.read())}" }
+                        }
+                        div { class: "stat-line",
+                            span { "Total down" }
+                            strong { "{format_bytes(*total_download.read())}" }
+                        }
+                        div { class: "stat-line",
+                            span { "This month" }
+                            strong { "{format_bytes(total_upload() + total_download())}" }
+                        }
                         div { class: "status-text", "{status}" }
                     }
                 } else {
                     div { class: "panel-section settings",
                         label { class: "setting",
                             span { "Opacity" }
-                            input {
-                                r#type: "range",
-                                min: "20",
-                                max: "100",
-                                value: "{opacity}",
-                                oninput: move |event| {
-                                    if let Ok(value) = event.value().parse::<u32>() {
-                                        opacity.set(value.clamp(20, 100));
-                                    }
+                            div { class: "setting-control",
+                                input {
+                                    r#type: "range",
+                                    min: "20",
+                                    max: "100",
+                                    value: "{opacity}",
+                                    oninput: move |event| {
+                                        if let Ok(value) = event.value().parse::<u32>() {
+                                            opacity.set(value.clamp(20, 100));
+                                        }
+                                    },
                                 }
+                                output { "{opacity}%" }
                             }
                         }
                         label { class: "setting",
                             span { "Volume" }
-                            input {
-                                r#type: "range",
-                                min: "0",
-                                max: "100",
-                                value: "{volume}",
-                                oninput: {
-                                    let player = player.clone();
-                                    move |event| {
-                                        if let Ok(value) = event.value().parse::<u32>() {
-                                            let value = value.clamp(0, 100);
-                                            volume.set(value);
-                                            player.send(AudioCommand::SetVolume(value as f32 / 100.0));
+                            div { class: "setting-control",
+                                input {
+                                    r#type: "range",
+                                    min: "0",
+                                    max: "100",
+                                    value: "{volume}",
+                                    oninput: {
+                                        let player = player.clone();
+                                        move |event| {
+                                            if let Ok(value) = event.value().parse::<u32>() {
+                                                let value = value.clamp(0, 100);
+                                                volume.set(value);
+                                                player.send(AudioCommand::SetVolume(value as f32 / 100.0));
+                                            }
                                         }
-                                    }
+                                    },
                                 }
+                                output { "{volume}%" }
                             }
-                            output { "{volume}%" }
+                        }
+                        label { class: "setting",
+                            span { "Island size" }
+                            div { class: "setting-control",
+                                input {
+                                    r#type: "range",
+                                    min: "85",
+                                    max: "135",
+                                    value: "{island_size}",
+                                    oninput: {
+                                        let desktop = desktop.clone();
+                                        move |event| {
+                                            if let Ok(value) = event.value().parse::<u32>() {
+                                                let value = value.clamp(85, 135);
+                                                island_size.set(value);
+                                                set_island_window(&desktop, expanded(), value as f64 / 100.0);
+                                            }
+                                        }
+                                    },
+                                }
+                                output { "{island_size}%" }
+                            }
                         }
                         label { class: "setting",
                             span { "Media island" }
                             input {
                                 r#type: "checkbox",
                                 checked: media_island(),
-                                onchange: move |_| media_island.set(!media_island())
+                                onchange: move |_| media_island.set(!media_island()),
                             }
                         }
                         label { class: "setting",
@@ -587,7 +659,7 @@ fn App() -> Element {
                             input {
                                 r#type: "checkbox",
                                 checked: glow_border(),
-                                onchange: move |_| glow_border.set(!glow_border())
+                                onchange: move |_| glow_border.set(!glow_border()),
                             }
                         }
                         div { class: "setting",
@@ -770,12 +842,15 @@ fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: Signa
     });
 }
 
-fn set_island_window(desktop: &DesktopContext, expanded: bool) {
-    let (width, height) = if expanded {
+fn set_island_window(desktop: &DesktopContext, expanded: bool, size_scale: f64) {
+    let size_scale = size_scale.clamp(0.85, 1.35);
+    let (base_width, base_height) = if expanded {
         (EXPANDED_W, EXPANDED_H)
     } else {
         (COLLAPSED_W, COLLAPSED_H)
     };
+    let width = base_width * size_scale;
+    let height = base_height * size_scale;
     let old_size = desktop.inner_size();
     let old_position = desktop.outer_position().ok();
     let scale = desktop.scale_factor();
@@ -891,6 +966,7 @@ button {
 .stage {
   width: 300px;
   height: 56px;
+  zoom: var(--island-scale);
   color: rgba(248, 255, 252, 0.96);
   user-select: none;
   -webkit-font-smoothing: antialiased;
@@ -1058,6 +1134,22 @@ button {
   animation: lyricWipe 520ms cubic-bezier(0.2, 0, 0, 1);
   clip-path: inset(0 0 0 0);
   will-change: opacity, filter, transform, clip-path;
+}
+
+.lyric-title {
+  color: rgba(248, 255, 252, 0.98);
+  font-size: 15px !important;
+  animation: lyricWipe 520ms cubic-bezier(0.2, 0, 0, 1);
+  clip-path: inset(0 0 0 0);
+  will-change: opacity, filter, transform, clip-path;
+}
+
+.expanded .lyric-title {
+  font-size: 19px !important;
+}
+
+.artist-line.subtle {
+  opacity: 0.62;
 }
 
 .speed-chip {
@@ -1475,17 +1567,26 @@ button {
 
 .setting {
   min-height: 42px;
-  display: flex;
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
+  padding: 0 2px;
   color: rgba(248, 255, 252, 0.84);
   font-size: 12.5px;
   font-weight: 780;
 }
 
+.setting-control {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px;
+  align-items: center;
+  gap: 10px;
+}
+
 .setting output {
-  min-width: 42px;
+  width: 46px;
   text-align: right;
   color: rgba(248, 255, 252, 0.62);
   font-size: 12px;
@@ -1493,7 +1594,8 @@ button {
 }
 
 .setting input[type="range"] {
-  width: 154px;
+  width: 100%;
+  min-width: 0;
   accent-color: #34c759;
 }
 

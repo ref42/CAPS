@@ -22,6 +22,7 @@ const COLLAPSED_W: f64 = 300.0;
 const COLLAPSED_H: f64 = 56.0;
 const EXPANDED_W: f64 = 430.0;
 const EXPANDED_H: f64 = 490.0;
+const ISLAND_BLEED: f64 = 12.0;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Track {
@@ -48,7 +49,10 @@ fn main() {
 fn desktop_config() -> Config {
     let mut window = WindowBuilder::new()
         .with_title("QiuNiu Island")
-        .with_inner_size(LogicalSize::new(COLLAPSED_W, COLLAPSED_H))
+        .with_inner_size(LogicalSize::new(
+            COLLAPSED_W + ISLAND_BLEED * 2.0,
+            COLLAPSED_H + ISLAND_BLEED * 2.0,
+        ))
         .with_resizable(false)
         .with_decorations(false)
         .with_transparent(true)
@@ -73,7 +77,7 @@ fn desktop_config() -> Config {
                 let _ = window.set_skip_taskbar(true);
                 window.set_undecorated_shadow(false);
             }
-            place_top_center(&window, COLLAPSED_W);
+            place_top_center(&window, COLLAPSED_W + ISLAND_BLEED * 2.0);
         })
 }
 
@@ -252,7 +256,7 @@ fn App() -> Element {
     let island_scale = (*island_size.read() as f64 / 100.0).clamp(0.85, 1.35);
     let collapsed_width = collapsed_width_for_text(&primary_text, has_music);
     let stage_style = format!(
-        "--island-opacity: {opacity_css:.2}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px;"
+        "--island-opacity: {opacity_css:.2}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
     );
     let spring_class = spring_style.read().clone();
     let stage_class = if is_expanded {
@@ -871,7 +875,10 @@ fn set_island_window(
     let (base_width, base_height) = if expanded {
         (EXPANDED_W, EXPANDED_H)
     } else {
-        (collapsed_width.max(COLLAPSED_W), COLLAPSED_H)
+        (
+            collapsed_width.max(COLLAPSED_W) + ISLAND_BLEED * 2.0,
+            COLLAPSED_H + ISLAND_BLEED * 2.0,
+        )
     };
     let width = base_width * size_scale;
     let height = base_height * size_scale;
@@ -988,19 +995,21 @@ button {
 }
 
 .stage {
-  width: var(--collapsed-width);
-  height: 56px;
+  width: calc(var(--collapsed-width) + var(--island-bleed) * 2);
+  height: calc(56px + var(--island-bleed) * 2);
+  padding: var(--island-bleed);
   zoom: var(--island-scale);
   color: rgba(248, 255, 252, 0.96);
   user-select: none;
   -webkit-font-smoothing: antialiased;
-  overflow: hidden;
+  overflow: visible;
   background: transparent;
 }
 
 .stage.expanded {
   width: 430px;
   height: 490px;
+  padding: 0;
 }
 
 .island {
@@ -1015,7 +1024,7 @@ button {
   border-radius: 999px;
   background: rgba(5, 8, 9, var(--island-opacity));
   border: 1px solid rgba(118, 244, 207, 0.2);
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.34), inset 0 1px rgba(255, 255, 255, 0.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28), inset 0 1px rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(22px) saturate(1.25);
   overflow: hidden;
 }

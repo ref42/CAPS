@@ -130,6 +130,7 @@ fn App() -> Element {
     });
     let mut upload = use_signal(|| "0 B/s".to_string());
     let mut download = use_signal(|| "0 B/s".to_string());
+    let mut activity_energy = use_signal(|| 0.0_f64);
     let mut total_upload = use_signal(|| 0_u64);
     let mut total_download = use_signal(|| 0_u64);
     let mut lyrics = use_signal(Vec::<LyricLine>::new);
@@ -160,9 +161,27 @@ fn App() -> Element {
     use_effect(move || {
         let player = player_for_state.clone();
         spawn(async move {
+            let mut smoothed_energy = 0.0_f64;
             loop {
-                audio_state.set(player.get_state());
-                spectrum.set(audio_spectrum::get_audio_spectrum());
+                let next_state = player.get_state();
+                let next_spectrum = audio_spectrum::get_audio_spectrum();
+                let raw_energy = if next_state.is_playing {
+                    activity_energy_from_spectrum(&next_spectrum)
+                } else {
+                    0.0
+                };
+                let blend = if raw_energy > smoothed_energy {
+                    0.34
+                } else {
+                    0.16
+                };
+                smoothed_energy += (raw_energy - smoothed_energy) * blend;
+                if !next_state.is_playing && smoothed_energy < 0.01 {
+                    smoothed_energy = 0.0;
+                }
+                audio_state.set(next_state);
+                spectrum.set(next_spectrum);
+                activity_energy.set(smoothed_energy);
                 tokio::time::sleep(std::time::Duration::from_millis(120)).await;
             }
         });
@@ -408,6 +427,14 @@ fn App() -> Element {
     } else {
         ("activity-dot idle", "Idle")
     };
+    let activity_style = if state.is_playing {
+        let energy = activity_energy().clamp(0.0, 1.0);
+        let activity_scale = 0.92 + energy * 0.3;
+        let activity_opacity = 0.58 + energy * 0.4;
+        format!("--activity-scale: {activity_scale:.3}; --activity-opacity: {activity_opacity:.3};")
+    } else {
+        String::new()
+    };
     let core_class = if has_music { "core" } else { "core idle-core" };
     let cover_class = if state.is_playing {
         "cover playing"
@@ -482,6 +509,7 @@ fn App() -> Element {
                 island_class,
                 activity_class,
                 activity_title,
+                activity_style,
                 core_class,
                 cover_class,
                 cover_style,
@@ -663,6 +691,25 @@ fn collapsed_width_for_text(_text: &str, has_music: bool) -> f64 {
         MUSIC_COLLAPSED_W
     } else {
         COLLAPSED_W
+    }
+}
+
+fn activity_energy_from_spectrum(spectrum: &[f32]) -> f64 {
+    let weights = [1.2, 1.16, 1.05, 0.94, 0.76, 0.62, 0.48];
+    let mut weighted_energy = 0.0_f64;
+    let mut total_weight = 0.0_f64;
+
+    for (index, value) in spectrum.iter().enumerate() {
+        let weight = weights.get(index).copied().unwrap_or(0.5);
+        let normalized = ((*value as f64 - 0.28) / 0.94).clamp(0.0, 1.0);
+        weighted_energy += normalized.powf(1.18) * weight;
+        total_weight += weight;
+    }
+
+    if total_weight <= f64::EPSILON {
+        0.0
+    } else {
+        (weighted_energy / total_weight).clamp(0.0, 1.0)
     }
 }
 

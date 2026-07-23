@@ -22,7 +22,8 @@ const COLLAPSED_W: f64 = 300.0;
 const COLLAPSED_H: f64 = 56.0;
 const EXPANDED_W: f64 = 430.0;
 const EXPANDED_H: f64 = 490.0;
-const ISLAND_BLEED: f64 = 12.0;
+const MUSIC_COLLAPSED_W: f64 = EXPANDED_W;
+const ISLAND_BLEED: f64 = 18.0;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Track {
@@ -216,19 +217,11 @@ fn App() -> Element {
     } else {
         state.title.clone()
     };
-    let current_detail = if state.detail.is_empty() {
-        active_track
-            .as_ref()
-            .map(|track| track.artist.clone())
-            .unwrap_or_else(|| "NetEase island player".to_string())
-    } else {
-        state.detail.clone()
-    };
     let current_lyric = current_lyric_line(&lyrics.read(), state.position).unwrap_or_default();
     let primary_text = if has_music && !current_lyric.is_empty() {
         current_lyric.clone()
     } else if has_music {
-        current_detail.clone()
+        current_title.clone()
     } else {
         current_title.clone()
     };
@@ -277,6 +270,32 @@ fn App() -> Element {
     } else {
         "cover"
     };
+    let mut visible_primary = use_signal(|| primary_text.clone());
+    let mut outgoing_primary = use_signal(|| None::<String>);
+    let mut lyric_transition_id = use_signal(|| 0_u64);
+
+    {
+        let next_primary = primary_text.clone();
+        use_effect(move || {
+            let current = visible_primary();
+            if current != next_primary {
+                if !current.is_empty() {
+                    outgoing_primary.set(Some(current));
+                }
+                visible_primary.set(next_primary.clone());
+                lyric_transition_id.set(lyric_transition_id().wrapping_add(1));
+                let mut outgoing_primary = outgoing_primary;
+                spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(520)).await;
+                    outgoing_primary.set(None);
+                });
+            }
+        });
+    }
+
+    let visible_primary_text = visible_primary.read().clone();
+    let outgoing_primary_text = outgoing_primary.read().clone();
+    let transition_key = lyric_transition_id();
     let window_size_cache = use_hook(|| std::cell::RefCell::new(None::<(bool, i32, u32)>));
 
     {
@@ -343,10 +362,19 @@ fn App() -> Element {
                             }
                         }
                         div { class: "music-copy",
-                            strong {
-                                class: "{primary_class}",
-                                key: "{primary_text}",
-                                "{primary_text}"
+                            div { class: "lyric-viewport",
+                                if let Some(outgoing_text) = outgoing_primary_text {
+                                    strong {
+                                        class: "{primary_class} lyric-layer lyric-out",
+                                        key: "out-{transition_key}",
+                                        "{outgoing_text}"
+                                    }
+                                }
+                                strong {
+                                    class: "{primary_class} lyric-layer lyric-in",
+                                    key: "in-{transition_key}-{visible_primary_text}",
+                                    "{visible_primary_text}"
+                                }
                             }
                         }
                     } else {
@@ -820,17 +848,12 @@ fn current_lyric_line(lines: &[LyricLine], position: f64) -> Option<String> {
         .map(|line| line.text.clone())
 }
 
-fn collapsed_width_for_text(text: &str, has_music: bool) -> f64 {
-    if !has_music {
-        return COLLAPSED_W;
+fn collapsed_width_for_text(_text: &str, has_music: bool) -> f64 {
+    if has_music {
+        MUSIC_COLLAPSED_W
+    } else {
+        COLLAPSED_W
     }
-
-    let text_width = text
-        .chars()
-        .map(|ch| if ch.is_ascii() { 7.4 } else { 15.2 })
-        .sum::<f64>();
-
-    (138.0 + text_width).clamp(COLLAPSED_W, 540.0)
 }
 
 fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: Signal<String>) {
@@ -1109,10 +1132,23 @@ button {
   align-self: center;
   align-content: center;
   min-height: 42px;
+  overflow: hidden;
 }
 
 .expanded .music-copy {
   min-height: 52px;
+}
+
+.lyric-viewport {
+  position: relative;
+  min-width: 0;
+  height: 24px;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 18px), transparent 100%);
+}
+
+.expanded .lyric-viewport {
+  height: 30px;
 }
 
 .music-copy strong,
@@ -1126,6 +1162,14 @@ button {
   line-height: 1.05;
   font-weight: 760;
   letter-spacing: 0;
+}
+
+.music-copy .lyric-layer {
+  position: absolute;
+  inset: 0;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .expanded .music-copy strong,
@@ -1149,7 +1193,6 @@ button {
 
 .lyric-line {
   color: rgba(248, 255, 252, 0.74);
-  animation: lyricWipe 520ms cubic-bezier(0.2, 0, 0, 1);
   clip-path: inset(0 0 0 0);
   will-change: opacity, filter, transform, clip-path;
 }
@@ -1157,9 +1200,16 @@ button {
 .lyric-title {
   color: rgba(248, 255, 252, 0.98);
   font-size: 15px !important;
-  animation: lyricWipe 520ms cubic-bezier(0.2, 0, 0, 1);
   clip-path: inset(0 0 0 0);
   will-change: opacity, filter, transform, clip-path;
+}
+
+.lyric-in {
+  animation: lyricFlowIn 560ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.lyric-out {
+  animation: lyricFlowOut 520ms cubic-bezier(0.2, 0, 0, 1) forwards;
 }
 
 .expanded .lyric-title {
@@ -1666,22 +1716,38 @@ button {
   }
 }
 
-@keyframes lyricWipe {
+@keyframes lyricFlowIn {
   from {
     opacity: 0;
-    filter: blur(10px);
-    clip-path: inset(0 100% 0 0);
-    transform: translateY(3px);
+    filter: blur(8px);
+    clip-path: inset(0 0 0 100%);
+    transform: translateX(12px);
   }
-  55% {
+  45% {
     opacity: 1;
     filter: blur(2px);
+    clip-path: inset(0 0 0 18%);
   }
   to {
     opacity: 1;
     filter: blur(0);
     clip-path: inset(0 0 0 0);
-    transform: translateY(0);
+    transform: translateX(0);
+  }
+}
+
+@keyframes lyricFlowOut {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    clip-path: inset(0 0 0 0);
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    filter: blur(8px);
+    clip-path: inset(0 100% 0 0);
+    transform: translateX(-12px);
   }
 }
 

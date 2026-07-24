@@ -14,14 +14,16 @@
 
 <p align="center">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
+  <img alt="Dioxus" src="https://avatars.githubusercontent.com/u/79236386?s=20" width="20" height="20">
   <img alt="Dioxus" src="https://img.shields.io/badge/Dioxus-Desktop-22a6f2?logo=dioxus&logoColor=white">
   <img alt="Windows" src="https://img.shields.io/badge/Windows-Desktop-0078d4?logo=windows11&logoColor=white">
+  <img alt="RustAudio" src="https://avatars.githubusercontent.com/u/9999738?s=20&v=4" width="20" height="20">
   <img alt="Audio" src="https://img.shields.io/badge/Audio-Rodio%20%2B%20CPAL-ff69b4">
   <img alt="FFT" src="https://img.shields.io/badge/Spectrum-RustFFT-7df2ca">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-white">
 </p>
 
-**CAPS** 是 **`C`atch `A`ll `P`ossible `S`ources** 的缩写。
+**CAPS** 是 **`C`atch `A`ll `P`ossible `S`ources** 的缩写，也来自 **capsule**：像一颗可以治愈的小胶囊一样，轻巧地装下音乐、状态和控制。
 
 CAPS 用 Rust 和 Dioxus Desktop 构建。它停留在屏幕顶部，默认只显示必要的系统状态；当音乐播放时，它会变成一个动态音乐岛，展示封面、歌词、进度、频谱和基础播放控制。
 
@@ -34,7 +36,7 @@ CAPS 的目标不是成为完整音乐软件，而是做一个轻、小、好看
 
 ## 功能
 
-- 搜索网易云音乐，并把可播放歌曲加入队列。
+- 搜索在线音乐，并把可播放歌曲加入队列。
 - 随机加载指定数量的可播放歌曲。
 - 加载本地音乐文件夹，并批量加入播放队列。
 - 播放、暂停、停止、上一首、下一首和拖动进度。
@@ -49,11 +51,11 @@ CAPS 的目标不是成为完整音乐软件，而是做一个轻、小、好看
 | 技术 | 用途 |
 | --- | --- |
 | ![Rust](https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white) | 主程序、音频、状态管理 |
-| ![Dioxus](https://img.shields.io/badge/Dioxus-Desktop-22a6f2?logo=dioxus&logoColor=white) | 桌面 UI |
-| ![Rodio](https://img.shields.io/badge/Rodio-Playback-ff69b4) | 音频播放 |
-| ![CPAL](https://img.shields.io/badge/CPAL-Audio%20Device-8e8e93) | 音频设备与采样 |
+| <img alt="Dioxus" src="https://avatars.githubusercontent.com/u/79236386?s=18" width="18" height="18"> ![Dioxus](https://img.shields.io/badge/Dioxus-Desktop-22a6f2?logo=dioxus&logoColor=white) | 桌面 UI |
+| <img alt="Rodio" src="https://avatars.githubusercontent.com/u/9999738?s=18&v=4" width="18" height="18"> ![Rodio](https://img.shields.io/badge/Rodio-Playback-ff69b4) | 音频播放 |
+| <img alt="RustAudio" src="https://avatars.githubusercontent.com/u/9999738?s=18&v=4" width="18" height="18"> ![CPAL](https://img.shields.io/badge/CPAL-Audio%20Device-8e8e93) | 音频设备与采样 |
 | ![RustFFT](https://img.shields.io/badge/RustFFT-Spectrum-7df2ca) | 频谱分析 |
-| ![Reqwest](https://img.shields.io/badge/Reqwest-HTTP-34c759) | 网易云音乐请求 |
+| ![Reqwest](https://img.shields.io/badge/Reqwest-HTTP-34c759) | 在线音乐请求 |
 | ![Sysinfo](https://img.shields.io/badge/Sysinfo-System%20Stats-0078d4) | CPU、RAM、网络状态 |
 | ![Symphonia](https://img.shields.io/badge/Symphonia-Metadata-f5c542) | 本地音乐元数据和封面 |
 
@@ -71,7 +73,6 @@ CAPS 的目标不是成为完整音乐软件，而是做一个轻、小、好看
 │       ├── app.css          # 视觉样式和动画
 │       ├── audio.rs         # 音频播放线程
 │       ├── audio_spectrum.rs
-│       ├── netease.rs       # 网易云音乐接口
 │       ├── local_music.rs   # 本地音乐扫描和元数据
 │       ├── lyrics.rs
 │       ├── storage.rs

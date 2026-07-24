@@ -1,41 +1,85 @@
 # CAPS
 
-**CAPS** means **`C`atch `A`ll `P`ossible `S`ources**.
-
 <p align="center">
-  <img src="assets/caps.svg" alt="CAPS logo" width="600px">
+  <img src="assets/brand.svg" alt="CAPS brand logo" width="600px">
 </p>
 
-CAPS is a lightweight desktop music island built with Rust and Dioxus Desktop. It sits on screen like a compact capsule: quiet when idle, expressive when music is playing.
+<p align="center">
+  <strong>A lightweight, always-on-top Windows music island shaped like a capsule.</strong>
+</p>
 
-## What It Does
+<p align="center">
+  <a href="README.md">中文</a>
+</p>
 
-CAPS has two main states:
+<p align="center">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
+  <img alt="Dioxus" src="https://img.shields.io/badge/Dioxus-Desktop-22a6f2?logo=dioxus&logoColor=white">
+  <img alt="Windows" src="https://img.shields.io/badge/Windows-Desktop-0078d4?logo=windows11&logoColor=white">
+  <img alt="Audio" src="https://img.shields.io/badge/Audio-Rodio%20%2B%20CPAL-ff69b4">
+  <img alt="FFT" src="https://img.shields.io/badge/Spectrum-RustFFT-7df2ca">
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-white">
+</p>
+
+**CAPS** means **`C`atch `A`ll `P`ossible `S`ources**.
+
+CAPS is built with Rust and Dioxus Desktop. It lives at the top of the screen, stays quiet while idle, and turns into a dynamic music island while playing: album art, lyrics, progress, spectrum, and compact playback controls.
+
+## States
 
 - **Idle**: shows CPU usage, RAM usage, upload speed, download speed, and a live audio spectrum.
-- **Music**: searches NetEase Music, queues playable songs, plays audio, shows synced lyrics, spins album art, and renders a bouncy FFT spectrum.
+- **Music**: shows album art, synced lyrics, playback progress, playback controls, and a bouncy FFT spectrum.
 
-The app is designed to stay small, fast, and out of the way. The current build is usually around a few MB of memory while idle.
+CAPS is not trying to be a full music client. It is a small, polished desktop control layer for music.
 
 ## Features
 
 - Search NetEase Music and add playable songs to the queue.
 - Randomly load a chosen number of playable songs.
+- Load a local music folder and batch-add tracks to the queue.
 - Play, pause, stop, skip, and seek from the island.
 - Display synced lyrics with smooth transitions.
-- Pick spectrum colors from album art when available.
+- Spin album art while music is playing.
+- Pick spectrum and progress colors from album art when available.
 - Show CPU, RAM, and network speed when no music is active.
 - Right-click the island to clean song cache and exit CAPS.
 
 ## Tech Stack
 
-- Rust
-- Dioxus Desktop
-- Rodio
-- CPAL
-- RustFFT
-- Reqwest
-- Sysinfo
+| Tech | Role |
+| --- | --- |
+| ![Rust](https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white) | Application core, audio, state |
+| ![Dioxus](https://img.shields.io/badge/Dioxus-Desktop-22a6f2?logo=dioxus&logoColor=white) | Desktop UI |
+| ![Rodio](https://img.shields.io/badge/Rodio-Playback-ff69b4) | Audio playback |
+| ![CPAL](https://img.shields.io/badge/CPAL-Audio%20Device-8e8e93) | Audio device and sampling |
+| ![RustFFT](https://img.shields.io/badge/RustFFT-Spectrum-7df2ca) | Spectrum analysis |
+| ![Reqwest](https://img.shields.io/badge/Reqwest-HTTP-34c759) | NetEase Music requests |
+| ![Sysinfo](https://img.shields.io/badge/Sysinfo-System%20Stats-0078d4) | CPU, RAM, and network stats |
+| ![Symphonia](https://img.shields.io/badge/Symphonia-Metadata-f5c542) | Local music metadata and cover art |
+
+## Project Layout
+
+```text
+.
+├── assets/              # README and project brand assets
+├── src-tauri/
+│   ├── Cargo.toml
+│   ├── Cargo.lock
+│   └── src/
+│       ├── main.rs          # Dioxus Desktop entry and app state
+│       ├── components.rs    # Island, search, queue, settings UI
+│       ├── app.css          # Visual design and animation
+│       ├── audio.rs         # Audio playback thread
+│       ├── audio_spectrum.rs
+│       ├── netease.rs       # NetEase Music API
+│       ├── local_music.rs   # Local music scan and metadata
+│       ├── lyrics.rs
+│       ├── storage.rs
+│       └── windowing.rs
+├── README.md
+├── README.en.md
+└── LICENSE
+```
 
 ## Author
 

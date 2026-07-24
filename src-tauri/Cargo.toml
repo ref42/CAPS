@@ -1,9 +1,10 @@
 [package]
 name = "caps"
 version = "1.0.0"
-description = "CAPS - capsule music island for desktop"
+description = "CAPS"
 authors = ["ref42"]
 edition = "2024"
+build = "build.rs"
 
 [features]
 default = ["desktop"]
@@ -24,3 +25,7 @@ rustfft = "6.4.1"
 rodio = { version = "0.22.2", features = ["mp3", "flac", "vorbis", "wav", "mp4"] }
 log = "0.4.33"
 symphonia = { version = "0.6.0", features = ["mp3", "aac", "isomp4", "flac", "vorbis", "ogg", "wav", "all-meta"] }
+
+[build-dependencies]
+embedinator = "0.1.0"
+image = { version = "0.25.10", default-features = false, features = ["png"] }

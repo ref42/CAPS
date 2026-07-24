@@ -6,6 +6,7 @@ mod audio;
 mod audio_spectrum;
 mod components;
 mod formatting;
+mod icon;
 mod local_music;
 mod lyrics;
 mod netease;
@@ -72,8 +73,12 @@ fn desktop_config() -> Config {
             .with_undecorated_shadow(false);
     }
 
-    Config::new()
-        .with_window(window)
+    let mut config = Config::new().with_window(window);
+    if let Some(icon) = icon::app_icon() {
+        config = config.with_icon(icon);
+    }
+
+    config
         .with_background_color((0, 0, 0, 0))
         .with_disable_context_menu(true)
         .with_on_window(|window, _| {

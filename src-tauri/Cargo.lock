@@ -337,6 +337,7 @@ version = "1.0.0"
 dependencies = [
  "cpal 0.18.1",
  "dioxus",
+ "embedinator",
  "image",
  "log",
  "reqwest",
@@ -1368,6 +1369,12 @@ name = "either"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
+
+[[package]]
+name = "embedinator"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3256cbdc89c2df68120db69147af2c080d8aabb6bffbae7644eb8d8fdd4e3130"
 
 [[package]]
 name = "encoding_rs"

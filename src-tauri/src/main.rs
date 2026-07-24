@@ -49,6 +49,7 @@ struct LyricTransition {
 
 const DEFAULT_SPECTRUM_FROM: &str = "rgb(255, 196, 224)";
 const DEFAULT_SPECTRUM_TO: &str = "rgb(255, 105, 180)";
+const WINDOW_COLLAPSE_DELAY_MS: u64 = 280;
 
 fn main() {
     audio_spectrum::start_monitor();
@@ -103,6 +104,8 @@ fn App() -> Element {
     let saved_settings = saved_state.settings.clone();
     let player = use_hook(|| Arc::new(AudioPlayer::spawn()));
     let mut expanded = use_signal(|| false);
+    let mut window_expanded = use_signal(|| false);
+    let mut transition_ticket = use_signal(|| 0u64);
     let mut pointer_inside = use_signal(|| false);
     let mut input_focused = use_signal(|| false);
     let mut active_tab = use_signal({
@@ -300,12 +303,20 @@ fn App() -> Element {
     });
 
     let mut expand_window = move || {
+        transition_ticket.set(transition_ticket().wrapping_add(1));
+        window_expanded.set(true);
         expanded.set(true);
     };
 
     let mut collapse_window = move || {
         if !*input_focused.read() {
             expanded.set(false);
+            schedule_window_collapse(
+                window_expanded,
+                pointer_inside,
+                input_focused,
+                transition_ticket,
+            );
         }
     };
 
@@ -567,10 +578,10 @@ fn App() -> Element {
     let stage_style = format!(
         "--island-bg-alpha: {island_alpha:.3}; --panel-bg-alpha: {panel_alpha:.3}; --soft-alpha: {soft_alpha:.3}; --softer-alpha: {softer_alpha:.3}; --hover-alpha: {hover_alpha:.3}; --active-alpha: {active_alpha:.3}; --green-alpha: {green_alpha:.3}; --red-alpha: {red_alpha:.3}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --expanded-stage-width: {expanded_stage_width:.0}px; --expanded-stage-height: {expanded_stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
     );
-    let stage_class = if is_expanded {
-        "stage expanded"
-    } else {
-        "stage"
+    let stage_class = match (*window_expanded.read(), is_expanded) {
+        (true, true) => "stage window-expanded visual-expanded",
+        (true, false) => "stage window-expanded",
+        (false, _) => "stage",
     };
     let island_class = if has_music {
         "island"
@@ -631,19 +642,19 @@ fn App() -> Element {
         let desktop = desktop.clone();
         let cache = window_size_cache.clone();
         use_effect(move || {
-            let width_key = if expanded() {
+            let window_expanded_key = window_expanded();
+            let width_key = if window_expanded_key {
                 EXPANDED_W.round() as i32
             } else {
                 collapsed_width.round() as i32
             };
             let size_key = island_size();
-            let expanded_key = expanded();
-            let next = (expanded_key, width_key, size_key);
+            let next = (window_expanded_key, width_key, size_key);
             if *cache.borrow() != Some(next) {
                 *cache.borrow_mut() = Some(next);
                 set_island_window(
                     &desktop,
-                    expanded_key,
+                    window_expanded_key,
                     size_key as f64 / 100.0,
                     collapsed_width,
                 );
@@ -767,16 +778,15 @@ fn App() -> Element {
                         status: status.read().clone(),
                         onfocus: move |_| input_focused.set(true),
                         onblur: {
-                            let desktop = desktop.clone();
                             move |_| {
                                 input_focused.set(false);
                                 if !*pointer_inside.read() {
                                     expanded.set(false);
-                                    set_island_window(
-                                        &desktop,
-                                        false,
-                                        island_size() as f64 / 100.0,
-                                        collapsed_width,
+                                    schedule_window_collapse(
+                                        window_expanded,
+                                        pointer_inside,
+                                        input_focused,
+                                        transition_ticket,
                                     );
                                 }
                             }
@@ -938,6 +948,22 @@ fn collapsed_width_for_text(_text: &str, has_music: bool) -> f64 {
     } else {
         COLLAPSED_W
     }
+}
+
+fn schedule_window_collapse(
+    mut window_expanded: Signal<bool>,
+    pointer_inside: Signal<bool>,
+    input_focused: Signal<bool>,
+    mut transition_ticket: Signal<u64>,
+) {
+    let ticket = transition_ticket().wrapping_add(1);
+    transition_ticket.set(ticket);
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(WINDOW_COLLAPSE_DELAY_MS)).await;
+        if transition_ticket() == ticket && !pointer_inside() && !input_focused() {
+            window_expanded.set(false);
+        }
+    });
 }
 
 fn text_visual_units(text: &str) -> f64 {

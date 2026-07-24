@@ -1,4 +1,3 @@
-use dioxus::desktop::tao::dpi::PhysicalPosition;
 use dioxus::desktop::tao::window::Window;
 use dioxus::desktop::{DesktopContext, LogicalPosition, LogicalSize};
 
@@ -29,17 +28,8 @@ pub fn set_island_window(
     };
     let width = base_width * size_scale;
     let height = base_height * size_scale;
-    let old_size = desktop.inner_size();
-    let old_position = desktop.outer_position().ok();
-    let scale = desktop.scale_factor();
     desktop.set_inner_size(LogicalSize::new(width, height));
     desktop.set_always_on_top(true);
-    if let Some(position) = old_position {
-        let old_width = old_size.width as i32;
-        let new_width = (width * scale).round() as i32;
-        let x = position.x + (old_width - new_width) / 2;
-        desktop.set_outer_position(PhysicalPosition::new(x, position.y));
-    }
 }
 
 pub fn place_top_center(window: &Window, width: f64) {

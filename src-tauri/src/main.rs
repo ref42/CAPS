@@ -590,6 +590,8 @@ fn App() -> Element {
     } else {
         "cover"
     };
+    let audio_ready_for_toggle = !state.title.is_empty() && !state.is_finished;
+    let playpause_track = active_track.clone();
     let lyric_transition = use_hook(|| {
         std::cell::RefCell::new(LyricTransition {
             current: primary_text.clone(),
@@ -698,7 +700,15 @@ fn App() -> Element {
                 onprev: play_prev,
                 onplaypause: {
                     let player = player.clone();
-                    move |_| player.send(AudioCommand::PlayPause)
+                    move |_| {
+                        if audio_ready_for_toggle {
+                            player.send(AudioCommand::PlayPause);
+                        } else if let Some(track) = playpause_track.clone() {
+                            spawn_play(track, player.clone(), current_index, current_track, status, lyrics);
+                        } else {
+                            status.set("Queue is empty.".to_string());
+                        }
+                    }
                 },
                 onnext: play_next,
                 onstop: {

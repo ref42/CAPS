@@ -227,12 +227,12 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 46px;
+  height: 48px;
   overflow: hidden;
 }
 
 .expanded .music-copy {
-  height: 58px;
+  height: 62px;
   padding-right: 0;
 }
 
@@ -240,8 +240,11 @@ button {
   position: relative;
   min-width: 0;
   width: calc(100% - 28px);
-  height: 100%;
+  height: calc(100% + 12px);
   margin-inline: 14px;
+  margin-block: -6px;
+  padding-block: 6px;
+  box-sizing: border-box;
   overflow: hidden;
   contain: paint;
   isolation: isolate;
@@ -277,7 +280,7 @@ button {
   text-align: center;
   pointer-events: none;
   transform-origin: center;
-  line-height: 1;
+  line-height: 1.16;
 }
 
 .music-copy .lyric-layer strong {
@@ -292,22 +295,23 @@ button {
   width: 100%;
   max-width: 100%;
   height: 100%;
-  overflow: hidden;
+  overflow: visible;
   white-space: nowrap;
+  line-height: 1.16;
 }
 
 .music-copy .lyric-wrap .lyric-particles {
   flex-wrap: wrap;
   align-content: center;
   row-gap: 1px;
-  max-height: 2.18em;
-  line-height: 1.04;
+  max-height: 2.42em;
+  line-height: 1.16;
   white-space: normal;
 }
 
 .music-copy .lyric-dense .lyric-particles {
-  max-height: 3.2em;
-  line-height: 1.02;
+  max-height: 3.64em;
+  line-height: 1.14;
 }
 
 .expanded .music-copy strong {
@@ -359,7 +363,7 @@ button {
   font: inherit !important;
   font-size: inherit !important;
   line-height: inherit;
-  overflow: hidden !important;
+  overflow: visible !important;
   white-space: pre;
   will-change: opacity, filter, transform;
 }

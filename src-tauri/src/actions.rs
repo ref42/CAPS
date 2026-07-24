@@ -14,6 +14,7 @@ pub fn spawn_play(
     track: Track,
     player: Arc<AudioPlayer>,
     mut current_index: Signal<Option<usize>>,
+    mut current_track: Signal<Option<Track>>,
     mut status: Signal<String>,
     mut lyrics: Signal<Vec<LyricLine>>,
 ) {
@@ -25,10 +26,12 @@ pub fn spawn_play(
             Err(err) => {
                 player.send(AudioCommand::Stop);
                 current_index.set(None);
+                current_track.set(None);
                 status.set(err);
                 return;
             }
         };
+        current_track.set(Some(track.clone()));
         player.send(AudioCommand::LoadFile {
             path,
             title: track.name.clone(),

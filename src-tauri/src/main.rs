@@ -132,6 +132,7 @@ fn App() -> Element {
         move || saved_state.queue.clone()
     });
     let mut current_index = use_signal(move || saved_state.current_index);
+    let mut current_track = use_signal(|| None::<Track>);
     let mut status =
         use_signal(|| "Search NetEase, add songs, then play from the island.".to_string());
     let mut audio_state = use_signal(|| player.get_state());
@@ -319,6 +320,7 @@ fn App() -> Element {
                 track,
                 player_for_next.clone(),
                 current_index,
+                current_track,
                 status,
                 lyrics,
             );
@@ -341,6 +343,7 @@ fn App() -> Element {
                 track,
                 player_for_prev.clone(),
                 current_index,
+                current_track,
                 status,
                 lyrics,
             );
@@ -359,6 +362,7 @@ fn App() -> Element {
         let len = queue.read().len();
         if len == 0 {
             current_index.set(None);
+            current_track.set(None);
             lyrics.set(Vec::new());
             player_for_finish.send(AudioCommand::Stop);
             status.set("Queue finished.".to_string());
@@ -373,6 +377,7 @@ fn App() -> Element {
         }
         if index + 1 >= len {
             current_index.set(None);
+            current_track.set(None);
             lyrics.set(Vec::new());
             player_for_finish.send(AudioCommand::Stop);
             status.set("Queue finished.".to_string());
@@ -385,6 +390,7 @@ fn App() -> Element {
                 track,
                 player_for_finish.clone(),
                 current_index,
+                current_track,
                 status,
                 lyrics,
             );
@@ -392,9 +398,10 @@ fn App() -> Element {
     });
 
     let state = audio_state.read().clone();
-    let active_track = current_index
+    let indexed_track = current_index
         .read()
         .and_then(|index| queue.read().get(index).cloned());
+    let active_track = current_track.read().clone().or(indexed_track);
     let is_finished_last = state.is_finished
         && current_index
             .read()
@@ -403,7 +410,10 @@ fn App() -> Element {
         .read()
         .as_ref()
         .is_some_and(|since| since.elapsed() >= std::time::Duration::from_secs(30));
-    let has_music = active_track.is_some() && !is_finished_last && !paused_over_idle_timeout;
+    let audio_has_track = !state.title.is_empty() && !state.is_finished;
+    let has_music = (active_track.is_some() || audio_has_track)
+        && !is_finished_last
+        && !paused_over_idle_timeout;
     let current_title = if state.title.is_empty() {
         active_track
             .as_ref()
@@ -668,6 +678,7 @@ fn App() -> Element {
                     let player = player.clone();
                     move |_| {
                         current_index.set(None);
+                        current_track.set(None);
                         lyrics.set(Vec::new());
                         player.send(AudioCommand::Stop);
                         status.set("Stopped.".to_string());
@@ -742,6 +753,7 @@ fn App() -> Element {
                             move |_| {
                                 queue.set(Vec::new());
                                 current_index.set(None);
+                                current_track.set(None);
                                 lyrics.set(Vec::new());
                                 player.send(AudioCommand::Stop);
                                 status.set("Queue cleared.".to_string());
@@ -752,7 +764,14 @@ fn App() -> Element {
                             move |index| {
                                 if let Some(track) = queue.read().get(index).cloned() {
                                     current_index.set(Some(index));
-                                    spawn_play(track, player.clone(), current_index, status, lyrics);
+                                    spawn_play(
+                                        track,
+                                        player.clone(),
+                                        current_index,
+                                        current_track,
+                                        status,
+                                        lyrics,
+                                    );
                                 }
                             }
                         },
@@ -767,6 +786,7 @@ fn App() -> Element {
                                     match current {
                                         Some(i) if i == index => {
                                             current_index.set(None);
+                                            current_track.set(None);
                                             lyrics.set(Vec::new());
                                             player.send(AudioCommand::Stop);
                                             status.set("Removed current track.".to_string());

@@ -10,7 +10,6 @@ mod lyrics;
 mod netease;
 mod storage;
 mod track;
-mod weather;
 mod windowing;
 
 use actions::{spawn_play, spawn_random_queue, spawn_search};
@@ -23,7 +22,7 @@ use formatting::{format_bytes, format_rate};
 use lyrics::{LyricLine, current_lyric_line};
 use std::sync::Arc;
 use storage::{AppSettings, AppState};
-use sysinfo::Networks;
+use sysinfo::{MINIMUM_CPU_UPDATE_INTERVAL, Networks, System};
 use track::Track;
 use windowing::{
     COLLAPSED_H, COLLAPSED_W, EXPANDED_W, ISLAND_BLEED, MUSIC_COLLAPSED_W, place_top_center,
@@ -114,7 +113,10 @@ fn App() -> Element {
         let saved_settings = saved_settings.clone();
         move || saved_settings.island_size
     });
-    let mut random_count = use_signal(move || saved_settings.random_count);
+    let mut random_count = use_signal({
+        let saved_settings = saved_settings.clone();
+        move || saved_settings.random_count
+    });
     let mut query = use_signal(String::new);
     let results = use_signal(Vec::<Track>::new);
     let mut queue = use_signal({
@@ -134,7 +136,8 @@ fn App() -> Element {
     });
     let mut upload = use_signal(|| "0 B/s".to_string());
     let mut download = use_signal(|| "0 B/s".to_string());
-    let mut weather_now = use_signal(weather::WeatherNow::default);
+    let mut cpu_usage = use_signal(|| "0%".to_string());
+    let mut memory_usage = use_signal(|| "0%".to_string());
     let mut activity_energy = use_signal(|| 0.0_f64);
     let mut paused_since = use_signal(|| None::<std::time::Instant>);
     let mut total_upload = use_signal(|| 0_u64);
@@ -201,10 +204,15 @@ fn App() -> Element {
     use_effect(move || {
         spawn(async move {
             let mut networks = Networks::new_with_refreshed_list();
+            let mut system = System::new_all();
+            system.refresh_cpu_usage();
+            tokio::time::sleep(MINIMUM_CPU_UPDATE_INTERVAL).await;
             let mut last_rx = 0_u64;
             let mut last_tx = 0_u64;
             loop {
                 networks.refresh(true);
+                system.refresh_cpu_usage();
+                system.refresh_memory();
                 let mut rx = 0_u64;
                 let mut tx = 0_u64;
                 for (_, data) in networks.iter() {
@@ -215,20 +223,18 @@ fn App() -> Element {
                     download.set(format_rate(rx.saturating_sub(last_rx)));
                     upload.set(format_rate(tx.saturating_sub(last_tx)));
                 }
+                cpu_usage.set(format_percent(system.global_cpu_usage() as f64));
+                memory_usage.set(memory_percent(
+                    system
+                        .total_memory()
+                        .saturating_sub(system.available_memory()),
+                    system.total_memory(),
+                ));
                 total_download.set(rx);
                 total_upload.set(tx);
                 last_rx = rx;
                 last_tx = tx;
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            }
-        });
-    });
-
-    use_effect(move || {
-        spawn(async move {
-            loop {
-                weather_now.set(weather::local_weather().await);
-                tokio::time::sleep(std::time::Duration::from_secs(20 * 60)).await;
             }
         });
     });
@@ -570,9 +576,8 @@ fn App() -> Element {
                 transition_key,
                 lyric_scroll_class,
                 lyric_scroll_style,
-                weather_icon: weather_now.read().icon.clone(),
-                weather: weather_now.read().label.clone(),
-                weather_title: weather_now.read().title.clone(),
+                cpu: cpu_usage.read().clone(),
+                memory: memory_usage.read().clone(),
                 download: download.read().clone(),
                 upload: upload.read().clone(),
                 spectrum: *spectrum.read(),
@@ -771,6 +776,22 @@ fn activity_energy_from_spectrum(spectrum: &[f32]) -> f64 {
     } else {
         (weighted_energy / total_weight).clamp(0.0, 1.0)
     }
+}
+
+fn format_percent(value: f64) -> String {
+    let value = value.clamp(0.0, 100.0);
+    if value >= 99.95 {
+        "100%".to_string()
+    } else {
+        format!("{value:.1}%")
+    }
+}
+
+fn memory_percent(used: u64, total: u64) -> String {
+    if total == 0 {
+        return "0%".to_string();
+    }
+    format_percent(used as f64 / total as f64 * 100.0)
 }
 
 const APP_CSS: &str = include_str!("app.css");

@@ -89,7 +89,8 @@ pub fn SearchPanel(
     onadd: EventHandler<Track>,
 ) -> Element {
     let search_from_key = query.trim().to_string();
-    let random_progress = ((random_count.saturating_sub(1) as f64 / 99.0) * 100.0).clamp(0.0, 100.0);
+    let random_progress =
+        ((random_count.saturating_sub(1) as f64 / 99.0) * 100.0).clamp(0.0, 100.0);
     rsx! {
         div { class: "panel-section",
             div { class: "search-row",
@@ -278,9 +279,8 @@ pub fn Island(
     transition_key: u64,
     lyric_scroll_class: &'static str,
     lyric_scroll_style: String,
-    weather_icon: String,
-    weather: String,
-    weather_title: String,
+    cpu: String,
+    memory: String,
     download: String,
     upload: String,
     spectrum: [f32; SPECTRUM_BANDS],
@@ -329,10 +329,16 @@ pub fn Island(
                 } else {
                     div { class: "speed-copy idle-speeds",
                         div {
-                            class: "speed-stat weather-stat",
-                            title: "{weather_title}",
-                            span { class: "weather-icon", dangerous_inner_html: "{weather_icon}" }
-                            strong { "{weather}" }
+                            class: "speed-stat system-stat",
+                            title: "CPU usage",
+                            span { "▦" }
+                            strong { "{cpu}" }
+                        }
+                        div {
+                            class: "speed-stat system-stat",
+                            title: "RAM usage",
+                            span { "▤" }
+                            strong { "{memory}" }
                         }
                         div {
                             class: "speed-stat download-stat",

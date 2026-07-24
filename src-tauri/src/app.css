@@ -919,13 +919,13 @@ button {
 
 .song-copy strong {
   color: rgba(248, 255, 252, 0.94);
-  font-size: 12.5px;
+  font-size: 10px;
   font-weight: 790;
 }
 
 .song-copy small {
   color: rgba(248, 255, 252, 0.56);
-  font-size: 11px;
+  font-size: 8.8px;
   font-weight: 650;
 }
 

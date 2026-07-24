@@ -524,10 +524,10 @@ fn App() -> Element {
         } else {
             1.0
         };
-        let lyric_font = 19.0 * fit_ratio;
-        let expanded_lyric_font = 21.0 * fit_ratio;
-        let plain_font = 18.0 * fit_ratio;
-        let expanded_plain_font = 19.0 * fit_ratio;
+        let lyric_font = 15.2 * fit_ratio;
+        let expanded_lyric_font = 16.8 * fit_ratio;
+        let plain_font = 14.4 * fit_ratio;
+        let expanded_plain_font = 15.2 * fit_ratio;
         format!(
             "--lyric-font-size: {lyric_font:.2}px; --expanded-lyric-font-size: {expanded_lyric_font:.2}px; --plain-font-size: {plain_font:.2}px; --expanded-plain-font-size: {expanded_plain_font:.2}px;"
         )

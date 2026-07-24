@@ -57,13 +57,16 @@ button {
 
 .island {
   position: relative;
+  --rail-height: 42px;
   width: var(--collapsed-width);
   height: 56px;
   display: grid;
   grid-template-columns: 10px minmax(0, 1fr) auto 52px;
+  grid-template-rows: var(--rail-height);
   align-items: center;
+  align-content: center;
   gap: 9px;
-  padding: 7px 10px 8px 10px;
+  padding: 7px 10px;
   border-radius: 999px;
   background: rgba(5, 8, 9, var(--island-bg-alpha));
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -73,10 +76,11 @@ button {
 }
 
 .expanded .island {
+  --rail-height: 52px;
   width: 460px;
   height: 86px;
   grid-template-columns: 10px minmax(0, 1fr) 116px 52px;
-  padding: 10px 13px 13px 13px;
+  padding: 17px 13px;
   border-radius: 34px;
 }
 
@@ -101,7 +105,7 @@ button {
   grid-column: 2;
   grid-row: 1;
   min-width: 0;
-  height: 100%;
+  height: var(--rail-height);
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
@@ -175,6 +179,7 @@ button {
 
 .speed-stat {
   width: 76px;
+  height: var(--rail-height);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -227,23 +232,23 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 48px;
+  height: var(--rail-height);
   overflow: hidden;
 }
 
 .expanded .music-copy {
-  height: 62px;
+  height: var(--rail-height);
   padding-right: 0;
 }
 
 .lyric-viewport {
   position: relative;
   min-width: 0;
-  width: calc(100% - 28px);
-  height: calc(100% + 12px);
-  margin-inline: 14px;
-  margin-block: -6px;
-  padding-block: 6px;
+  width: calc(100% - 20px);
+  height: 100%;
+  margin-inline: 10px;
+  margin-block: 0;
+  padding-block: 3px;
   box-sizing: border-box;
   overflow: hidden;
   contain: paint;
@@ -450,6 +455,7 @@ button {
   align-self: center;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  align-items: center;
   gap: 4px;
   z-index: 4;
 }

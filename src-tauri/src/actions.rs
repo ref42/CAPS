@@ -1,6 +1,7 @@
 use crate::audio::{AudioCommand, AudioPlayer};
 use crate::local_music;
 use crate::lyrics::LyricLine;
+use crate::mode::MusicMode;
 use crate::shitease;
 use crate::storage;
 use crate::track::{SOURCE_LOCAL, Track};
@@ -72,7 +73,7 @@ pub fn spawn_random_queue(
     mut queue: Signal<Vec<Track>>,
     mut current_index: Signal<Option<usize>>,
     mut current_track: Signal<Option<Track>>,
-    mut quiet_mode: Signal<bool>,
+    mut music_mode: Signal<MusicMode>,
     player: Arc<AudioPlayer>,
     mut status: Signal<String>,
     mut lyrics: Signal<Vec<LyricLine>>,
@@ -96,7 +97,7 @@ pub fn spawn_random_queue(
                         queue.set(tracks);
                         current_index.set(None);
                         current_track.set(None);
-                        quiet_mode.set(false);
+                        music_mode.set(MusicMode::Silent);
                         lyrics.set(Vec::new());
                         player.send(AudioCommand::Stop);
                         status.set(format!("Replaced queue with {loaded} random tracks."));

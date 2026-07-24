@@ -1052,23 +1052,28 @@ button {
 .mode-actions {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 3px;
+  border-radius: 13px;
+  background: rgba(142, 142, 147, var(--softer-alpha));
 }
 
 .mode-button {
   height: 32px;
   border-radius: 10px;
-  background: rgba(142, 142, 147, var(--soft-alpha));
-  color: rgba(248, 255, 252, 0.88);
+  background: transparent;
+  color: rgba(248, 255, 252, 0.58);
   font-size: 12px;
   font-weight: 840;
   letter-spacing: 0;
-  transition: transform var(--motion-fast) var(--motion-spring), background-color var(--motion-bg) ease, color var(--motion-bg) ease;
+  box-shadow: none;
+  transition: transform var(--motion-fast) var(--motion-spring), background-color var(--motion-bg) ease, color var(--motion-bg) ease, box-shadow var(--motion-bg) ease;
 }
 
 .mode-button:hover {
-  background: rgba(255, 255, 255, var(--hover-alpha));
+  background: rgba(255, 255, 255, var(--softer-alpha));
+  color: rgba(248, 255, 252, 0.84);
 }
 
 .mode-button:active {
@@ -1079,9 +1084,17 @@ button {
   color: rgba(255, 214, 214, 0.92);
 }
 
+.normal-button.active,
 .quiet-button.active {
-  background: rgba(52, 199, 89, var(--green-alpha));
+  background: rgba(52, 199, 89, 0.28);
   color: rgba(248, 255, 252, 0.96);
+  box-shadow: inset 0 0 0 1px rgba(125, 242, 202, 0.34), 0 6px 16px rgba(52, 199, 89, 0.14);
+}
+
+.silent-button.active {
+  background: rgba(255, 69, 58, 0.3);
+  color: rgba(255, 236, 236, 0.96);
+  box-shadow: inset 0 0 0 1px rgba(255, 183, 177, 0.34), 0 6px 16px rgba(255, 69, 58, 0.14);
 }
 
 .status-text {

@@ -1,4 +1,5 @@
 use crate::audio_spectrum::SPECTRUM_BANDS;
+use crate::mode::MusicMode;
 use crate::track::Track;
 use dioxus::prelude::*;
 
@@ -229,10 +230,11 @@ pub fn SettingsPanel(
     opacity: u32,
     volume: u32,
     island_size: u32,
-    quiet_mode: bool,
+    music_mode: MusicMode,
     onopacity: EventHandler<u32>,
     onvolume: EventHandler<u32>,
     onisland_size: EventHandler<u32>,
+    onnormal: EventHandler<MouseEvent>,
     onsilent: EventHandler<MouseEvent>,
     onquiet: EventHandler<MouseEvent>,
 ) -> Element {
@@ -293,12 +295,17 @@ pub fn SettingsPanel(
                 span { "Mode" }
                 div { class: "mode-actions",
                     button {
-                        class: "mode-button silent-button",
+                        class: if music_mode == MusicMode::Normal { "mode-button normal-button active" } else { "mode-button normal-button" },
+                        onclick: onnormal,
+                        "Normal"
+                    }
+                    button {
+                        class: if music_mode == MusicMode::Silent { "mode-button silent-button active" } else { "mode-button silent-button" },
                         onclick: onsilent,
                         "Silent"
                     }
                     button {
-                        class: if quiet_mode { "mode-button quiet-button active" } else { "mode-button quiet-button" },
+                        class: if music_mode == MusicMode::Quiet { "mode-button quiet-button active" } else { "mode-button quiet-button" },
                         onclick: onquiet,
                         "Quiet"
                     }

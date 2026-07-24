@@ -12,6 +12,7 @@ pub struct AppSettings {
     pub random_count: u32,
     pub spring_style: String,
     pub active_tab: String,
+    pub local_music_folder: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -31,6 +32,7 @@ impl Default for AppSettings {
             random_count: 50,
             spring_style: "smooth".to_string(),
             active_tab: "search".to_string(),
+            local_music_folder: String::new(),
         }
     }
 }

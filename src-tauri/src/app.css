@@ -647,6 +647,21 @@ button {
   position: relative;
 }
 
+.local-loader {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) 58px;
+  align-items: center;
+  gap: 8px;
+}
+
+.local-loader span {
+  color: rgba(248, 255, 252, 0.74);
+  font-size: 12px;
+  font-weight: 820;
+  white-space: nowrap;
+}
+
 .search-row input {
   width: 100%;
   height: 34px;
@@ -662,6 +677,37 @@ button {
 
 .search-row input:focus {
   box-shadow: inset 0 0 0 1px rgba(121, 244, 205, 0.55);
+}
+
+.local-loader input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  outline: none;
+  background: rgba(142, 142, 147, var(--soft-alpha));
+  color: rgba(248, 255, 252, 0.94);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.local-loader input:focus {
+  box-shadow: inset 0 0 0 1px rgba(121, 244, 205, 0.55);
+}
+
+.local-loader button {
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(142, 142, 147, var(--soft-alpha));
+  color: rgba(248, 255, 252, 0.92);
+  font-size: 12px;
+  font-weight: 800;
+  transition: transform var(--motion-fast) var(--motion-spring), background-color var(--motion-bg) ease;
+}
+
+.local-loader button:hover {
+  background: rgba(255, 255, 255, var(--hover-alpha));
 }
 
 .search-icon {

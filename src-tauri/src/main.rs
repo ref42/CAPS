@@ -6,13 +6,14 @@ mod audio;
 mod audio_spectrum;
 mod components;
 mod formatting;
+mod local_music;
 mod lyrics;
 mod netease;
 mod storage;
 mod track;
 mod windowing;
 
-use actions::{spawn_play, spawn_random_queue, spawn_search};
+use actions::{spawn_load_local_queue, spawn_play, spawn_random_queue, spawn_search};
 use audio::{AudioCommand, AudioPlayer};
 use components::{Island, QueuePanel, SearchPanel, SettingsPanel, StatsPanel, Tabs};
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
@@ -117,6 +118,10 @@ fn App() -> Element {
         let saved_settings = saved_settings.clone();
         move || saved_settings.random_count
     });
+    let mut local_music_folder = use_signal({
+        let saved_settings = saved_settings.clone();
+        move || saved_settings.local_music_folder.clone()
+    });
     let mut query = use_signal(String::new);
     let results = use_signal(Vec::<Track>::new);
     let mut queue = use_signal({
@@ -164,6 +169,7 @@ fn App() -> Element {
                 random_count: random_count(),
                 spring_style: spring_style.read().clone(),
                 active_tab: active_tab.read().clone(),
+                local_music_folder: local_music_folder.read().clone(),
             },
             queue: queue.read().clone(),
             current_index: *current_index.read(),
@@ -664,6 +670,7 @@ fn App() -> Element {
                 if tab == "search" {
                     SearchPanel {
                         query: query.read().clone(),
+                        local_music_folder: local_music_folder.read().clone(),
                         results: results.read().clone(),
                         random_count: random_count(),
                         status: status.read().clone(),
@@ -685,6 +692,14 @@ fn App() -> Element {
                         },
                         onquery: move |value| query.set(value),
                         onsearch: move |text| spawn_search(text, results, status),
+                        onlocal_music_folder: move |value| local_music_folder.set(value),
+                        onload_local: move |_| {
+                            spawn_load_local_queue(
+                                local_music_folder.read().clone(),
+                                queue,
+                                status,
+                            )
+                        },
                         onrandom: move |count| load_random(count),
                         onrandom_count: move |value| random_count.set(value),
                         onadd: move |track| {

@@ -93,6 +93,7 @@ fn LiveStatTile(label: &'static str, value: String, progress: f64) -> Element {
 #[component]
 pub fn SearchPanel(
     query: String,
+    local_music_folder: String,
     results: Vec<Track>,
     random_count: u32,
     status: String,
@@ -100,6 +101,8 @@ pub fn SearchPanel(
     onblur: EventHandler<FocusEvent>,
     onquery: EventHandler<String>,
     onsearch: EventHandler<String>,
+    onlocal_music_folder: EventHandler<String>,
+    onload_local: EventHandler<MouseEvent>,
     onrandom: EventHandler<u32>,
     onrandom_count: EventHandler<u32>,
     onadd: EventHandler<Track>,
@@ -123,6 +126,21 @@ pub fn SearchPanel(
                         }
                     }
                     span { class: "search-icon", "⌕" }
+                }
+            }
+            div { class: "local-loader",
+                span { "Local folder" }
+                input {
+                    r#type: "text",
+                    value: "{local_music_folder}",
+                    placeholder: "D:\\Music",
+                    onfocus,
+                    onblur,
+                    oninput: move |event| onlocal_music_folder.call(event.value()),
+                }
+                button {
+                    onclick: onload_local,
+                    "Load"
                 }
             }
             div { class: "random-control",
@@ -477,12 +495,13 @@ pub fn TrackRow(
     } else {
         format!("background-image: url('{}');", track.cover)
     };
+    let detail = track_detail(&track);
     rsx! {
         button { class: if active { "song active" } else { "song" }, onclick,
             span { class: "song-cover", style: "{cover_style}" }
             span { class: "song-copy",
                 strong { "{track.name}" }
-                small { "{track.artist}" }
+                small { "{detail}" }
             }
             span { class: "song-action", "{action}" }
         }
@@ -501,16 +520,25 @@ pub fn QueueTrackRow(
     } else {
         format!("background-image: url('{}');", track.cover)
     };
+    let detail = track_detail(&track);
     rsx! {
         div { class: if active { "song queue-song active" } else { "song queue-song" },
             button { class: "queue-main", onclick: onplay,
                 span { class: "song-cover", style: "{cover_style}" }
                 span { class: "song-copy",
                     strong { "{track.name}" }
-                    small { "{track.artist}" }
+                    small { "{detail}" }
                 }
             }
             button { class: "remove-song", onclick: onremove, title: "Remove", "×" }
         }
+    }
+}
+
+fn track_detail(track: &Track) -> String {
+    if track.source == crate::track::SOURCE_LOCAL {
+        track.artist.clone()
+    } else {
+        track.artist.clone()
     }
 }

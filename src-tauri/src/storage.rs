@@ -1,7 +1,9 @@
-use crate::track::Track;
+use crate::track::{SOURCE_LOCAL, Track};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+
+const MAX_PERSISTED_QUEUE: usize = 500;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -47,21 +49,28 @@ impl Default for AppState {
     }
 }
 
-impl AppState {
-    pub fn normalized(mut self) -> Self {
-        self.settings.opacity = self.settings.opacity.clamp(10, 100);
-        self.settings.volume = self.settings.volume.clamp(0, 100);
-        self.settings.island_size = self.settings.island_size.clamp(85, 135);
-        self.settings.random_count = self.settings.random_count.clamp(1, 100);
-        if self.settings.spring_style != "bouncy" {
-            self.settings.spring_style = "smooth".to_string();
+impl AppSettings {
+    fn normalized(mut self) -> Self {
+        self.opacity = self.opacity.clamp(10, 100);
+        self.volume = self.volume.clamp(0, 100);
+        self.island_size = self.island_size.clamp(85, 135);
+        self.random_count = self.random_count.clamp(1, 100);
+        if self.spring_style != "bouncy" {
+            self.spring_style = "smooth".to_string();
         }
         if !matches!(
-            self.settings.active_tab.as_str(),
+            self.active_tab.as_str(),
             "search" | "queue" | "stats" | "settings"
         ) {
-            self.settings.active_tab = "search".to_string();
+            self.active_tab = "search".to_string();
         }
+        self
+    }
+}
+
+impl AppState {
+    pub fn normalized(mut self) -> Self {
+        self.settings = self.settings.normalized();
         if self
             .current_index
             .is_some_and(|index| index >= self.queue.len())
@@ -84,7 +93,7 @@ pub fn load_state() -> AppState {
         .unwrap_or_default()
 }
 
-pub fn save_state(state: &AppState) {
+pub fn save_state_parts(settings: AppSettings, queue: &[Track], current_index: Option<usize>) {
     let Some(path) = state_path() else {
         return;
     };
@@ -94,8 +103,37 @@ pub fn save_state(state: &AppState) {
     if fs::create_dir_all(parent).is_err() {
         return;
     }
-    if let Ok(text) = serde_json::to_string_pretty(&state.clone().normalized()) {
+    let state = persisted_state(settings, queue, current_index);
+    if let Ok(text) = serde_json::to_string_pretty(&state) {
         let _ = fs::write(path, text);
+    }
+}
+
+fn persisted_state(
+    settings: AppSettings,
+    queue: &[Track],
+    current_index: Option<usize>,
+) -> AppState {
+    let mut persisted_queue = Vec::with_capacity(queue.len().min(MAX_PERSISTED_QUEUE));
+    let mut persisted_index = None;
+
+    for (source_index, track) in queue.iter().enumerate() {
+        if track.source == SOURCE_LOCAL {
+            continue;
+        }
+        if persisted_queue.len() >= MAX_PERSISTED_QUEUE {
+            break;
+        }
+        if current_index == Some(source_index) {
+            persisted_index = Some(persisted_queue.len());
+        }
+        persisted_queue.push(track.clone());
+    }
+
+    AppState {
+        settings: settings.normalized(),
+        queue: persisted_queue,
+        current_index: persisted_index,
     }
 }
 
@@ -104,6 +142,10 @@ pub fn clean_song_cache() {
         return;
     };
     let _ = fs::remove_dir_all(path);
+}
+
+pub fn cover_cache_path() -> Option<PathBuf> {
+    Some(app_dir()?.join("cover-cache"))
 }
 
 fn app_dir() -> Option<PathBuf> {

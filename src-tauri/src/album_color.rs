@@ -1,5 +1,15 @@
 pub async fn spectrum_colors(cover_url: String) -> Option<(String, String)> {
-    let bytes = reqwest::get(cover_url).await.ok()?.bytes().await.ok()?;
+    let bytes = if cover_url.starts_with("file:///") {
+        std::fs::read(file_url_path(&cover_url)?).ok()?
+    } else {
+        reqwest::get(cover_url)
+            .await
+            .ok()?
+            .bytes()
+            .await
+            .ok()?
+            .to_vec()
+    };
     tokio::task::spawn_blocking(move || extract_colors(&bytes))
         .await
         .ok()
@@ -84,4 +94,9 @@ fn channel(value: f32) -> u8 {
 
 fn css_rgb(color: [u8; 3]) -> String {
     format!("rgb({}, {}, {})", color[0], color[1], color[2])
+}
+
+fn file_url_path(url: &str) -> Option<std::path::PathBuf> {
+    let raw = url.strip_prefix("file:///")?.replace("%27", "'");
+    Some(std::path::PathBuf::from(raw))
 }

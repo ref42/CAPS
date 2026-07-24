@@ -6,6 +6,8 @@ use crate::track::{SOURCE_LOCAL, Track};
 use dioxus::prelude::*;
 use std::sync::Arc;
 
+const LOCAL_IMPORT_BATCH_SIZE: usize = 80;
+
 pub fn spawn_play(
     track: Track,
     player: Arc<AudioPlayer>,
@@ -86,26 +88,56 @@ pub fn spawn_load_local_queue(
     }
     spawn(async move {
         status.set("Loading local songs...".to_string());
-        match local_music::load_all(&folder) {
-            Ok(tracks) => {
-                let loaded = tracks.len();
-                if loaded == 0 {
-                    status.set("No supported audio files found.".to_string());
+        let (sender, mut receiver) =
+            tokio::sync::mpsc::unbounded_channel::<Result<(Vec<Track>, usize), String>>();
+
+        tokio::task::spawn_blocking(move || {
+            let result =
+                local_music::load_all_batched(&folder, LOCAL_IMPORT_BATCH_SIZE, |batch, total| {
+                    sender.send(Ok((batch, total))).is_ok()
+                });
+            if let Err(err) = result {
+                let _ = sender.send(Err(err));
+            }
+        });
+
+        let mut loaded = 0;
+        while let Some(event) = receiver.recv().await {
+            match event {
+                Ok((tracks, total)) => {
+                    loaded = total;
+                    let added = tracks.len();
+                    {
+                        let mut next = queue.write();
+                        next.extend(tracks);
+                    }
+                    let total_queue = queue.read().len();
+                    status.set(format!(
+                        "Loaded {loaded} local tracks. Added {added}, queue has {total_queue}."
+                    ));
+                }
+                Err(err) => {
+                    status.set(err);
                     return;
                 }
-                let mut next = queue.read().clone();
-                next.extend(tracks);
-                queue.set(next);
-                status.set(format!("Queued {loaded} local tracks."));
             }
-            Err(err) => status.set(err),
+        }
+
+        if loaded == 0 {
+            status.set("No supported audio files found.".to_string());
+        } else {
+            let total = queue.read().len();
+            status.set(format!("Queued {loaded} local tracks. Queue has {total}."));
         }
     });
 }
 
 async fn load_track_bytes(track: &Track) -> Result<Vec<u8>, String> {
     if track.source == SOURCE_LOCAL {
-        return local_music::read_audio(&track.id);
+        let id = track.id.clone();
+        return tokio::task::spawn_blocking(move || local_music::read_audio(&id))
+            .await
+            .map_err(|err| format!("Local file read failed: {err}"))?;
     }
     let info =
         netease::get_netease_song_url(track.id.clone(), Some("exhigh".to_string()), None).await?;
@@ -125,7 +157,11 @@ async fn load_track_bytes(track: &Track) -> Result<Vec<u8>, String> {
 
 async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
     if track.source == SOURCE_LOCAL {
-        return crate::lyrics::parse_lrc(&local_music::read_lyrics(&track.id));
+        let id = track.id.clone();
+        let text = tokio::task::spawn_blocking(move || local_music::read_lyrics(&id))
+            .await
+            .unwrap_or_default();
+        return crate::lyrics::parse_lrc(&text);
     }
     netease::get_netease_lyric(track.id.clone(), None)
         .await

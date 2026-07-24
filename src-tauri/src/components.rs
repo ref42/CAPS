@@ -2,6 +2,8 @@ use crate::audio_spectrum::SPECTRUM_BANDS;
 use crate::track::Track;
 use dioxus::prelude::*;
 
+pub const QUEUE_RENDER_LIMIT: usize = 300;
+
 #[component]
 pub fn Tabs(
     tab: String,
@@ -182,13 +184,14 @@ pub fn SearchPanel(
 
 #[component]
 pub fn QueuePanel(
-    queue: Vec<Track>,
+    queue_len: usize,
+    visible_tracks: Vec<(usize, Track)>,
     current_index: Option<usize>,
     onclear: EventHandler<MouseEvent>,
     onplay: EventHandler<usize>,
     onremove: EventHandler<usize>,
 ) -> Element {
-    let queue_len = queue.len();
+    let hidden_count = queue_len.saturating_sub(visible_tracks.len());
     rsx! {
         div { class: "panel-section",
             div { class: "queue-toolbar",
@@ -196,7 +199,7 @@ pub fn QueuePanel(
                 button { onclick: onclear, "Clear" }
             }
             div { class: "song-list",
-                for (index, track) in queue.iter().cloned().enumerate() {
+                for (index, track) in visible_tracks {
                     QueueTrackRow {
                         track,
                         active: current_index.is_some_and(|i| i == index),
@@ -204,7 +207,10 @@ pub fn QueuePanel(
                         onremove: move |_| onremove.call(index),
                     }
                 }
-                if queue.is_empty() {
+                if hidden_count > 0 {
+                    div { class: "empty", "Showing first {QUEUE_RENDER_LIMIT}. {hidden_count} more tracks stay in the queue." }
+                }
+                if queue_len == 0 {
                     div { class: "empty", "Queue is empty." }
                 }
             }

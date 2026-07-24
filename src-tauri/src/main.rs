@@ -15,14 +15,16 @@ mod windowing;
 
 use actions::{spawn_load_local_queue, spawn_play, spawn_random_queue, spawn_search};
 use audio::{AudioCommand, AudioPlayer};
-use components::{Island, QueuePanel, SearchPanel, SettingsPanel, StatsPanel, Tabs};
+use components::{
+    Island, QUEUE_RENDER_LIMIT, QueuePanel, SearchPanel, SettingsPanel, StatsPanel, Tabs,
+};
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
 use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
 use formatting::{format_bytes, format_rate};
 use lyrics::{LyricLine, current_lyric_line};
 use std::sync::Arc;
-use storage::{AppSettings, AppState};
+use storage::AppSettings;
 use sysinfo::{MINIMUM_CPU_UPDATE_INTERVAL, Networks, System};
 use track::Track;
 use windowing::{
@@ -161,8 +163,8 @@ fn App() -> Element {
     }
 
     use_effect(move || {
-        storage::save_state(&AppState {
-            settings: AppSettings {
+        storage::save_state_parts(
+            AppSettings {
                 opacity: opacity(),
                 volume: volume(),
                 island_size: island_size(),
@@ -171,9 +173,9 @@ fn App() -> Element {
                 active_tab: active_tab.read().clone(),
                 local_music_folder: local_music_folder.read().clone(),
             },
-            queue: queue.read().clone(),
-            current_index: *current_index.read(),
-        });
+            &queue.read(),
+            *current_index.read(),
+        );
     });
 
     let player_for_state = player.clone();
@@ -480,6 +482,20 @@ fn App() -> Element {
         )
     };
     let tab = active_tab.read().clone();
+    let (queue_len_for_panel, visible_queue_for_panel) = if tab == "queue" {
+        let queue_ref = queue.read();
+        (
+            queue_ref.len(),
+            queue_ref
+                .iter()
+                .take(QUEUE_RENDER_LIMIT)
+                .cloned()
+                .enumerate()
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        (0, Vec::new())
+    };
     let is_expanded = *expanded.read();
     let opacity_css = (*opacity.read() as f64 / 100.0).clamp(0.1, 1.0);
     let island_scale = (*island_size.read() as f64 / 100.0).clamp(0.85, 1.35);
@@ -703,16 +719,18 @@ fn App() -> Element {
                         onrandom: move |count| load_random(count),
                         onrandom_count: move |value| random_count.set(value),
                         onadd: move |track| {
-                            let mut next = queue.read().clone();
-                            next.push(track);
-                            let added = next.len();
-                            queue.set(next);
+                            let added = {
+                                let mut next = queue.write();
+                                next.push(track);
+                                next.len()
+                            };
                             status.set(format!("Queued {added} tracks."));
                         },
                     }
                 } else if tab == "queue" {
                     QueuePanel {
-                        queue: queue.read().clone(),
+                        queue_len: queue_len_for_panel,
+                        visible_tracks: visible_queue_for_panel,
                         current_index: *current_index.read(),
                         onclear: {
                             let player = player.clone();
@@ -727,8 +745,7 @@ fn App() -> Element {
                         onplay: {
                             let player = player.clone();
                             move |index| {
-                                let list = queue.read().clone();
-                                if let Some(track) = list.get(index).cloned() {
+                                if let Some(track) = queue.read().get(index).cloned() {
                                     current_index.set(Some(index));
                                     spawn_play(track, player.clone(), current_index, status, lyrics);
                                 }

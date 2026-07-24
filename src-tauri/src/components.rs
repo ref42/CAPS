@@ -322,22 +322,26 @@ pub fn Island(
                     div { class: "{cover_class}",
                         div { class: "cover-art", style: "{cover_style}" }
                     }
-                    div { class: "music-copy",
-                        div { class: "lyric-viewport",
-                            if let Some(outgoing_text) = outgoing_primary_text {
-                                strong {
-                                    class: "{primary_class} lyric-layer lyric-out",
-                                    key: "out-{transition_key}",
-                                    "{outgoing_text}"
+                    if !is_expanded {
+                        div { class: "music-copy",
+                            div { class: "lyric-viewport",
+                                if let Some(outgoing_text) = outgoing_primary_text {
+                                    ParticleLyricText {
+                                        text: outgoing_text,
+                                        primary_class,
+                                        outgoing: true,
+                                        key: "out-{transition_key}",
+                                    }
                                 }
-                            }
-                            div {
-                                class: "lyric-layer lyric-in {lyric_scroll_class}",
-                                style: "{lyric_scroll_style}",
-                                key: "in-{transition_key}-{visible_primary_text}",
-                                strong {
-                                    class: "{primary_class}",
-                                    "{visible_primary_text}"
+                                div {
+                                    class: "lyric-layer lyric-in {lyric_scroll_class}",
+                                    style: "{lyric_scroll_style}",
+                                    key: "in-{transition_key}-{visible_primary_text}",
+                                    ParticleLyricText {
+                                        text: visible_primary_text,
+                                        primary_class,
+                                        outgoing: false,
+                                    }
                                 }
                             }
                         }
@@ -413,6 +417,52 @@ pub fn Island(
             }
         }
     }
+}
+
+#[derive(Clone)]
+struct LyricParticle {
+    text: String,
+    style: String,
+}
+
+#[component]
+fn ParticleLyricText(text: String, primary_class: &'static str, outgoing: bool) -> Element {
+    let particles = lyric_particles(&text);
+    let class = if outgoing {
+        format!("{primary_class} lyric-layer lyric-out lyric-particles")
+    } else {
+        format!("{primary_class} lyric-particles")
+    };
+    rsx! {
+        strong { class: "{class}",
+            for (index, particle) in particles.iter().enumerate() {
+                span {
+                    class: "lyric-particle",
+                    style: "{particle.style}",
+                    key: "{index}-{particle.text}",
+                    "{particle.text}"
+                }
+            }
+        }
+    }
+}
+
+fn lyric_particles(text: &str) -> Vec<LyricParticle> {
+    text.chars()
+        .enumerate()
+        .map(|(index, ch)| {
+            let text = if ch.is_whitespace() {
+                "\u{00a0}".to_string()
+            } else {
+                ch.to_string()
+            };
+            let delay = (index as f64 * 9.0).min(160.0);
+            LyricParticle {
+                text,
+                style: format!("--particle-delay: {delay:.1}ms;"),
+            }
+        })
+        .collect()
 }
 
 #[component]

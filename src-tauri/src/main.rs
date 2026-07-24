@@ -417,17 +417,34 @@ fn App() -> Element {
     } else {
         "plain-title"
     };
-    let lyric_chars = primary_text.chars().count();
-    let lyric_scroll_class = if has_music && lyric_chars > 18 {
-        "lyric-marquee"
+    let lyric_units = text_visual_units(&primary_text);
+    let lyric_scroll_class = if has_music && lyric_units > 36.0 {
+        "lyric-wrap lyric-dense"
+    } else if has_music && lyric_units > 18.0 {
+        "lyric-wrap"
     } else {
         ""
     };
-    let lyric_scroll_style = if has_music && lyric_chars > 18 {
-        let distance = (lyric_chars.saturating_sub(14) as f64 * 0.62).clamp(5.5, 28.0);
-        let duration = (3.9 + lyric_chars.saturating_sub(18) as f64 * 0.11).clamp(4.2, 6.4);
+    let lyric_scroll_style = if has_music {
+        let target_units = if lyric_units > 36.0 {
+            42.0
+        } else if lyric_units > 18.0 {
+            28.0
+        } else {
+            14.2
+        };
+        let fit_floor = if lyric_units > 36.0 { 0.46 } else { 0.56 };
+        let fit_ratio = if lyric_units > f64::EPSILON {
+            (target_units / lyric_units).clamp(fit_floor, 1.0)
+        } else {
+            1.0
+        };
+        let lyric_font = 19.0 * fit_ratio;
+        let expanded_lyric_font = 21.0 * fit_ratio;
+        let plain_font = 18.0 * fit_ratio;
+        let expanded_plain_font = 19.0 * fit_ratio;
         format!(
-            "--lyric-scroll-distance: -{distance:.2}ch; --lyric-scroll-duration: {duration:.2}s;"
+            "--lyric-font-size: {lyric_font:.2}px; --expanded-lyric-font-size: {expanded_lyric_font:.2}px; --plain-font-size: {plain_font:.2}px; --expanded-plain-font-size: {expanded_plain_font:.2}px;"
         )
     } else {
         String::new()
@@ -779,6 +796,24 @@ fn collapsed_width_for_text(_text: &str, has_music: bool) -> f64 {
     } else {
         COLLAPSED_W
     }
+}
+
+fn text_visual_units(text: &str) -> f64 {
+    text.chars()
+        .map(|ch| {
+            if ch.is_ascii_whitespace() {
+                0.28
+            } else if ch.is_ascii_alphanumeric() {
+                0.56
+            } else if ch.is_ascii_punctuation() {
+                0.34
+            } else if ch.is_whitespace() {
+                0.36
+            } else {
+                1.0
+            }
+        })
+        .sum()
 }
 
 fn activity_energy_from_spectrum(spectrum: &[f32]) -> f64 {

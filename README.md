@@ -1,44 +1,42 @@
 # CAPS
 
-CAPS is a Rust desktop music island built with Dioxus Desktop.
+**CAPS** means **Catch All Possible Sources**.
 
-It searches NetEase Music, adds tracks to a local queue, plays public stream URLs directly, shows compact playback state, displays synced lyrics, renders an FFT spectrum, displays network speed when idle, and includes random queue loading.
+CAPS is a lightweight desktop music island built with Rust and Dioxus Desktop. It sits on screen like a compact capsule: quiet when idle, expressive when music is playing.
 
-CAPS runs as a small always-on-top capsule instead of a normal music app window. Hover the island to open search, queue, stats, and settings. Right-click the island to exit.
+## What It Does
 
-Logo: `src/assets/caps.logo`
+CAPS has two main states:
 
-Author: ref42
+- **Idle**: shows local weather, upload speed, download speed, and a live audio spectrum.
+- **Music**: searches NetEase Music, queues playable songs, plays audio, shows synced lyrics, spins album art, and renders a bouncy FFT spectrum.
 
-## Run
+The app is designed to stay small, fast, and out of the way. The current build is usually around a few MB of memory while idle.
 
-```powershell
-cargo run --manifest-path src-tauri\Cargo.toml
-```
+## Features
 
-## Check
+- Search NetEase Music and add playable songs to the queue.
+- Randomly load a chosen number of playable songs.
+- Play, pause, stop, skip, and seek from the island.
+- Display synced lyrics with smooth transitions.
+- Pick spectrum colors from album art when available.
+- Show local weather and network speed when no music is active.
+- Right-click the island to clean song cache and exit CAPS.
 
-```powershell
-cargo check --manifest-path src-tauri\Cargo.toml
-```
-
-## Build
-
-```powershell
-cargo build --manifest-path src-tauri\Cargo.toml --release
-```
-
-## Tech
+## Tech Stack
 
 - Rust
 - Dioxus Desktop
 - Rodio
 - CPAL
+- RustFFT
 - Reqwest
 - Sysinfo
 
+## Author
+
+ref42
+
 ## License
 
-MIT License
-
-Copyright (c) 2026 ref42
+MIT License. See [LICENSE](LICENSE).

@@ -1,33 +1,36 @@
 # CAPS
 
-**CAPS** means **`C`atch `A`ll `P`ossible `S`ources**.
+**CAPS** 是 **`C`atch `A`ll `P`ossible `S`ources** 的缩写。
+
+[English](README.en.md)
 
 <p align="center">
   <img src="assets/caps.svg" alt="CAPS logo" width="600px">
 </p>
 
-CAPS is a lightweight desktop music island built with Rust and Dioxus Desktop. It sits on screen like a compact capsule: quiet when idle, expressive when music is playing.
+CAPS 是一个用 Rust 和 Dioxus Desktop 构建的轻量桌面音乐岛。它像胶囊一样停留在屏幕上：空闲时安静显示系统状态，播放音乐时展示歌词、封面和频谱动画。
 
-## What It Does
+## 它能做什么
 
-CAPS has two main states:
+CAPS 主要有两种状态：
 
-- **Idle**: shows CPU usage, RAM usage, upload speed, download speed, and a live audio spectrum.
-- **Music**: searches NetEase Music, queues playable songs, plays audio, shows synced lyrics, spins album art, and renders a bouncy FFT spectrum.
+- **空闲**：显示 CPU、RAM、上传速度、下载速度和实时音频频谱。
+- **音乐**：搜索网易云音乐、加入可播放歌曲队列、播放音频、显示同步歌词、旋转专辑封面，并渲染更有弹性的 FFT 频谱。
 
-The app is designed to stay small, fast, and out of the way. The current build is usually around a few MB of memory while idle.
+它的目标是保持小、快、不打扰：常驻桌面，但不占用你的主要工作空间。
 
-## Features
+## 功能
 
-- Search NetEase Music and add playable songs to the queue.
-- Randomly load a chosen number of playable songs.
-- Play, pause, stop, skip, and seek from the island.
-- Display synced lyrics with smooth transitions.
-- Pick spectrum colors from album art when available.
-- Show CPU, RAM, and network speed when no music is active.
-- Right-click the island to clean song cache and exit CAPS.
+- 搜索网易云音乐，并把可播放歌曲加入队列。
+- 随机加载指定数量的可播放歌曲。
+- 支持从音乐岛直接播放、暂停、停止、上一首、下一首和拖动进度。
+- 显示同步歌词，并带有平滑过渡效果。
+- 根据专辑封面提取频谱和进度条颜色。
+- 空闲时显示 CPU、RAM 和网络速度。
+- 支持加载本地音乐文件夹并加入播放队列。
+- 右键音乐岛即可清理歌曲缓存并退出 CAPS。
 
-## Tech Stack
+## 技术栈
 
 - Rust
 - Dioxus Desktop
@@ -37,10 +40,10 @@ The app is designed to stay small, fast, and out of the way. The current build i
 - Reqwest
 - Sysinfo
 
-## Author
+## 作者
 
 ref42
 
-## License
+## 许可证
 
 MIT License. See [LICENSE](LICENSE).

@@ -85,13 +85,13 @@ button {
 }
 
 .idle-island {
-  grid-template-columns: 10px 54px 56px 78px 78px 52px;
+  grid-template-columns: 10px 68px 70px 86px 72px 52px;
   justify-content: space-between;
   gap: 0;
 }
 
 .expanded .idle-island {
-  grid-template-columns: 10px 54px 56px 78px 78px 52px;
+  grid-template-columns: 10px 68px 70px 86px 72px 52px;
   justify-content: space-between;
   gap: 0;
 }
@@ -178,7 +178,7 @@ button {
 }
 
 .speed-stat {
-  width: 76px;
+  width: 100%;
   height: var(--rail-height);
   display: flex;
   align-items: center;
@@ -187,10 +187,6 @@ button {
   flex: 0 0 auto;
   min-width: 0;
   justify-self: center;
-}
-
-.system-stat {
-  width: 100%;
 }
 
 .idle-island .speed-stat:nth-child(1) {

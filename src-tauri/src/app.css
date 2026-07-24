@@ -74,9 +74,9 @@ button {
 }
 
 .stage.expanded {
-  width: 460px;
-  height: 490px;
-  padding: 0;
+  width: var(--expanded-stage-width);
+  height: var(--expanded-stage-height);
+  padding: var(--island-bleed);
 }
 
 .island {
@@ -497,7 +497,8 @@ button {
 .random-add:active,
 .queue-toolbar button:active,
 .segmented button:active,
-.icon-button:active {
+.icon-button:active,
+.phone-copy-button:active {
   transform: scale(0.94);
 }
 
@@ -1090,6 +1091,67 @@ button {
 .segmented button.active {
   background: rgba(255, 255, 255, var(--active-alpha));
   color: rgba(248, 255, 252, 0.96);
+}
+
+.phone-remote {
+  display: grid;
+  gap: 6px;
+  padding: 11px 12px;
+  border-radius: 14px;
+  background: rgba(142, 142, 147, var(--hover-alpha));
+  user-select: text;
+}
+
+.phone-remote span {
+  color: rgba(248, 255, 252, 0.58);
+  font-size: 11px;
+  font-weight: 820;
+}
+
+.phone-remote-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+}
+
+.phone-remote-url {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 10px;
+  outline: none;
+  background: rgba(255, 255, 255, var(--softer-alpha));
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+  color: rgba(248, 255, 252, 0.94);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.phone-remote-url:focus {
+  color: #7df2ca;
+}
+
+.phone-copy-button {
+  width: 34px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, var(--soft-alpha));
+  color: rgba(248, 255, 252, 0.92);
+  font-size: 16px;
+  font-weight: 900;
+  transition: transform var(--motion-fast) var(--motion-spring), background-color var(--motion-bg) ease, color var(--motion-bg) ease;
+}
+
+.phone-copy-button:hover {
+  background: rgba(255, 255, 255, var(--hover-alpha));
+  color: #7df2ca;
 }
 
 .status-text {

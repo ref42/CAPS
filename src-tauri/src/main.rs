@@ -9,6 +9,7 @@ mod formatting;
 mod local_music;
 mod lyrics;
 mod netease;
+mod remote;
 mod storage;
 mod track;
 mod windowing;
@@ -23,13 +24,14 @@ use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
 use formatting::{format_bytes, format_rate};
 use lyrics::{LyricLine, current_lyric_line};
+use remote::RemoteCommand;
 use std::sync::Arc;
 use storage::AppSettings;
 use sysinfo::{MINIMUM_CPU_UPDATE_INTERVAL, Networks, System};
 use track::Track;
 use windowing::{
-    COLLAPSED_H, COLLAPSED_W, EXPANDED_W, ISLAND_BLEED, MUSIC_COLLAPSED_W, place_top_center,
-    set_island_window,
+    COLLAPSED_H, COLLAPSED_W, EXPANDED_H, EXPANDED_W, ISLAND_BLEED, MUSIC_COLLAPSED_W,
+    place_top_center, set_island_window,
 };
 
 #[cfg(target_os = "windows")]
@@ -93,6 +95,7 @@ fn App() -> Element {
     let saved_state = use_hook(storage::load_state);
     let saved_settings = saved_state.settings.clone();
     let player = use_hook(|| Arc::new(AudioPlayer::spawn()));
+    let phone_remote = use_hook(remote::start);
     let mut expanded = use_signal(|| false);
     let mut pointer_inside = use_signal(|| false);
     let mut input_focused = use_signal(|| false);
@@ -347,6 +350,80 @@ fn App() -> Element {
         }
     };
 
+    {
+        let player = player.clone();
+        let phone_remote = phone_remote.clone();
+        use_effect(move || {
+            let player = player.clone();
+            let phone_remote = phone_remote.clone();
+            spawn(async move {
+                loop {
+                    while let Some(command) = phone_remote.try_recv() {
+                        match command {
+                            RemoteCommand::Previous => {
+                                let len = queue.read().len();
+                                if len == 0 {
+                                    status.set("Phone remote: queue is empty.".to_string());
+                                    continue;
+                                }
+                                let prev = (*current_index.read())
+                                    .map(|i| if i == 0 { len - 1 } else { i - 1 })
+                                    .unwrap_or(0);
+                                let track = queue.read().get(prev).cloned();
+                                current_index.set(Some(prev));
+                                if let Some(track) = track {
+                                    spawn_play(
+                                        track,
+                                        player.clone(),
+                                        current_index,
+                                        status,
+                                        lyrics,
+                                    );
+                                }
+                            }
+                            RemoteCommand::Next => {
+                                let len = queue.read().len();
+                                if len == 0 {
+                                    status.set("Phone remote: queue is empty.".to_string());
+                                    continue;
+                                }
+                                let next =
+                                    (*current_index.read()).map(|i| (i + 1) % len).unwrap_or(0);
+                                let track = queue.read().get(next).cloned();
+                                current_index.set(Some(next));
+                                if let Some(track) = track {
+                                    spawn_play(
+                                        track,
+                                        player.clone(),
+                                        current_index,
+                                        status,
+                                        lyrics,
+                                    );
+                                }
+                            }
+                            RemoteCommand::PlayPause => {
+                                player.send(AudioCommand::PlayPause);
+                                status.set("Phone remote: play/pause.".to_string());
+                            }
+                            RemoteCommand::Stop => {
+                                current_index.set(None);
+                                lyrics.set(Vec::new());
+                                player.send(AudioCommand::Stop);
+                                status.set("Phone remote: stopped.".to_string());
+                            }
+                            RemoteCommand::Volume(value) => {
+                                volume.set(value);
+                                player.send(AudioCommand::SetVolume(value as f32 / 100.0));
+                                status.set(format!("Phone remote: volume {value}%."));
+                            }
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                }
+            });
+        });
+    }
+
     let player_for_finish = player.clone();
     use_effect(move || {
         let state = audio_state.read().clone();
@@ -502,6 +579,8 @@ fn App() -> Element {
     let collapsed_width = collapsed_width_for_text(&primary_text, has_music);
     let stage_width = collapsed_width + ISLAND_BLEED * 2.0;
     let stage_height = COLLAPSED_H + ISLAND_BLEED * 2.0;
+    let expanded_stage_width = EXPANDED_W + ISLAND_BLEED * 2.0;
+    let expanded_stage_height = EXPANDED_H + ISLAND_BLEED * 2.0;
     let island_alpha = (opacity_css * 0.92).clamp(0.08, 0.92);
     let panel_alpha = (opacity_css * 0.86).clamp(0.08, 0.86);
     let soft_alpha = (opacity_css * 0.16).clamp(0.02, 0.16);
@@ -511,7 +590,7 @@ fn App() -> Element {
     let green_alpha = (opacity_css * 0.2).clamp(0.03, 0.2);
     let red_alpha = (opacity_css * 0.22).clamp(0.03, 0.22);
     let stage_style = format!(
-        "--island-bg-alpha: {island_alpha:.3}; --panel-bg-alpha: {panel_alpha:.3}; --soft-alpha: {soft_alpha:.3}; --softer-alpha: {softer_alpha:.3}; --hover-alpha: {hover_alpha:.3}; --active-alpha: {active_alpha:.3}; --green-alpha: {green_alpha:.3}; --red-alpha: {red_alpha:.3}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
+        "--island-bg-alpha: {island_alpha:.3}; --panel-bg-alpha: {panel_alpha:.3}; --soft-alpha: {soft_alpha:.3}; --softer-alpha: {softer_alpha:.3}; --hover-alpha: {hover_alpha:.3}; --active-alpha: {active_alpha:.3}; --green-alpha: {green_alpha:.3}; --red-alpha: {red_alpha:.3}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --expanded-stage-width: {expanded_stage_width:.0}px; --expanded-stage-height: {expanded_stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
     );
     let spring_class = spring_style.read().clone();
     let stage_class = if is_expanded {
@@ -794,6 +873,7 @@ fn App() -> Element {
                         volume: volume(),
                         island_size: island_size(),
                         spring_style: spring_style.read().clone(),
+                        phone_remote_url: phone_remote.url.clone(),
                         onopacity: move |value| opacity.set(value),
                         onvolume: {
                             let player = player.clone();
@@ -815,6 +895,13 @@ fn App() -> Element {
                             }
                         },
                         onspring_style: move |value| spring_style.set(value),
+                        oncopy_phone_remote: {
+                            let phone_remote_url = phone_remote.url.clone();
+                            move |_| {
+                                copy_text_to_clipboard(&phone_remote_url);
+                                status.set("Copied iPhone Fun Mode URL.".to_string());
+                            }
+                        },
                     }
                 }
             }
@@ -888,6 +975,36 @@ fn rate_progress(rate: u64, peak: f64) -> f64 {
         return 0.0;
     }
     (rate as f64 / peak * 100.0).clamp(0.0, 100.0)
+}
+
+fn copy_text_to_clipboard(text: &str) {
+    let Ok(text) = serde_json::to_string(text) else {
+        return;
+    };
+    let script = format!(
+        r#"
+        (() => {{
+            const text = {text};
+            const fallback = () => {{
+                const textarea = document.createElement("textarea");
+                textarea.value = text;
+                textarea.style.position = "fixed";
+                textarea.style.left = "-9999px";
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                document.execCommand("copy");
+                textarea.remove();
+            }};
+            if (navigator.clipboard && window.isSecureContext) {{
+                navigator.clipboard.writeText(text).catch(fallback);
+            }} else {{
+                fallback();
+            }}
+        }})();
+        "#
+    );
+    document::eval(&script);
 }
 
 const APP_CSS: &str = include_str!("app.css");

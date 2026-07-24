@@ -14,7 +14,9 @@ mod storage;
 mod track;
 mod windowing;
 
-use actions::{spawn_load_local_queue, spawn_play, spawn_random_queue, spawn_search};
+use actions::{
+    RandomQueueMode, spawn_load_local_queue, spawn_play, spawn_random_queue, spawn_search,
+};
 use audio::{AudioCommand, AudioPlayer};
 use components::{
     Island, QUEUE_RENDER_LIMIT, QueuePanel, SearchPanel, SettingsPanel, StatsPanel, Tabs,
@@ -304,7 +306,32 @@ fn App() -> Element {
         }
     };
 
-    let load_random = move |count: u32| spawn_random_queue(count, queue, current_index, status);
+    let player_for_random_append = player.clone();
+    let load_random_append = move |count: u32| {
+        spawn_random_queue(
+            count,
+            RandomQueueMode::Append,
+            queue,
+            current_index,
+            current_track,
+            player_for_random_append.clone(),
+            status,
+            lyrics,
+        )
+    };
+    let player_for_random_replace = player.clone();
+    let load_random_replace = move |count: u32| {
+        spawn_random_queue(
+            count,
+            RandomQueueMode::Replace,
+            queue,
+            current_index,
+            current_track,
+            player_for_random_replace.clone(),
+            status,
+            lyrics,
+        )
+    };
 
     let player_for_next = player.clone();
     let play_next = move |_| {
@@ -732,7 +759,8 @@ fn App() -> Element {
                                 status,
                             )
                         },
-                        onrandom: move |count| load_random(count),
+                        onrandom_append: move |count| load_random_append(count),
+                        onrandom_replace: move |count| load_random_replace(count),
                         onrandom_count: move |value| random_count.set(value),
                         onadd: move |track| {
                             let added = {

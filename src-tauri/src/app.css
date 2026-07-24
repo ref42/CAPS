@@ -718,8 +718,8 @@ button {
   min-height: 42px;
   padding: 0 2px;
   display: grid;
-  grid-template-columns: 78px minmax(0, 1fr) 78px;
-  gap: 10px;
+  grid-template-columns: 78px minmax(0, 1fr) 64px 66px;
+  gap: 8px;
 }
 
 .random-control span {
@@ -780,6 +780,10 @@ button {
   border: 0;
   box-shadow: none;
   transition: transform var(--motion-fast) var(--motion-spring), background-color var(--motion-bg) ease;
+}
+
+.random-replace {
+  color: rgba(255, 214, 214, 0.92);
 }
 
 .random-add:hover {

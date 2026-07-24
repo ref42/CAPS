@@ -105,7 +105,8 @@ pub fn SearchPanel(
     onsearch: EventHandler<String>,
     onlocal_music_folder: EventHandler<String>,
     onload_local: EventHandler<MouseEvent>,
-    onrandom: EventHandler<u32>,
+    onrandom_append: EventHandler<u32>,
+    onrandom_replace: EventHandler<u32>,
     onrandom_count: EventHandler<u32>,
     onadd: EventHandler<Track>,
 ) -> Element {
@@ -161,8 +162,13 @@ pub fn SearchPanel(
                 }
                 button {
                     class: "random-add",
-                    onclick: move |_| onrandom.call(random_count),
-                    "Add"
+                    onclick: move |_| onrandom_append.call(random_count),
+                    "Append"
+                }
+                button {
+                    class: "random-add random-replace",
+                    onclick: move |_| onrandom_replace.call(random_count),
+                    "Replace"
                 }
             }
             div { class: "song-list",

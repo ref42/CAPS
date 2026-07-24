@@ -61,11 +61,20 @@ pub fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: S
     });
 }
 
+pub enum RandomQueueMode {
+    Append,
+    Replace,
+}
+
 pub fn spawn_random_queue(
     count: u32,
+    mode: RandomQueueMode,
     mut queue: Signal<Vec<Track>>,
     mut current_index: Signal<Option<usize>>,
+    mut current_track: Signal<Option<Track>>,
+    player: Arc<AudioPlayer>,
     mut status: Signal<String>,
+    mut lyrics: Signal<Vec<LyricLine>>,
 ) {
     spawn(async move {
         status.set(format!("Loading random {count}..."));
@@ -73,9 +82,24 @@ pub fn spawn_random_queue(
             Ok(items) => {
                 let tracks = items.into_iter().map(Track::from).collect::<Vec<_>>();
                 let loaded = tracks.len();
-                queue.set(tracks);
-                current_index.set(None);
-                status.set(format!("Queued {loaded} random tracks."));
+                match mode {
+                    RandomQueueMode::Append => {
+                        let total = {
+                            let mut next = queue.write();
+                            next.extend(tracks);
+                            next.len()
+                        };
+                        status.set(format!("Added {loaded} random tracks. Queue has {total}."));
+                    }
+                    RandomQueueMode::Replace => {
+                        queue.set(tracks);
+                        current_index.set(None);
+                        current_track.set(None);
+                        lyrics.set(Vec::new());
+                        player.send(AudioCommand::Stop);
+                        status.set(format!("Replaced queue with {loaded} random tracks."));
+                    }
+                }
             }
             Err(err) => status.set(err),
         }

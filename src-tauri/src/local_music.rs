@@ -28,10 +28,6 @@ pub fn load_all_batched(
     scan_batched(folder, MAX_SCAN_ITEMS, batch_size.max(1), &mut on_batch)
 }
 
-pub fn read_audio(path: &str) -> Result<Vec<u8>, String> {
-    fs::read(path).map_err(|err| format!("Local file read failed: {err}"))
-}
-
 pub fn read_lyrics(path: &str) -> String {
     let audio_path = Path::new(path);
     let Some(stem) = audio_path.file_stem().and_then(|value| value.to_str()) else {

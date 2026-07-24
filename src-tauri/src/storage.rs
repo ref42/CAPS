@@ -1,6 +1,7 @@
 use crate::track::{SOURCE_LOCAL, Track};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
 const MAX_PERSISTED_QUEUE: usize = 500;
@@ -137,6 +138,13 @@ pub fn clean_song_cache() {
         return;
     };
     let _ = fs::remove_dir_all(path);
+}
+
+pub fn song_cache_file(source: &str, id: &str) -> Option<PathBuf> {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    source.hash(&mut hasher);
+    id.hash(&mut hasher);
+    Some(song_cache_path()?.join(format!("{:016x}.audio", hasher.finish())))
 }
 
 pub fn cover_cache_path() -> Option<PathBuf> {

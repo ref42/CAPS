@@ -7,8 +7,8 @@ use rodio::Source;
 
 #[derive(Debug)]
 pub enum AudioCommand {
-    LoadBytes {
-        bytes: Vec<u8>,
+    LoadFile {
+        path: String,
         title: String,
         detail: String,
     },
@@ -73,15 +73,21 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
 
     loop {
         match rx.recv_timeout(Duration::from_millis(100)) {
-            Ok(AudioCommand::LoadBytes {
-                bytes,
+            Ok(AudioCommand::LoadFile {
+                path,
                 title,
                 detail,
             }) => {
-                let byte_len = bytes.len() as u64;
-                let cursor = std::io::Cursor::new(bytes);
+                let file = match std::fs::File::open(&path) {
+                    Ok(file) => file,
+                    Err(e) => {
+                        log::error!("audio: open stream file: {e}");
+                        continue;
+                    }
+                };
+                let byte_len = file.metadata().map(|meta| meta.len()).unwrap_or(0);
                 let source = match rodio::Decoder::builder()
-                    .with_data(cursor)
+                    .with_data(file)
                     .with_byte_len(byte_len)
                     .build()
                 {
@@ -95,7 +101,7 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                     .total_duration()
                     .map(|duration| duration.as_secs_f64())
                     .unwrap_or(0.0);
-                current_path = "netease".to_string();
+                current_path = path;
                 current_title = title;
                 current_detail = detail;
 

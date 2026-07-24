@@ -2,9 +2,11 @@ use crate::audio::{AudioCommand, AudioPlayer};
 use crate::local_music;
 use crate::lyrics::LyricLine;
 use crate::netease;
+use crate::storage;
 use crate::track::{SOURCE_LOCAL, Track};
 use dioxus::prelude::*;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 
 const LOCAL_IMPORT_BATCH_SIZE: usize = 80;
 
@@ -18,8 +20,8 @@ pub fn spawn_play(
     spawn(async move {
         status.set(format!("Loading {}...", track.name));
         lyrics.set(Vec::new());
-        let bytes = match load_track_bytes(&track).await {
-            Ok(bytes) => bytes,
+        let path = match load_track_path(&track).await {
+            Ok(path) => path,
             Err(err) => {
                 player.send(AudioCommand::Stop);
                 current_index.set(None);
@@ -27,8 +29,8 @@ pub fn spawn_play(
                 return;
             }
         };
-        player.send(AudioCommand::LoadBytes {
-            bytes,
+        player.send(AudioCommand::LoadFile {
+            path,
             title: track.name.clone(),
             detail: track.artist.clone(),
         });
@@ -132,12 +134,12 @@ pub fn spawn_load_local_queue(
     });
 }
 
-async fn load_track_bytes(track: &Track) -> Result<Vec<u8>, String> {
+async fn load_track_path(track: &Track) -> Result<String, String> {
     if track.source == SOURCE_LOCAL {
-        let id = track.id.clone();
-        return tokio::task::spawn_blocking(move || local_music::read_audio(&id))
-            .await
-            .map_err(|err| format!("Local file read failed: {err}"))?;
+        if !std::path::Path::new(&track.id).is_file() {
+            return Err("Local audio file is not available.".to_string());
+        }
+        return Ok(track.id.clone());
     }
     let info =
         netease::get_netease_song_url(track.id.clone(), Some("exhigh".to_string()), None).await?;
@@ -145,14 +147,41 @@ async fn load_track_bytes(track: &Track) -> Result<Vec<u8>, String> {
         .url
         .filter(|url| !url.is_empty())
         .ok_or_else(|| "No playable stream for this track.".to_string())?;
-    let response = reqwest::get(&url)
+    let path = storage::song_cache_file(&track.source, &track.id)
+        .ok_or_else(|| "Song cache path is not available.".to_string())?;
+    if path.exists() && path.metadata().map(|meta| meta.len()).unwrap_or(0) > 0 {
+        return Ok(path.to_string_lossy().to_string());
+    }
+    let Some(parent) = path.parent() else {
+        return Err("Song cache path is not valid.".to_string());
+    };
+    tokio::fs::create_dir_all(parent)
+        .await
+        .map_err(|err| format!("Song cache unavailable: {err}"))?;
+    let mut response = reqwest::get(&url)
         .await
         .map_err(|err| format!("Stream request failed: {err}"))?;
-    response
-        .bytes()
+    let temp_path = path.with_extension("download");
+    let mut file = tokio::fs::File::create(&temp_path)
         .await
-        .map(|bytes| bytes.to_vec())
-        .map_err(|err| format!("Stream read failed: {err}"))
+        .map_err(|err| format!("Song cache write failed: {err}"))?;
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|err| format!("Stream read failed: {err}"))?
+    {
+        file.write_all(&chunk)
+            .await
+            .map_err(|err| format!("Song cache write failed: {err}"))?;
+    }
+    file.flush()
+        .await
+        .map_err(|err| format!("Song cache write failed: {err}"))?;
+    drop(file);
+    tokio::fs::rename(&temp_path, &path)
+        .await
+        .map_err(|err| format!("Song cache finalize failed: {err}"))?;
+    Ok(path.to_string_lossy().to_string())
 }
 
 async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {

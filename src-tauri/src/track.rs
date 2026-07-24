@@ -1,8 +1,8 @@
-use crate::netease;
+use crate::shitease;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub const SOURCE_NETEASE: &str = "netease";
+pub const SOURCE_SHITEASE: &str = "shitease";
 pub const SOURCE_LOCAL: &str = "local";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -16,13 +16,13 @@ pub struct Track {
     pub cover: String,
 }
 
-impl From<netease::NeteaseSong> for Track {
-    fn from(song: netease::NeteaseSong) -> Self {
+impl From<shitease::ShiteaseSong> for Track {
+    fn from(song: shitease::ShiteaseSong) -> Self {
         Self {
             source: song
                 .source
                 .or(song.provider)
-                .unwrap_or_else(|| SOURCE_NETEASE.to_string()),
+                .unwrap_or_else(|| SOURCE_SHITEASE.to_string()),
             id: value_id(&song.id),
             name: song.name,
             artist: clean_or(song.artist, "Unknown artist"),
@@ -33,7 +33,7 @@ impl From<netease::NeteaseSong> for Track {
 }
 
 fn default_source() -> String {
-    SOURCE_NETEASE.to_string()
+    SOURCE_SHITEASE.to_string()
 }
 
 fn clean_or(value: Option<String>, fallback: &str) -> String {

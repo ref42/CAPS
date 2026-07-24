@@ -2,12 +2,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 
-const NETEASE_ORIGIN: &str = "https://music.163.com";
+const SHITEASE_ORIGIN: &str = "https://music.163.com";
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NeteaseSong {
+pub struct ShiteaseSong {
     pub provider: Option<String>,
     pub source: Option<String>,
     #[serde(rename = "type")]
@@ -23,7 +23,7 @@ pub struct NeteaseSong {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NeteaseSongUrl {
+pub struct ShiteaseSongUrl {
     pub url: Option<String>,
     pub playable: Option<bool>,
     pub trial: Option<bool>,
@@ -36,7 +36,7 @@ pub struct NeteaseSongUrl {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct NeteaseLyricResponse {
+pub struct ShiteaseLyricResponse {
     pub lyric: Option<String>,
     pub tlyric: Option<String>,
     pub yrc: Option<String>,
@@ -94,7 +94,7 @@ fn artists(song: &Value) -> String {
         .unwrap_or_default()
 }
 
-fn map_song(song: &Value) -> Option<NeteaseSong> {
+fn map_song(song: &Value) -> Option<ShiteaseSong> {
     let id = song.get("id")?.clone();
     let name = text(song.get("name"));
     if name.is_empty() {
@@ -104,9 +104,9 @@ fn map_song(song: &Value) -> Option<NeteaseSong> {
         .get("al")
         .or_else(|| song.get("album"))
         .unwrap_or(&Value::Null);
-    Some(NeteaseSong {
-        provider: Some("netease".to_string()),
-        source: Some("netease".to_string()),
+    Some(ShiteaseSong {
+        provider: Some("shitease".to_string()),
+        source: Some("shitease".to_string()),
         item_type: Some("song".to_string()),
         id,
         name,
@@ -125,7 +125,7 @@ async fn search_direct(
     client: &reqwest::Client,
     keywords: &str,
     limit: u32,
-) -> Result<Vec<NeteaseSong>, String> {
+) -> Result<Vec<ShiteaseSong>, String> {
     search_direct_offset(client, keywords, limit, 0).await
 }
 
@@ -134,7 +134,7 @@ async fn search_direct_offset(
     keywords: &str,
     limit: u32,
     offset: u32,
-) -> Result<Vec<NeteaseSong>, String> {
+) -> Result<Vec<ShiteaseSong>, String> {
     let params = [
         ("s", keywords.to_string()),
         ("type", "1".to_string()),
@@ -144,14 +144,14 @@ async fn search_direct_offset(
         ("csrf_token", String::new()),
     ];
     let body: Value = client
-        .post(format!("{NETEASE_ORIGIN}/api/cloudsearch/pc"))
+        .post(format!("{SHITEASE_ORIGIN}/api/cloudsearch/pc"))
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("NetEase search unavailable: {e}"))?
+        .map_err(|e| format!("Music search unavailable: {e}"))?
         .json()
         .await
-        .map_err(|e| format!("Invalid NetEase search response: {e}"))?;
+        .map_err(|e| format!("Invalid music search response: {e}"))?;
 
     let songs = body
         .get("result")
@@ -179,7 +179,7 @@ fn shuffle<T>(items: &mut [T], state: &mut u64) {
 
 async fn playable_song_ids(
     client: &reqwest::Client,
-    songs: &[NeteaseSong],
+    songs: &[ShiteaseSong],
     quality: &str,
 ) -> Result<HashSet<String>, String> {
     let ids = songs
@@ -198,13 +198,13 @@ async fn playable_song_ids(
         let ids_json = format!("[{}]", chunk.join(","));
         let body: Value = client
             .get(format!(
-                "{NETEASE_ORIGIN}/api/song/enhance/player/url?ids={}&br={}",
+                "{SHITEASE_ORIGIN}/api/song/enhance/player/url?ids={}&br={}",
                 urlencoding::encode(&ids_json),
                 br
             ))
             .send()
             .await
-            .map_err(|e| format!("NetEase playable filter unavailable: {e}"))?
+            .map_err(|e| format!("Playable filter unavailable: {e}"))?
             .json()
             .await
             .unwrap_or(Value::Null);
@@ -226,8 +226,8 @@ async fn playable_song_ids(
 
 async fn filter_playable_songs(
     client: &reqwest::Client,
-    songs: Vec<NeteaseSong>,
-) -> Result<Vec<NeteaseSong>, String> {
+    songs: Vec<ShiteaseSong>,
+) -> Result<Vec<ShiteaseSong>, String> {
     let playable = playable_song_ids(client, &songs, "exhigh").await?;
     Ok(songs
         .into_iter()
@@ -244,11 +244,11 @@ fn bitrate(quality: &str) -> u32 {
     }
 }
 
-pub async fn search_netease_songs(
+pub async fn search_shitease_songs(
     keywords: String,
     limit: Option<u32>,
     _api_base_url: Option<String>,
-) -> Result<Vec<NeteaseSong>, String> {
+) -> Result<Vec<ShiteaseSong>, String> {
     let keywords = keywords.trim().to_string();
     if keywords.is_empty() {
         return Ok(Vec::new());
@@ -262,14 +262,14 @@ pub async fn search_netease_songs(
     Ok(playable)
 }
 
-pub async fn get_netease_song_url(
+pub async fn get_shitease_song_url(
     id: String,
     quality: Option<String>,
     _api_base_url: Option<String>,
-) -> Result<NeteaseSongUrl, String> {
+) -> Result<ShiteaseSongUrl, String> {
     let id = id.trim();
     if id.is_empty() {
-        return Err("Missing NetEase song id".to_string());
+        return Err("Missing song id".to_string());
     }
 
     let quality = quality.unwrap_or_else(|| "exhigh".to_string());
@@ -277,13 +277,13 @@ pub async fn get_netease_song_url(
 
     let body: Value = client()?
         .get(format!(
-            "{NETEASE_ORIGIN}/api/song/enhance/player/url?ids=%5B{}%5D&br={}",
+            "{SHITEASE_ORIGIN}/api/song/enhance/player/url?ids=%5B{}%5D&br={}",
             urlencoding::encode(id),
             br
         ))
         .send()
         .await
-        .map_err(|e| format!("NetEase song URL unavailable: {e}"))?
+        .map_err(|e| format!("Song URL unavailable: {e}"))?
         .json()
         .await
         .unwrap_or(Value::Null);
@@ -296,7 +296,7 @@ pub async fn get_netease_song_url(
         .unwrap_or(Value::Null);
     let direct_url = data.get("url").and_then(Value::as_str).map(str::to_string);
     if let Some(url) = direct_url {
-        return Ok(NeteaseSongUrl {
+        return Ok(ShiteaseSongUrl {
             url: Some(url),
             playable: Some(true),
             trial: Some(data.get("freeTrialInfo").is_some_and(|v| !v.is_null())),
@@ -312,31 +312,31 @@ pub async fn get_netease_song_url(
     Err(data
         .get("code")
         .and_then(Value::as_i64)
-        .map(|code| format!("This track is not directly playable. NetEase code: {code}."))
+        .map(|code| format!("This track is not directly playable. Code: {code}."))
         .unwrap_or_else(|| "This track is not directly playable.".to_string()))
 }
 
-pub async fn get_netease_lyric(
+pub async fn get_shitease_lyric(
     id: String,
     _api_base_url: Option<String>,
-) -> Result<NeteaseLyricResponse, String> {
+) -> Result<ShiteaseLyricResponse, String> {
     let id = id.trim();
     if id.is_empty() {
-        return Err("Missing NetEase song id".to_string());
+        return Err("Missing song id".to_string());
     }
     let body: Value = client()?
         .get(format!(
-            "{NETEASE_ORIGIN}/api/song/lyric?id={}&lv=-1&kv=-1&tv=-1",
+            "{SHITEASE_ORIGIN}/api/song/lyric?id={}&lv=-1&kv=-1&tv=-1",
             urlencoding::encode(id)
         ))
         .send()
         .await
-        .map_err(|e| format!("NetEase lyric unavailable: {e}"))?
+        .map_err(|e| format!("Lyric unavailable: {e}"))?
         .json()
         .await
-        .map_err(|e| format!("Invalid NetEase lyric response: {e}"))?;
+        .map_err(|e| format!("Invalid lyric response: {e}"))?;
 
-    Ok(NeteaseLyricResponse {
+    Ok(ShiteaseLyricResponse {
         lyric: body
             .get("lrc")
             .and_then(|lrc| lrc.get("lyric"))
@@ -352,14 +352,14 @@ pub async fn get_netease_lyric(
             .and_then(|lrc| lrc.get("lyric"))
             .and_then(Value::as_str)
             .map(str::to_string),
-        source: Some("netease_direct".to_string()),
+        source: Some("shitease_direct".to_string()),
     })
 }
 
-pub async fn random_netease_queue(
+pub async fn random_shitease_queue(
     count: Option<u32>,
     _api_base_url: Option<String>,
-) -> Result<Vec<NeteaseSong>, String> {
+) -> Result<Vec<ShiteaseSong>, String> {
     let target = count.unwrap_or(50).clamp(1, 100);
     let seeds = [
         "华语 流行",

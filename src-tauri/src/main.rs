@@ -9,7 +9,7 @@ mod formatting;
 mod icon;
 mod local_music;
 mod lyrics;
-mod netease;
+mod shitease;
 mod storage;
 mod track;
 mod windowing;
@@ -136,7 +136,8 @@ fn App() -> Element {
     let mut current_index = use_signal(move || saved_state.current_index);
     let mut current_track = use_signal(|| None::<Track>);
     let mut status =
-        use_signal(|| "Search NetEase, add songs, then play from the island.".to_string());
+        use_signal(|| "Search music, add songs, then play from the island.".to_string());
+    let mut quiet_mode = use_signal(|| false);
     let mut audio_state = use_signal(|| player.get_state());
     let mut spectrum = use_signal(audio_spectrum::get_audio_spectrum);
     let mut spectrum_colors = use_signal(|| {
@@ -314,6 +315,7 @@ fn App() -> Element {
             queue,
             current_index,
             current_track,
+            quiet_mode,
             player_for_random_append.clone(),
             status,
             lyrics,
@@ -327,6 +329,7 @@ fn App() -> Element {
             queue,
             current_index,
             current_track,
+            quiet_mode,
             player_for_random_replace.clone(),
             status,
             lyrics,
@@ -343,6 +346,7 @@ fn App() -> Element {
         let next = (*current_index.read()).map(|i| (i + 1) % len).unwrap_or(0);
         current_index.set(Some(next));
         if let Some(track) = queue.read().get(next).cloned() {
+            quiet_mode.set(false);
             spawn_play(
                 track,
                 player_for_next.clone(),
@@ -366,6 +370,7 @@ fn App() -> Element {
             .unwrap_or(0);
         current_index.set(Some(prev));
         if let Some(track) = queue.read().get(prev).cloned() {
+            quiet_mode.set(false);
             spawn_play(
                 track,
                 player_for_prev.clone(),
@@ -390,6 +395,7 @@ fn App() -> Element {
         if len == 0 {
             current_index.set(None);
             current_track.set(None);
+            quiet_mode.set(false);
             lyrics.set(Vec::new());
             player_for_finish.send(AudioCommand::Stop);
             status.set("Queue finished.".to_string());
@@ -405,6 +411,7 @@ fn App() -> Element {
         if index + 1 >= len {
             current_index.set(None);
             current_track.set(None);
+            quiet_mode.set(false);
             lyrics.set(Vec::new());
             player_for_finish.send(AudioCommand::Stop);
             status.set("Queue finished.".to_string());
@@ -413,6 +420,7 @@ fn App() -> Element {
         let next = index + 1;
         current_index.set(Some(next));
         if let Some(track) = queue.read().get(next).cloned() {
+            quiet_mode.set(false);
             spawn_play(
                 track,
                 player_for_finish.clone(),
@@ -440,7 +448,8 @@ fn App() -> Element {
     let audio_has_track = !state.title.is_empty() && !state.is_finished;
     let has_music = (active_track.is_some() || audio_has_track)
         && !is_finished_last
-        && !paused_over_idle_timeout;
+        && !paused_over_idle_timeout
+        && !quiet_mode();
     let current_title = if state.title.is_empty() {
         active_track
             .as_ref()
@@ -702,9 +711,18 @@ fn App() -> Element {
                     let player = player.clone();
                     move |_| {
                         if audio_ready_for_toggle {
+                            quiet_mode.set(false);
                             player.send(AudioCommand::PlayPause);
                         } else if let Some(track) = playpause_track.clone() {
-                            spawn_play(track, player.clone(), current_index, current_track, status, lyrics);
+                            quiet_mode.set(false);
+                            spawn_play(
+                                track,
+                                player.clone(),
+                                current_index,
+                                current_track,
+                                status,
+                                lyrics,
+                            );
                         } else {
                             status.set("Queue is empty.".to_string());
                         }
@@ -716,6 +734,7 @@ fn App() -> Element {
                     move |_| {
                         current_index.set(None);
                         current_track.set(None);
+                        quiet_mode.set(false);
                         lyrics.set(Vec::new());
                         player.send(AudioCommand::Stop);
                         status.set("Stopped.".to_string());
@@ -763,11 +782,7 @@ fn App() -> Element {
                         onsearch: move |text| spawn_search(text, results, status),
                         onlocal_music_folder: move |value| local_music_folder.set(value),
                         onload_local: move |_| {
-                            spawn_load_local_queue(
-                                local_music_folder.read().clone(),
-                                queue,
-                                status,
-                            )
+                            spawn_load_local_queue(local_music_folder.read().clone(), queue, status)
                         },
                         onrandom_append: move |count| load_random_append(count),
                         onrandom_replace: move |count| load_random_replace(count),
@@ -792,6 +807,7 @@ fn App() -> Element {
                                 queue.set(Vec::new());
                                 current_index.set(None);
                                 current_track.set(None);
+                                quiet_mode.set(false);
                                 lyrics.set(Vec::new());
                                 player.send(AudioCommand::Stop);
                                 status.set("Queue cleared.".to_string());
@@ -802,6 +818,7 @@ fn App() -> Element {
                             move |index| {
                                 if let Some(track) = queue.read().get(index).cloned() {
                                     current_index.set(Some(index));
+                                    quiet_mode.set(false);
                                     spawn_play(
                                         track,
                                         player.clone(),
@@ -825,6 +842,7 @@ fn App() -> Element {
                                         Some(i) if i == index => {
                                             current_index.set(None);
                                             current_track.set(None);
+                                            quiet_mode.set(false);
                                             lyrics.set(Vec::new());
                                             player.send(AudioCommand::Stop);
                                             status.set("Removed current track.".to_string());
@@ -856,6 +874,7 @@ fn App() -> Element {
                         opacity: opacity(),
                         volume: volume(),
                         island_size: island_size(),
+                        quiet_mode: quiet_mode(),
                         onopacity: move |value| opacity.set(value),
                         onvolume: {
                             let player = player.clone();
@@ -874,6 +893,30 @@ fn App() -> Element {
                                     value as f64 / 100.0,
                                     collapsed_width,
                                 );
+                            }
+                        },
+                        onsilent: {
+                            let player = player.clone();
+                            move |_| {
+                                current_index.set(None);
+                                current_track.set(None);
+                                quiet_mode.set(false);
+                                lyrics.set(Vec::new());
+                                player.send(AudioCommand::Stop);
+                                status.set("Silent.".to_string());
+                            }
+                        },
+                        onquiet: move |_| {
+                            if active_track.is_some() || audio_has_track {
+                                let next = !quiet_mode();
+                                quiet_mode.set(next);
+                                if next {
+                                    status.set("Quiet mode: music keeps playing.".to_string());
+                                } else {
+                                    status.set("Music island restored.".to_string());
+                                }
+                            } else {
+                                status.set("No active music.".to_string());
                             }
                         },
                     }

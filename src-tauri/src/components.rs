@@ -118,7 +118,7 @@ pub fn SearchPanel(
             div { class: "search-row",
                 div { class: "search-field",
                     input {
-                        placeholder: "Search NetEase",
+                        placeholder: "Search music",
                         onfocus,
                         onblur,
                         oninput: move |event| onquery.call(event.value()),
@@ -229,9 +229,12 @@ pub fn SettingsPanel(
     opacity: u32,
     volume: u32,
     island_size: u32,
+    quiet_mode: bool,
     onopacity: EventHandler<u32>,
     onvolume: EventHandler<u32>,
     onisland_size: EventHandler<u32>,
+    onsilent: EventHandler<MouseEvent>,
+    onquiet: EventHandler<MouseEvent>,
 ) -> Element {
     rsx! {
         div { class: "panel-section settings",
@@ -284,6 +287,21 @@ pub fn SettingsPanel(
                         },
                     }
                     output { "{island_size}%" }
+                }
+            }
+            label { class: "setting",
+                span { "Mode" }
+                div { class: "mode-actions",
+                    button {
+                        class: "mode-button silent-button",
+                        onclick: onsilent,
+                        "Silent"
+                    }
+                    button {
+                        class: if quiet_mode { "mode-button quiet-button active" } else { "mode-button quiet-button" },
+                        onclick: onquiet,
+                        "Quiet"
+                    }
                 }
             }
             div { class: "status-text", "Right-click the island to exit CAPS." }

@@ -1,7 +1,7 @@
 use crate::audio::{AudioCommand, AudioPlayer};
 use crate::local_music;
 use crate::lyrics::LyricLine;
-use crate::netease;
+use crate::shitease;
 use crate::storage;
 use crate::track::{SOURCE_LOCAL, Track};
 use dioxus::prelude::*;
@@ -48,8 +48,8 @@ pub fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: S
         return;
     }
     spawn(async move {
-        status.set("Searching NetEase...".to_string());
-        match netease::search_netease_songs(text, Some(18), None).await {
+        status.set("Searching music...".to_string());
+        match shitease::search_shitease_songs(text, Some(18), None).await {
             Ok(items) => {
                 let tracks = items.into_iter().map(Track::from).collect::<Vec<_>>();
                 let count = tracks.len();
@@ -72,13 +72,14 @@ pub fn spawn_random_queue(
     mut queue: Signal<Vec<Track>>,
     mut current_index: Signal<Option<usize>>,
     mut current_track: Signal<Option<Track>>,
+    mut quiet_mode: Signal<bool>,
     player: Arc<AudioPlayer>,
     mut status: Signal<String>,
     mut lyrics: Signal<Vec<LyricLine>>,
 ) {
     spawn(async move {
         status.set(format!("Loading random {count}..."));
-        match netease::random_netease_queue(Some(count), None).await {
+        match shitease::random_shitease_queue(Some(count), None).await {
             Ok(items) => {
                 let tracks = items.into_iter().map(Track::from).collect::<Vec<_>>();
                 let loaded = tracks.len();
@@ -95,6 +96,7 @@ pub fn spawn_random_queue(
                         queue.set(tracks);
                         current_index.set(None);
                         current_track.set(None);
+                        quiet_mode.set(false);
                         lyrics.set(Vec::new());
                         player.send(AudioCommand::Stop);
                         status.set(format!("Replaced queue with {loaded} random tracks."));
@@ -169,7 +171,7 @@ async fn load_track_path(track: &Track) -> Result<String, String> {
         return Ok(track.id.clone());
     }
     let info =
-        netease::get_netease_song_url(track.id.clone(), Some("exhigh".to_string()), None).await?;
+        shitease::get_shitease_song_url(track.id.clone(), Some("exhigh".to_string()), None).await?;
     let url = info
         .url
         .filter(|url| !url.is_empty())
@@ -219,7 +221,7 @@ async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
             .unwrap_or_default();
         return crate::lyrics::parse_lrc(&text);
     }
-    netease::get_netease_lyric(track.id.clone(), None)
+    shitease::get_shitease_lyric(track.id.clone(), None)
         .await
         .map(|response| crate::lyrics::parse_lrc(response.lyric.as_deref().unwrap_or_default()))
         .unwrap_or_default()

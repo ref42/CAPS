@@ -2,6 +2,11 @@
 
 **CAPS** means **Catch All Possible Sources**.
 
+<p align="center">
+  <img src="src/assets/caps.svg" alt="caps">
+</p>
+
+
 CAPS is a lightweight desktop music island built with Rust and Dioxus Desktop. It sits on screen like a compact capsule: quiet when idle, expressive when music is playing.
 
 ## What It Does

@@ -842,37 +842,66 @@ button {
   line-height: 1.36;
 }
 
-.speed-grid {
+.live-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
 }
 
-.speed-grid div,
+.live-stat,
 .stat-line {
   border-radius: 12px;
   background: rgba(142, 142, 147, var(--hover-alpha));
 }
 
-.speed-grid div {
-  min-height: 62px;
+.live-stat {
+  min-width: 0;
+  min-height: 76px;
   display: grid;
-  align-content: center;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-content: stretch;
   gap: 5px;
-  padding: 10px;
+  padding: 10px 10px 9px;
 }
 
-.speed-grid span,
+.live-stat span,
 .stat-line span {
   color: rgba(248, 255, 252, 0.55);
   font-size: 11px;
   font-weight: 800;
 }
 
-.speed-grid strong {
+.live-stat strong {
+  align-self: center;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 16px;
+  color: rgba(248, 255, 252, 0.95);
+  font-size: 14px;
+  font-weight: 850;
   letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.live-stat i {
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, var(--softer-alpha));
+}
+
+.live-stat i::before {
+  content: "";
+  display: block;
+  width: var(--stat-progress, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #34c759, #7df2ca);
+  transition: width var(--motion-ui) var(--motion-ease);
+}
+
+.total-list {
+  display: grid;
+  gap: 8px;
 }
 
 .stat-line {

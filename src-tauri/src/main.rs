@@ -138,6 +138,10 @@ fn App() -> Element {
     let mut download = use_signal(|| "0 B/s".to_string());
     let mut cpu_usage = use_signal(|| "0%".to_string());
     let mut memory_usage = use_signal(|| "0%".to_string());
+    let mut cpu_progress = use_signal(|| 0.0_f64);
+    let mut memory_progress = use_signal(|| 0.0_f64);
+    let mut upload_progress = use_signal(|| 0.0_f64);
+    let mut download_progress = use_signal(|| 0.0_f64);
     let mut activity_energy = use_signal(|| 0.0_f64);
     let mut paused_since = use_signal(|| None::<std::time::Instant>);
     let mut total_upload = use_signal(|| 0_u64);
@@ -209,6 +213,8 @@ fn App() -> Element {
             tokio::time::sleep(MINIMUM_CPU_UPDATE_INTERVAL).await;
             let mut last_rx = 0_u64;
             let mut last_tx = 0_u64;
+            let mut rx_peak = 1.0_f64;
+            let mut tx_peak = 1.0_f64;
             loop {
                 networks.refresh(true);
                 system.refresh_cpu_usage();
@@ -219,17 +225,27 @@ fn App() -> Element {
                     rx += data.total_received();
                     tx += data.total_transmitted();
                 }
+                let rx_delta = rx.saturating_sub(last_rx);
+                let tx_delta = tx.saturating_sub(last_tx);
                 if last_rx != 0 || last_tx != 0 {
-                    download.set(format_rate(rx.saturating_sub(last_rx)));
-                    upload.set(format_rate(tx.saturating_sub(last_tx)));
+                    download.set(format_rate(rx_delta));
+                    upload.set(format_rate(tx_delta));
+                    rx_peak = (rx_peak * 0.94).max(rx_delta as f64).max(1.0);
+                    tx_peak = (tx_peak * 0.94).max(tx_delta as f64).max(1.0);
+                    download_progress.set(rate_progress(rx_delta, rx_peak));
+                    upload_progress.set(rate_progress(tx_delta, tx_peak));
                 }
-                cpu_usage.set(format_percent(system.global_cpu_usage() as f64));
-                memory_usage.set(memory_percent(
+                let next_cpu = system.global_cpu_usage() as f64;
+                let next_memory = memory_percent_value(
                     system
                         .total_memory()
                         .saturating_sub(system.available_memory()),
                     system.total_memory(),
-                ));
+                );
+                cpu_usage.set(format_percent(next_cpu));
+                memory_usage.set(format_percent(next_memory));
+                cpu_progress.set(next_cpu.clamp(0.0, 100.0));
+                memory_progress.set(next_memory);
                 total_download.set(rx);
                 total_upload.set(tx);
                 last_rx = rx;
@@ -710,8 +726,14 @@ fn App() -> Element {
                     }
                 } else if tab == "stats" {
                     StatsPanel {
+                        cpu: cpu_usage.read().clone(),
+                        memory: memory_usage.read().clone(),
                         upload: upload.read().clone(),
                         download: download.read().clone(),
+                        cpu_progress: cpu_progress(),
+                        memory_progress: memory_progress(),
+                        upload_progress: upload_progress(),
+                        download_progress: download_progress(),
                         total_upload: format_bytes(*total_upload.read()),
                         total_download: format_bytes(*total_download.read()),
                         month_total: format_bytes(total_upload() + total_download()),
@@ -787,11 +809,18 @@ fn format_percent(value: f64) -> String {
     }
 }
 
-fn memory_percent(used: u64, total: u64) -> String {
+fn memory_percent_value(used: u64, total: u64) -> f64 {
     if total == 0 {
-        return "0%".to_string();
+        return 0.0;
     }
-    format_percent(used as f64 / total as f64 * 100.0)
+    (used as f64 / total as f64 * 100.0).clamp(0.0, 100.0)
+}
+
+fn rate_progress(rate: u64, peak: f64) -> f64 {
+    if peak <= f64::EPSILON {
+        return 0.0;
+    }
+    (rate as f64 / peak * 100.0).clamp(0.0, 100.0)
 }
 
 const APP_CSS: &str = include_str!("app.css");

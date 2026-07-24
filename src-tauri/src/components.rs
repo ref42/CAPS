@@ -38,8 +38,14 @@ pub fn Tabs(
 
 #[component]
 pub fn StatsPanel(
+    cpu: String,
+    memory: String,
     upload: String,
     download: String,
+    cpu_progress: f64,
+    memory_progress: f64,
+    upload_progress: f64,
+    download_progress: f64,
     total_upload: String,
     total_download: String,
     month_total: String,
@@ -47,29 +53,39 @@ pub fn StatsPanel(
 ) -> Element {
     rsx! {
         div { class: "panel-section stats",
-            div { class: "speed-grid",
-                div {
-                    span { "Upload" }
-                    strong { "{upload}" }
+            div { class: "live-grid",
+                LiveStatTile { label: "CPU", value: cpu, progress: cpu_progress }
+                LiveStatTile { label: "RAM", value: memory, progress: memory_progress }
+                LiveStatTile { label: "Upload", value: upload, progress: upload_progress }
+                LiveStatTile { label: "Download", value: download, progress: download_progress }
+            }
+            div { class: "total-list",
+                div { class: "stat-line",
+                    span { "Total up" }
+                    strong { "{total_upload}" }
                 }
-                div {
-                    span { "Download" }
-                    strong { "{download}" }
+                div { class: "stat-line",
+                    span { "Total down" }
+                    strong { "{total_download}" }
                 }
-            }
-            div { class: "stat-line",
-                span { "Total up" }
-                strong { "{total_upload}" }
-            }
-            div { class: "stat-line",
-                span { "Total down" }
-                strong { "{total_download}" }
-            }
-            div { class: "stat-line",
-                span { "This month" }
-                strong { "{month_total}" }
+                div { class: "stat-line",
+                    span { "This month" }
+                    strong { "{month_total}" }
+                }
             }
             div { class: "status-text", "{status}" }
+        }
+    }
+}
+
+#[component]
+fn LiveStatTile(label: &'static str, value: String, progress: f64) -> Element {
+    let progress = progress.clamp(0.0, 100.0);
+    rsx! {
+        div { class: "live-stat", style: "--stat-progress: {progress:.2}%;",
+            span { "{label}" }
+            strong { "{value}" }
+            i {}
         }
     }
 }

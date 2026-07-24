@@ -25,7 +25,6 @@ The app is designed to stay small, fast, and out of the way. The current build i
 - Display synced lyrics with smooth transitions.
 - Pick spectrum colors from album art when available.
 - Show CPU, RAM, and network speed when no music is active.
-- Use iPhone Fun Mode from Safari to control playback with shake and tilt gestures.
 - Right-click the island to clean song cache and exit CAPS.
 
 ## Tech Stack

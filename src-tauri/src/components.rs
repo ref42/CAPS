@@ -223,11 +223,9 @@ pub fn SettingsPanel(
     opacity: u32,
     volume: u32,
     island_size: u32,
-    phone_remote_url: String,
     onopacity: EventHandler<u32>,
     onvolume: EventHandler<u32>,
     onisland_size: EventHandler<u32>,
-    oncopy_phone_remote: EventHandler<MouseEvent>,
 ) -> Element {
     rsx! {
         div { class: "panel-section settings",
@@ -282,24 +280,6 @@ pub fn SettingsPanel(
                     output { "{island_size}%" }
                 }
             }
-            div { class: "phone-remote",
-                span { "iPhone Fun Mode" }
-                div { class: "phone-remote-row",
-                    input {
-                        class: "phone-remote-url",
-                        r#type: "text",
-                        readonly: true,
-                        value: "{phone_remote_url}",
-                    }
-                    button {
-                        class: "phone-copy-button",
-                        title: "Copy URL",
-                        onclick: oncopy_phone_remote,
-                        "⧉"
-                    }
-                }
-            }
-            div { class: "status-text", "Open the URL on iPhone Safari, tap Start Motion, then shake or tilt the phone." }
             div { class: "status-text", "Right-click the island to exit CAPS." }
         }
     }

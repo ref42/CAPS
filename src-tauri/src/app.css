@@ -49,30 +49,6 @@ button {
   background: transparent;
 }
 
-.stage.smooth {
-  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
-  --motion-spring: cubic-bezier(0.16, 1, 0.3, 1);
-  --motion-ui: 260ms;
-  --motion-panel: 260ms;
-  --motion-fast: 80ms;
-  --motion-bg: 160ms;
-  --motion-spectrum: 110ms;
-  --motion-lyric-in: 360ms;
-  --motion-lyric-out: 220ms;
-}
-
-.stage.bouncy {
-  --motion-ease: cubic-bezier(0.18, 1.15, 0.22, 1);
-  --motion-spring: cubic-bezier(0.12, 1.42, 0.22, 1);
-  --motion-ui: 420ms;
-  --motion-panel: 420ms;
-  --motion-fast: 120ms;
-  --motion-bg: 190ms;
-  --motion-spectrum: 72ms;
-  --motion-lyric-in: 390ms;
-  --motion-lyric-out: 240ms;
-}
-
 .stage.expanded {
   width: var(--expanded-stage-width);
   height: var(--expanded-stage-height);
@@ -496,7 +472,6 @@ button {
 .song:active,
 .random-add:active,
 .queue-toolbar button:active,
-.segmented button:active,
 .icon-button:active,
 .phone-copy-button:active {
   transform: scale(0.94);
@@ -813,8 +788,7 @@ button {
 }
 
 .queue-toolbar button:hover,
-.song:hover,
-.segmented button:hover {
+.song:hover {
   background: rgba(255, 255, 255, var(--hover-alpha));
 }
 
@@ -1066,31 +1040,6 @@ button {
   width: 42px;
   height: 24px;
   accent-color: #34c759;
-}
-
-.segmented {
-  display: flex;
-  gap: 4px;
-  padding: 3px;
-  border-radius: 10px;
-  background: rgba(142, 142, 147, var(--soft-alpha));
-}
-
-.segmented button {
-  height: 26px;
-  min-width: 62px;
-  padding: 0 9px;
-  border-radius: 8px;
-  background: transparent;
-  color: rgba(248, 255, 252, 0.68);
-  font-size: 12px;
-  font-weight: 800;
-  transition: background-color var(--motion-bg) ease, color var(--motion-bg) ease, transform var(--motion-fast) var(--motion-spring);
-}
-
-.segmented button.active {
-  background: rgba(255, 255, 255, var(--active-alpha));
-  color: rgba(248, 255, 252, 0.96);
 }
 
 .phone-remote {

@@ -223,12 +223,10 @@ pub fn SettingsPanel(
     opacity: u32,
     volume: u32,
     island_size: u32,
-    spring_style: String,
     phone_remote_url: String,
     onopacity: EventHandler<u32>,
     onvolume: EventHandler<u32>,
     onisland_size: EventHandler<u32>,
-    onspring_style: EventHandler<String>,
     oncopy_phone_remote: EventHandler<MouseEvent>,
 ) -> Element {
     rsx! {
@@ -282,21 +280,6 @@ pub fn SettingsPanel(
                         },
                     }
                     output { "{island_size}%" }
-                }
-            }
-            div { class: "setting",
-                span { "Animation" }
-                div { class: "segmented",
-                    button {
-                        class: if spring_style == "smooth" { "active" } else { "" },
-                        onclick: move |_| onspring_style.call("smooth".to_string()),
-                        "Smooth"
-                    }
-                    button {
-                        class: if spring_style == "bouncy" { "active" } else { "" },
-                        onclick: move |_| onspring_style.call("bouncy".to_string()),
-                        "Bouncy"
-                    }
                 }
             }
             div { class: "phone-remote",

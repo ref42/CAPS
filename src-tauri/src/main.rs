@@ -107,10 +107,6 @@ fn App() -> Element {
         let saved_settings = saved_settings.clone();
         move || saved_settings.opacity
     });
-    let mut spring_style = use_signal({
-        let saved_settings = saved_settings.clone();
-        move || saved_settings.spring_style.clone()
-    });
     let mut volume = use_signal({
         let saved_settings = saved_settings.clone();
         move || saved_settings.volume
@@ -172,7 +168,6 @@ fn App() -> Element {
                 volume: volume(),
                 island_size: island_size(),
                 random_count: random_count(),
-                spring_style: spring_style.read().clone(),
                 active_tab: active_tab.read().clone(),
                 local_music_folder: local_music_folder.read().clone(),
             },
@@ -539,8 +534,12 @@ fn App() -> Element {
         .filter(|track| !track.cover.is_empty())
         .map(|track| format!("background-image: url('{}');", track.cover))
         .unwrap_or_default();
-    let spectrum_style = {
+    let active_spectrum_colors = {
         let colors = spectrum_colors.read();
+        (colors.0.clone(), colors.1.clone())
+    };
+    let spectrum_style = {
+        let colors = &active_spectrum_colors;
         format!(
             "--spectrum-from: {}; --spectrum-to: {};",
             colors.0, colors.1
@@ -552,7 +551,7 @@ fn App() -> Element {
         0.0
     };
     let progress_style = {
-        let colors = spectrum_colors.read();
+        let colors = &active_spectrum_colors;
         format!(
             "--progress: {progress:.2}%; --spectrum-from: {}; --spectrum-to: {};",
             colors.0, colors.1
@@ -592,7 +591,6 @@ fn App() -> Element {
     let stage_style = format!(
         "--island-bg-alpha: {island_alpha:.3}; --panel-bg-alpha: {panel_alpha:.3}; --soft-alpha: {soft_alpha:.3}; --softer-alpha: {softer_alpha:.3}; --hover-alpha: {hover_alpha:.3}; --active-alpha: {active_alpha:.3}; --green-alpha: {green_alpha:.3}; --red-alpha: {red_alpha:.3}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --expanded-stage-width: {expanded_stage_width:.0}px; --expanded-stage-height: {expanded_stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
     );
-    let spring_class = spring_style.read().clone();
     let stage_class = if is_expanded {
         "stage expanded"
     } else {
@@ -677,7 +675,7 @@ fn App() -> Element {
     rsx! {
         style { "{APP_CSS}" }
         main {
-            class: "{stage_class} {spring_class}",
+            class: "{stage_class}",
             style: "{stage_style}",
             onmouseenter: move |_| {
                 pointer_inside.set(true);
@@ -872,7 +870,6 @@ fn App() -> Element {
                         opacity: opacity(),
                         volume: volume(),
                         island_size: island_size(),
-                        spring_style: spring_style.read().clone(),
                         phone_remote_url: phone_remote.url.clone(),
                         onopacity: move |value| opacity.set(value),
                         onvolume: {
@@ -894,7 +891,6 @@ fn App() -> Element {
                                 );
                             }
                         },
-                        onspring_style: move |value| spring_style.set(value),
                         oncopy_phone_remote: {
                             let phone_remote_url = phone_remote.url.clone();
                             move |_| {

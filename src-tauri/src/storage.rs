@@ -12,7 +12,6 @@ pub struct AppSettings {
     pub volume: u32,
     pub island_size: u32,
     pub random_count: u32,
-    pub spring_style: String,
     pub active_tab: String,
     pub local_music_folder: String,
 }
@@ -32,7 +31,6 @@ impl Default for AppSettings {
             volume: 100,
             island_size: 100,
             random_count: 50,
-            spring_style: "smooth".to_string(),
             active_tab: "search".to_string(),
             local_music_folder: String::new(),
         }
@@ -55,9 +53,6 @@ impl AppSettings {
         self.volume = self.volume.clamp(0, 100);
         self.island_size = self.island_size.clamp(85, 135);
         self.random_count = self.random_count.clamp(1, 100);
-        if self.spring_style != "bouncy" {
-            self.spring_style = "smooth".to_string();
-        }
         if !matches!(
             self.active_tab.as_str(),
             "search" | "queue" | "stats" | "settings"

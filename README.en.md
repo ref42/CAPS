@@ -68,9 +68,43 @@ Use **Clean cache** in Settings to remove downloaded audio from disk. CAPS stops
 | Symphonia | Local music metadata, cover art, and duration |
 | Sysinfo | CPU, memory, and network stats |
 
-## Author
+## For Users
 
-ref42
+- Hold Shift + left mouse button to drag the capsule to a position you like.
+- Hover over the capsule to expand it and access settings.
+- Right-click the capsule to exit `CAPS`.
+- Mode notes in Settings:
+  - Normal mode: when no song is playing, CAPS shows CPU usage, memory usage, upload speed, and download speed. After you pick a song from the queue, it starts playback and shows lyrics for NetEase tracks plus the spectrum.
+  - Silent mode: only shows CPU usage, memory usage, upload speed, and download speed.
+  - Quiet mode: hides song title, lyrics, and related music details, and only shows CPU usage, memory usage, upload speed, and download speed. It becomes a desktop widget for low-profile use.
+
+## For Developers
+
+- Issues are welcome for bugs, feedback, and feature requests.
+- For PRs, it is better to open an issue first and discuss the idea before implementation, so effort is not wasted.
+- Everyone has different ideas, but no matter how CAPS grows, please keep memory usage under 30 MB. Normal usage is currently around 5-25 MB.
+
+## References
+
+- [Apple animation design](https://developer.apple.com/design/human-interface-guidelines/motion)
+- [Apple Dynamic Island](https://developer.apple.com/documentation/widgetkit/dynamicisland)
+- [Apple motion/UI reference](https://developer.apple.com/design/human-interface-guidelines/live-activities?pubDate=20250703&utm_source=openai)
+- [MDN HTTP range requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Range_requests)
+
+## Thanks
+
+- Thanks to all open-source project maintainers.
+
+## Donate
+
+- If you think this project is useful, you can consider donating. Thank you.
+- A donation note is recommended. If CAPS gives you a bad experience, refunds are available.
+- Thank you for your support.
+
+<div align="center">
+WeChat / Alipay<br>
+<img src="qr/pay.jpg" width="200" alt="Payment QR code">
+</div>
 
 ## License
 

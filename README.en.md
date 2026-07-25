@@ -25,6 +25,10 @@
 
 CAPS is built with Rust and Dioxus Desktop. While idle, it shows CPU, memory, and network speed. While music is active, it expands into a music island with cover art, lyrics, spectrum, progress, and compact playback controls.
 
+<video width="700" controls loop muted autoplay>
+  <source src="assets/showcase.mp4" type="video/mp4">
+</video>
+
 ## What It Does
 
 - Search NetEase music and add tracks to the queue.

@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        shell: pwsh
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc -Vv
+          cargo -Vv
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: windows-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            windows-cargo-
+
+      - name: Build release executable
+        working-directory: src-tauri
+        run: cargo build --release
+
+      - name: Package executable
+        shell: pwsh
+        run: |
+          $tag = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME } else { "manual-$env:GITHUB_RUN_NUMBER" }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item src-tauri/target/release/caps.exe "dist/CAPS-$tag-windows-x64.exe"
+          Get-FileHash "dist/CAPS-$tag-windows-x64.exe" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  CAPS-$tag-windows-x64.exe" } |
+            Set-Content "dist/CAPS-$tag-windows-x64.exe.sha256"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CAPS-windows-x64
+          path: dist/*
+
+      - name: Publish GitHub release assets
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title $tag --notes "Windows x64 build for CAPS $tag."
+          }
+          gh release upload $tag "dist/CAPS-$tag-windows-x64.exe" "dist/CAPS-$tag-windows-x64.exe.sha256" --clobber

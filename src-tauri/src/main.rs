@@ -15,6 +15,7 @@ mod mode;
 mod shitease;
 mod storage;
 mod track;
+mod updater;
 mod windowing;
 mod youtube;
 
@@ -1009,6 +1010,26 @@ fn App() -> Element {
                                     }
                                 });
                             }
+                        },
+                        oncheck_update: move |_| {
+                            status.set("Checking for updates...".to_string());
+                            spawn(async move {
+                                match updater::check_latest_release().await {
+                                    Ok(updater::UpdateStatus::Current { version }) => {
+                                        status.set(format!("CAPS {version} is up to date."));
+                                    }
+                                    Ok(updater::UpdateStatus::Available {
+                                        current,
+                                        latest,
+                                        url,
+                                    }) => {
+                                        status.set(format!(
+                                            "Update available: {current} -> {latest}. Release: {url}"
+                                        ));
+                                    }
+                                    Err(err) => status.set(err),
+                                }
+                            });
                         },
                     }
                 }

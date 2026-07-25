@@ -344,6 +344,7 @@ pub fn SettingsPanel(
     onsilent: EventHandler<MouseEvent>,
     onquiet: EventHandler<MouseEvent>,
     onclean_cache: EventHandler<MouseEvent>,
+    oncheck_update: EventHandler<MouseEvent>,
 ) -> Element {
     let opacity_progress = ((opacity.saturating_sub(10) as f64 / 90.0) * 100.0).clamp(0.0, 100.0);
     let volume_progress = (volume as f64).clamp(0.0, 100.0);
@@ -443,6 +444,15 @@ pub fn SettingsPanel(
                     button {
                         onclick: onclean_cache,
                         "Clean cache"
+                    }
+                }
+            }
+            label { class: "setting",
+                span { "Updates" }
+                div { class: "cache-actions update-actions",
+                    button {
+                        onclick: oncheck_update,
+                        "Check update"
                     }
                 }
             }

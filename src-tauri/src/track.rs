@@ -4,6 +4,8 @@ use serde_json::Value;
 
 pub const SOURCE_SHITEASE: &str = "shitease";
 pub const SOURCE_LOCAL: &str = "local";
+pub const SOURCE_BILIBILI: &str = "bilibili";
+pub const SOURCE_YOUTUBE: &str = "youtube";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Track {
@@ -14,6 +16,8 @@ pub struct Track {
     pub artist: String,
     pub album: String,
     pub cover: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<u64>,
 }
 
 impl From<shitease::ShiteaseSong> for Track {
@@ -28,6 +32,7 @@ impl From<shitease::ShiteaseSong> for Track {
             artist: clean_or(song.artist, "Unknown artist"),
             album: clean_or(song.album, "Unknown album"),
             cover: song.cover.unwrap_or_default(),
+            duration: song.duration.and_then(normalized_duration_seconds),
         }
     }
 }
@@ -47,5 +52,15 @@ fn value_id(value: &Value) -> String {
         Value::String(text) => text.clone(),
         Value::Number(number) => number.to_string(),
         _ => String::new(),
+    }
+}
+
+fn normalized_duration_seconds(value: u64) -> Option<u64> {
+    if value == 0 {
+        None
+    } else if value > 10_000 {
+        Some((value + 999) / 1000)
+    } else {
+        Some(value)
     }
 }

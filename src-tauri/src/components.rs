@@ -5,6 +5,14 @@ use dioxus::prelude::*;
 
 pub const QUEUE_RENDER_LIMIT: usize = 300;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SearchSource {
+    Netease,
+    Bilibili,
+    Youtube,
+    Local,
+}
+
 #[component]
 pub fn Tabs(
     tab: String,
@@ -95,15 +103,20 @@ fn LiveStatTile(label: &'static str, value: String, progress: f64) -> Element {
 
 #[component]
 pub fn SearchPanel(
+    source: SearchSource,
     query: String,
+    video_url: String,
     local_music_folder: String,
     results: Vec<Track>,
     random_count: u32,
     status: String,
+    onsource: EventHandler<SearchSource>,
     onfocus: EventHandler<FocusEvent>,
     onblur: EventHandler<FocusEvent>,
     onquery: EventHandler<String>,
+    onvideo_url: EventHandler<String>,
     onsearch: EventHandler<String>,
+    onimport_video: EventHandler<(SearchSource, String)>,
     onlocal_music_folder: EventHandler<String>,
     onload_local: EventHandler<MouseEvent>,
     onrandom_append: EventHandler<u32>,
@@ -112,77 +125,166 @@ pub fn SearchPanel(
     onadd: EventHandler<Track>,
 ) -> Element {
     let search_from_key = query.trim().to_string();
+    let search_from_button = search_from_key.clone();
+    let import_from_key = video_url.trim().to_string();
+    let import_from_button = import_from_key.clone();
+    let video_source_label = match source {
+        SearchSource::Bilibili => "Bilibili",
+        SearchSource::Youtube => "YouTube",
+        _ => "",
+    };
+    let video_placeholder = match source {
+        SearchSource::Bilibili => "Paste Bilibili video URL",
+        SearchSource::Youtube => "Paste YouTube video URL",
+        _ => "",
+    };
     let random_progress =
         ((random_count.saturating_sub(1) as f64 / 99.0) * 100.0).clamp(0.0, 100.0);
     rsx! {
         div { class: "panel-section",
-            div { class: "search-row",
-                div { class: "search-field",
-                    input {
-                        placeholder: "Search music",
-                        onfocus,
-                        onblur,
-                        oninput: move |event| onquery.call(event.value()),
-                        onkeydown: move |event| {
-                            if event.key() == Key::Enter && !event.is_composing() {
-                                onsearch.call(search_from_key.clone());
+            div { class: "source-switch",
+                button {
+                    class: if source == SearchSource::Netease { "source-option active" } else { "source-option" },
+                    onclick: move |_| onsource.call(SearchSource::Netease),
+                    "NetEase"
+                }
+                button {
+                    class: if source == SearchSource::Bilibili { "source-option active" } else { "source-option" },
+                    onclick: move |_| onsource.call(SearchSource::Bilibili),
+                    "Bilibili"
+                }
+                button {
+                    class: if source == SearchSource::Youtube { "source-option active" } else { "source-option" },
+                    onclick: move |_| onsource.call(SearchSource::Youtube),
+                    "YouTube"
+                }
+                button {
+                    class: if source == SearchSource::Local { "source-option active" } else { "source-option" },
+                    onclick: move |_| onsource.call(SearchSource::Local),
+                    "Local"
+                }
+            }
+
+            if source == SearchSource::Netease {
+                div { class: "source-mode netease-mode",
+                    div { class: "search-row",
+                        div { class: "search-field",
+                            input {
+                                value: "{query}",
+                                placeholder: "Song, artist, album",
+                                onfocus,
+                                onblur,
+                                oninput: move |event| onquery.call(event.value()),
+                                onkeydown: move |event| {
+                                    if event.key() == Key::Enter && !event.is_composing() {
+                                        onsearch.call(search_from_key.clone());
+                                    }
+                                }
                             }
+                            span { class: "search-icon", "⌕" }
+                        }
+                        button {
+                            class: "source-action",
+                            onclick: move |_| onsearch.call(search_from_button.clone()),
+                            "Search"
                         }
                     }
-                    span { class: "search-icon", "⌕" }
-                }
-            }
-            div { class: "local-loader",
-                span { "Local folder" }
-                input {
-                    r#type: "text",
-                    value: "{local_music_folder}",
-                    placeholder: "D:\\Music",
-                    onfocus,
-                    onblur,
-                    oninput: move |event| onlocal_music_folder.call(event.value()),
-                }
-                button {
-                    onclick: onload_local,
-                    "Load"
-                }
-            }
-            div { class: "random-control",
-                span { "Random {random_count}" }
-                input {
-                    r#type: "range",
-                    min: "1",
-                    max: "100",
-                    value: "{random_count}",
-                    style: "--random-progress: {random_progress:.2}%;",
-                    oninput: move |event| {
-                        if let Ok(value) = event.value().parse::<u32>() {
-                            onrandom_count.call(value.clamp(1, 100));
+                    div { class: "random-control",
+                        span { "Random {random_count}" }
+                        input {
+                            r#type: "range",
+                            min: "1",
+                            max: "100",
+                            value: "{random_count}",
+                            style: "--random-progress: {random_progress:.2}%;",
+                            oninput: move |event| {
+                                if let Ok(value) = event.value().parse::<u32>() {
+                                    onrandom_count.call(value.clamp(1, 100));
+                                }
+                            },
                         }
-                    },
-                }
-                button {
-                    class: "random-add",
-                    onclick: move |_| onrandom_append.call(random_count),
-                    "Append"
-                }
-                button {
-                    class: "random-add random-replace",
-                    onclick: move |_| onrandom_replace.call(random_count),
-                    "Replace"
-                }
-            }
-            div { class: "song-list",
-                for track in results.iter().cloned() {
-                    TrackRow {
-                        track: track.clone(),
-                        action: "+",
-                        active: false,
-                        onclick: move |_| onadd.call(track.clone()),
+                        button {
+                            class: "random-add",
+                            onclick: move |_| onrandom_append.call(random_count),
+                            "Append"
+                        }
+                        button {
+                            class: "random-add random-replace",
+                            onclick: move |_| onrandom_replace.call(random_count),
+                            "Replace"
+                        }
                     }
                 }
-                if results.is_empty() {
-                    div { class: "empty", "{status}" }
+            }
+
+            if source == SearchSource::Bilibili || source == SearchSource::Youtube {
+                div { class: "source-mode video-mode",
+                    div { class: "search-row",
+                        div { class: "search-field",
+                            input {
+                                value: "{video_url}",
+                                placeholder: "{video_placeholder}",
+                                onfocus,
+                                onblur,
+                                oninput: move |event| onvideo_url.call(event.value()),
+                                onkeydown: move |event| {
+                                    if event.key() == Key::Enter && !event.is_composing() {
+                                        onimport_video.call((source, import_from_key.clone()));
+                                    }
+                                }
+                            }
+                            span { class: "search-icon video-source-mark", "↧" }
+                        }
+                        button {
+                            class: "source-action video-import",
+                            onclick: move |_| onimport_video.call((source, import_from_button.clone())),
+                            "Extract"
+                        }
+                    }
+                    div { class: "import-readout",
+                        span { "{video_source_label}" }
+                        strong { "{status}" }
+                    }
+                }
+            }
+
+            if source == SearchSource::Local {
+                div { class: "source-mode local-mode",
+                    div { class: "local-loader",
+                        span { "Folder" }
+                        input {
+                            r#type: "text",
+                            value: "{local_music_folder}",
+                            placeholder: "D:\\Music",
+                            onfocus,
+                            onblur,
+                            oninput: move |event| onlocal_music_folder.call(event.value()),
+                        }
+                        button {
+                            onclick: onload_local,
+                            "Load"
+                        }
+                    }
+                    div { class: "import-readout",
+                        span { "Local" }
+                        strong { "{status}" }
+                    }
+                }
+            }
+
+            if source == SearchSource::Netease {
+                div { class: "song-list",
+                    for track in results.iter().cloned() {
+                        TrackRow {
+                            track: track.clone(),
+                            action: "+",
+                            active: false,
+                            onclick: move |_| onadd.call(track.clone()),
+                        }
+                    }
+                    if results.is_empty() {
+                        div { class: "empty", "{status}" }
+                    }
                 }
             }
         }
@@ -231,13 +333,22 @@ pub fn SettingsPanel(
     volume: u32,
     island_size: u32,
     music_mode: MusicMode,
+    onslider_focus: EventHandler<FocusEvent>,
+    onslider_blur: EventHandler<FocusEvent>,
+    onslider_down: EventHandler<MouseEvent>,
+    onslider_up: EventHandler<MouseEvent>,
     onopacity: EventHandler<u32>,
     onvolume: EventHandler<u32>,
     onisland_size: EventHandler<u32>,
     onnormal: EventHandler<MouseEvent>,
     onsilent: EventHandler<MouseEvent>,
     onquiet: EventHandler<MouseEvent>,
+    onclean_cache: EventHandler<MouseEvent>,
 ) -> Element {
+    let opacity_progress = ((opacity.saturating_sub(10) as f64 / 90.0) * 100.0).clamp(0.0, 100.0);
+    let volume_progress = (volume as f64).clamp(0.0, 100.0);
+    let island_progress =
+        ((island_size.saturating_sub(85) as f64 / 50.0) * 100.0).clamp(0.0, 100.0);
     rsx! {
         div { class: "panel-section settings",
             label { class: "setting",
@@ -248,6 +359,11 @@ pub fn SettingsPanel(
                         min: "10",
                         max: "100",
                         value: "{opacity}",
+                        style: "--setting-progress: {opacity_progress:.2}%;",
+                        onfocus: move |event| onslider_focus.call(event),
+                        onblur: move |event| onslider_blur.call(event),
+                        onmousedown: move |event| onslider_down.call(event),
+                        onmouseup: move |event| onslider_up.call(event),
                         oninput: move |event| {
                             if let Ok(value) = event.value().parse::<u32>() {
                                 onopacity.call(value.clamp(10, 100));
@@ -265,6 +381,11 @@ pub fn SettingsPanel(
                         min: "0",
                         max: "100",
                         value: "{volume}",
+                        style: "--setting-progress: {volume_progress:.2}%;",
+                        onfocus: move |event| onslider_focus.call(event),
+                        onblur: move |event| onslider_blur.call(event),
+                        onmousedown: move |event| onslider_down.call(event),
+                        onmouseup: move |event| onslider_up.call(event),
                         oninput: move |event| {
                             if let Ok(value) = event.value().parse::<u32>() {
                                 onvolume.call(value.clamp(0, 100));
@@ -282,6 +403,11 @@ pub fn SettingsPanel(
                         min: "85",
                         max: "135",
                         value: "{island_size}",
+                        style: "--setting-progress: {island_progress:.2}%;",
+                        onfocus: move |event| onslider_focus.call(event),
+                        onblur: move |event| onslider_blur.call(event),
+                        onmousedown: move |event| onslider_down.call(event),
+                        onmouseup: move |event| onslider_up.call(event),
                         oninput: move |event| {
                             if let Ok(value) = event.value().parse::<u32>() {
                                 onisland_size.call(value.clamp(85, 135));
@@ -308,6 +434,15 @@ pub fn SettingsPanel(
                         class: if music_mode == MusicMode::Quiet { "mode-button quiet-button active" } else { "mode-button quiet-button" },
                         onclick: onquiet,
                         "Quiet"
+                    }
+                }
+            }
+            label { class: "setting",
+                span { "Disk cache" }
+                div { class: "cache-actions",
+                    button {
+                        onclick: onclean_cache,
+                        "Clean cache"
                     }
                 }
             }
@@ -516,12 +651,19 @@ pub fn TrackRow(
         format!("background-image: url('{}');", track.cover)
     };
     let detail = track_detail(&track);
+    let duration = track
+        .duration
+        .map(format_track_duration)
+        .unwrap_or_default();
     rsx! {
         button { class: if active { "song active" } else { "song" }, onclick,
             span { class: "song-cover", style: "{cover_style}" }
             span { class: "song-copy",
                 strong { "{track.name}" }
                 small { "{detail}" }
+            }
+            if !duration.is_empty() {
+                span { class: "track-duration", "{duration}" }
             }
             span { class: "song-action", "{action}" }
         }
@@ -541,6 +683,10 @@ pub fn QueueTrackRow(
         format!("background-image: url('{}');", track.cover)
     };
     let detail = track_detail(&track);
+    let duration = track
+        .duration
+        .map(format_track_duration)
+        .unwrap_or_default();
     rsx! {
         div { class: if active { "song queue-song active" } else { "song queue-song" },
             button { class: "queue-main", onclick: onplay,
@@ -549,6 +695,9 @@ pub fn QueueTrackRow(
                     strong { "{track.name}" }
                     small { "{detail}" }
                 }
+            }
+            if !duration.is_empty() {
+                span { class: "track-duration queue-duration", "{duration}" }
             }
             button { class: "remove-song", onclick: onremove, title: "Remove", "×" }
         }
@@ -560,5 +709,16 @@ fn track_detail(track: &Track) -> String {
         track.artist.clone()
     } else {
         track.artist.clone()
+    }
+}
+
+fn format_track_duration(seconds: u64) -> String {
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let seconds = seconds % 60;
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
     }
 }

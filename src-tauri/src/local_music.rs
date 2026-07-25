@@ -7,10 +7,11 @@ use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use symphonia::core::common::Limit;
-use symphonia::core::formats::FormatOptions;
 use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardTag, StandardVisualKey};
+use symphonia::core::units::{Duration, TimeBase, Timestamp};
 
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "wav", "ogg", "m4a", "aac"];
 const MAX_SCAN_ITEMS: usize = 8_000;
@@ -120,9 +121,11 @@ fn track_from_path(path: &Path, id: String) -> Track {
         .filter(|text| !text.trim().is_empty())
         .unwrap_or(fallback.album);
     let cover = metadata
-        .and_then(|meta| meta.cover)
+        .as_ref()
+        .and_then(|meta| meta.cover.clone())
         .and_then(|cover| cache_cover(path, &cover))
         .unwrap_or_default();
+    let duration = metadata.and_then(|meta| meta.duration);
     Track {
         source: SOURCE_LOCAL.to_string(),
         id,
@@ -130,6 +133,7 @@ fn track_from_path(path: &Path, id: String) -> Track {
         artist,
         album,
         cover,
+        duration,
     }
 }
 
@@ -139,6 +143,7 @@ struct LocalMetadata {
     artist: Option<String>,
     album: Option<String>,
     cover: Option<Vec<u8>>,
+    duration: Option<u64>,
 }
 
 struct FallbackInfo {
@@ -184,8 +189,42 @@ fn read_metadata(path: &Path) -> Option<LocalMetadata> {
     let mut format = symphonia::default::get_probe()
         .probe(&hint, mss, fmt_opts, meta_opts)
         .ok()?;
+    let duration = format_duration_seconds(format.as_ref());
     let revision = format.metadata().skip_to_latest()?.clone();
-    metadata_from_revision(&revision)
+    let mut metadata = metadata_from_revision(&revision).unwrap_or_else(|| LocalMetadata {
+        title: None,
+        artist: None,
+        album: None,
+        cover: None,
+        duration: None,
+    });
+    metadata.duration = metadata.duration.or(duration);
+    if metadata.title.is_some()
+        || metadata.artist.is_some()
+        || metadata.album.is_some()
+        || metadata.cover.is_some()
+        || metadata.duration.is_some()
+    {
+        Some(metadata)
+    } else {
+        None
+    }
+}
+
+fn format_duration_seconds(format: &dyn symphonia::core::formats::FormatReader) -> Option<u64> {
+    format.default_track(TrackType::Audio).and_then(|track| {
+        duration_from_timebase(track.time_base, track.duration).or_else(|| {
+            duration_from_timebase(track.time_base, track.num_frames.map(Duration::new))
+        })
+    })
+}
+
+fn duration_from_timebase(time_base: Option<TimeBase>, duration: Option<Duration>) -> Option<u64> {
+    let ticks = i64::try_from(duration?.get()).ok()?;
+    let time = time_base?.calc_time(Timestamp::new(ticks))?;
+    let millis = u64::try_from(time.as_millis()).ok()?;
+    let rounded = (millis + 999) / 1000;
+    (rounded > 0).then_some(rounded)
 }
 
 fn metadata_from_revision(revision: &MetadataRevision) -> Option<LocalMetadata> {
@@ -194,6 +233,7 @@ fn metadata_from_revision(revision: &MetadataRevision) -> Option<LocalMetadata> 
         artist: None,
         album: None,
         cover: None,
+        duration: None,
     };
 
     for tag in &revision.media.tags {

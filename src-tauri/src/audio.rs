@@ -11,6 +11,7 @@ pub enum AudioCommand {
         path: String,
         title: String,
         detail: String,
+        duration: Option<f64>,
     },
     PlayPause,
     Seek(f64),
@@ -77,6 +78,7 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                 path,
                 title,
                 detail,
+                duration,
             }) => {
                 let file = match std::fs::File::open(&path) {
                     Ok(file) => file,
@@ -100,6 +102,7 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                 duration_secs = source
                     .total_duration()
                     .map(|duration| duration.as_secs_f64())
+                    .or(duration)
                     .unwrap_or(0.0);
                 current_path = path;
                 current_title = title;

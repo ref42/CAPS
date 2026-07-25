@@ -133,11 +133,14 @@ fn persisted_state(
     }
 }
 
-pub fn clean_song_cache() {
+pub fn clean_song_cache() -> Result<(), String> {
     let Some(path) = song_cache_path() else {
-        return;
+        return Err("Song cache path is not available.".to_string());
     };
-    let _ = fs::remove_dir_all(path);
+    if !path.exists() {
+        return Ok(());
+    }
+    fs::remove_dir_all(path).map_err(|err| format!("Song cache cleanup failed: {err}"))
 }
 
 pub fn song_cache_file(source: &str, id: &str) -> Option<PathBuf> {

@@ -4,6 +4,7 @@ mod actions;
 mod album_color;
 mod audio;
 mod audio_spectrum;
+mod bilibili;
 mod components;
 mod formatting;
 mod icon;
@@ -14,14 +15,16 @@ mod shitease;
 mod storage;
 mod track;
 mod windowing;
+mod youtube;
 
 use actions::{
-    RandomQueueMode, append_unique_tracks, spawn_load_local_queue, spawn_play, spawn_random_queue,
-    spawn_search,
+    RandomQueueMode, VideoImportSource, append_unique_tracks, spawn_import_video_url,
+    spawn_load_local_queue, spawn_play, spawn_random_queue, spawn_search,
 };
 use audio::{AudioCommand, AudioPlayer};
 use components::{
-    Island, QUEUE_RENDER_LIMIT, QueuePanel, SearchPanel, SettingsPanel, StatsPanel, Tabs,
+    Island, QUEUE_RENDER_LIMIT, QueuePanel, SearchPanel, SearchSource, SettingsPanel, StatsPanel,
+    Tabs,
 };
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
 use dioxus::html::input_data::MouseButton;
@@ -133,7 +136,9 @@ fn App() -> Element {
         let saved_settings = saved_settings.clone();
         move || saved_settings.local_music_folder.clone()
     });
+    let mut search_source = use_signal(|| SearchSource::Netease);
     let mut query = use_signal(String::new);
+    let mut video_url = use_signal(String::new);
     let results = use_signal(Vec::<Track>::new);
     let mut queue = use_signal({
         let saved_state = saved_state.clone();
@@ -589,7 +594,10 @@ fn App() -> Element {
     } else {
         "island idle-island"
     };
-    let is_loading = status.read().starts_with("Loading") || status.read().starts_with("Searching");
+    let is_loading = status.read().starts_with("Loading")
+        || status.read().starts_with("Searching")
+        || status.read().starts_with("Importing")
+        || status.read().starts_with("Downloading");
     let (activity_class, activity_title) = if is_loading {
         ("activity-dot loading", "Loading")
     } else if state.is_playing {
@@ -679,7 +687,7 @@ fn App() -> Element {
             oncontextmenu: {
                 let desktop = desktop.clone();
                 move |_| {
-                    storage::clean_song_cache();
+                    let _ = storage::clean_song_cache();
                     desktop.close()
                 }
             },
@@ -773,11 +781,14 @@ fn App() -> Element {
 
                 if tab == "search" {
                     SearchPanel {
+                        source: search_source(),
                         query: query.read().clone(),
+                        video_url: video_url.read().clone(),
                         local_music_folder: local_music_folder.read().clone(),
                         results: results.read().clone(),
                         random_count: random_count(),
                         status: status.read().clone(),
+                        onsource: move |source| search_source.set(source),
                         onfocus: move |_| input_focused.set(true),
                         onblur: {
                             move |_| {
@@ -794,7 +805,16 @@ fn App() -> Element {
                             }
                         },
                         onquery: move |value| query.set(value),
-                        onsearch: move |text| spawn_search(text, results, status),
+                        onvideo_url: move |value| video_url.set(value),
+                        onsearch: move |text: String| spawn_search(text, results, status),
+                        onimport_video: move |(source, text): (SearchSource, String)| {
+                            let import_source = match source {
+                                SearchSource::Bilibili => VideoImportSource::Bilibili,
+                                SearchSource::Youtube => VideoImportSource::Youtube,
+                                _ => return,
+                            };
+                            spawn_import_video_url(import_source, text, queue, status)
+                        },
                         onlocal_music_folder: move |value| local_music_folder.set(value),
                         onload_local: move |_| {
                             spawn_load_local_queue(local_music_folder.read().clone(), queue, status)
@@ -894,6 +914,36 @@ fn App() -> Element {
                         volume: volume(),
                         island_size: island_size(),
                         music_mode: music_mode(),
+                        onslider_focus: move |_| input_focused.set(true),
+                        onslider_blur: {
+                            move |_| {
+                                input_focused.set(false);
+                                if !*pointer_inside.read() {
+                                    expanded.set(false);
+                                    schedule_window_collapse(
+                                        window_expanded,
+                                        pointer_inside,
+                                        input_focused,
+                                        transition_ticket,
+                                    );
+                                }
+                            }
+                        },
+                        onslider_down: move |_| input_focused.set(true),
+                        onslider_up: {
+                            move |_| {
+                                input_focused.set(false);
+                                if !*pointer_inside.read() {
+                                    expanded.set(false);
+                                    schedule_window_collapse(
+                                        window_expanded,
+                                        pointer_inside,
+                                        input_focused,
+                                        transition_ticket,
+                                    );
+                                }
+                            }
+                        },
                         onopacity: move |value| opacity.set(value),
                         onvolume: {
                             let player = player.clone();
@@ -939,6 +989,24 @@ fn App() -> Element {
                                 status.set("Quiet mode: music keeps playing.".to_string());
                             } else {
                                 status.set("No active music.".to_string());
+                            }
+                        },
+                        onclean_cache: {
+                            let player = player.clone();
+                            move |_| {
+                                current_index.set(None);
+                                current_track.set(None);
+                                music_mode.set(MusicMode::Silent);
+                                lyrics.set(Vec::new());
+                                player.send(AudioCommand::Stop);
+                                status.set("Cleaning downloaded audio cache...".to_string());
+                                spawn(async move {
+                                    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                                    match storage::clean_song_cache() {
+                                        Ok(()) => status.set("Downloaded audio cache cleaned.".to_string()),
+                                        Err(err) => status.set(err),
+                                    }
+                                });
                             }
                         },
                     }

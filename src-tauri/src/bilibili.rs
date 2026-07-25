@@ -3,7 +3,6 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::io::AsyncWriteExt;
 
 const ORIGIN: &str = "https://www.bilibili.com";
 const API_ORIGIN: &str = "https://api.bilibili.com";
@@ -135,66 +134,23 @@ async fn download_audio_url<F>(
 where
     F: FnMut(DownloadProgress),
 {
-    let _ = tokio::fs::remove_file(temp_path).await;
-    let mut response = client
-        .get(url)
-        .header(reqwest::header::REFERER, referer)
-        .send()
-        .await
-        .map_err(|err| format!("Bilibili audio request failed: {err}"))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "Bilibili audio request failed: HTTP {}",
-            response.status()
-        ));
-    }
-
-    let total = response.content_length().or(expected_size);
-    let write_result = async {
-        let mut file = tokio::fs::File::create(&temp_path)
-            .await
-            .map_err(|err| format!("Audio cache write failed: {err}"))?;
-        let mut written = 0_u64;
-        on_progress(DownloadProgress {
-            downloaded: written,
-            total,
-        });
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|err| format!("Bilibili audio read failed: {err}"))?
-        {
-            written += chunk.len() as u64;
-            file.write_all(&chunk)
-                .await
-                .map_err(|err| format!("Audio cache write failed: {err}"))?;
-            on_progress(DownloadProgress {
-                downloaded: written,
-                total,
-            });
-        }
-        file.flush()
-            .await
-            .map_err(|err| format!("Audio cache write failed: {err}"))?;
-        Ok::<u64, String>(written)
-    }
+    let result = crate::download::download_url_to_path_with_progress(
+        client,
+        url,
+        referer,
+        expected_size,
+        temp_path,
+        "Bilibili audio",
+        "Bilibili returned an empty audio stream.",
+        |downloaded, total| {
+            on_progress(DownloadProgress { downloaded, total });
+        },
+    )
     .await;
-
-    let written = match write_result {
-        Ok(written) => written,
-        Err(err) => {
-            cleanup_download(&temp_path).await;
-            return Err(err);
-        }
-    };
-
-    if written == 0 {
+    if result.is_err() {
         cleanup_download(&temp_path).await;
-        return Err("Bilibili returned an empty audio stream.".to_string());
     }
-
-    Ok(())
+    result
 }
 
 #[derive(Clone, Debug)]

@@ -2,7 +2,6 @@ use crate::track::{SOURCE_YOUTUBE, Track};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::io::AsyncWriteExt;
 
 const ORIGIN: &str = "https://www.youtube.com";
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -503,52 +502,19 @@ async fn download_stream_url<F>(
 where
     F: FnMut(DownloadProgress),
 {
-    let _ = tokio::fs::remove_file(temp_path).await;
-    let mut response = client
-        .get(url)
-        .header(reqwest::header::REFERER, referer)
-        .send()
-        .await
-        .map_err(|err| format!("YouTube stream request failed: {err}"))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "YouTube stream request failed: HTTP {}",
-            response.status()
-        ));
-    }
-
-    let total = response.content_length().or(expected_size);
-    let mut file = tokio::fs::File::create(temp_path)
-        .await
-        .map_err(|err| format!("Audio cache write failed: {err}"))?;
-    let mut written = 0_u64;
-    on_progress(DownloadProgress {
-        downloaded: written,
-        total,
-    });
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|err| format!("YouTube stream read failed: {err}"))?
-    {
-        written += chunk.len() as u64;
-        file.write_all(&chunk)
-            .await
-            .map_err(|err| format!("Audio cache write failed: {err}"))?;
-        on_progress(DownloadProgress {
-            downloaded: written,
-            total,
-        });
-    }
-    file.flush()
-        .await
-        .map_err(|err| format!("Audio cache write failed: {err}"))?;
-
-    if written == 0 {
-        return Err("YouTube returned an empty stream.".to_string());
-    }
-    Ok(())
+    crate::download::download_url_to_path_with_progress(
+        client,
+        url,
+        referer,
+        expected_size,
+        temp_path,
+        "YouTube stream",
+        "YouTube returned an empty stream.",
+        |downloaded, total| {
+            on_progress(DownloadProgress { downloaded, total });
+        },
+    )
+    .await
 }
 
 fn unique_temp_path(path: &Path) -> PathBuf {

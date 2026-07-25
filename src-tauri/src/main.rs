@@ -6,6 +6,7 @@ mod audio;
 mod audio_spectrum;
 mod bilibili;
 mod components;
+mod download;
 mod formatting;
 mod icon;
 mod local_music;

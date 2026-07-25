@@ -16,7 +16,8 @@ mod track;
 mod windowing;
 
 use actions::{
-    RandomQueueMode, spawn_load_local_queue, spawn_play, spawn_random_queue, spawn_search,
+    RandomQueueMode, append_unique_tracks, spawn_load_local_queue, spawn_play, spawn_random_queue,
+    spawn_search,
 };
 use audio::{AudioCommand, AudioPlayer};
 use components::{
@@ -802,12 +803,16 @@ fn App() -> Element {
                         onrandom_replace: move |count| load_random_replace(count),
                         onrandom_count: move |value| random_count.set(value),
                         onadd: move |track| {
-                            let added = {
+                            let (added, total) = {
                                 let mut next = queue.write();
-                                next.push(track);
-                                next.len()
+                                let added = append_unique_tracks(&mut next, [track]);
+                                (added, next.len())
                             };
-                            status.set(format!("Queued {added} tracks."));
+                            if added == 0 {
+                                status.set("Track is already in the queue.".to_string());
+                            } else {
+                                status.set(format!("Queued {total} tracks."));
+                            }
                         },
                     }
                 } else if tab == "queue" {

@@ -6,6 +6,7 @@ use crate::shitease;
 use crate::storage;
 use crate::track::{SOURCE_LOCAL, Track};
 use dioxus::prelude::*;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 
@@ -134,18 +135,19 @@ pub fn spawn_load_local_queue(
         });
 
         let mut loaded = 0;
+        let mut added_total = 0;
         while let Some(event) = receiver.recv().await {
             match event {
                 Ok((tracks, total)) => {
                     loaded = total;
-                    let added = tracks.len();
-                    {
+                    let added = {
                         let mut next = queue.write();
-                        next.extend(tracks);
-                    }
+                        append_unique_tracks(&mut next, tracks)
+                    };
+                    added_total += added;
                     let total_queue = queue.read().len();
                     status.set(format!(
-                        "Loaded {loaded} local tracks. Added {added}, queue has {total_queue}."
+                        "Scanned {loaded} local tracks. Added {added} new, queue has {total_queue}."
                     ));
                 }
                 Err(err) => {
@@ -159,9 +161,30 @@ pub fn spawn_load_local_queue(
             status.set("No supported audio files found.".to_string());
         } else {
             let total = queue.read().len();
-            status.set(format!("Queued {loaded} local tracks. Queue has {total}."));
+            status.set(format!(
+                "Scanned {loaded} local tracks. Added {added_total} new, queue has {total}."
+            ));
         }
     });
+}
+
+pub fn append_unique_tracks(
+    queue: &mut Vec<Track>,
+    tracks: impl IntoIterator<Item = Track>,
+) -> usize {
+    let mut seen = queue
+        .iter()
+        .map(|track| (track.source.clone(), track.id.clone()))
+        .collect::<HashSet<_>>();
+    let mut added = 0;
+    for track in tracks {
+        let key = (track.source.clone(), track.id.clone());
+        if seen.insert(key) {
+            queue.push(track);
+            added += 1;
+        }
+    }
+    added
 }
 
 async fn load_track_path(track: &Track) -> Result<String, String> {

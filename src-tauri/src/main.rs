@@ -760,6 +760,7 @@ fn App() -> Element {
                 },
             }
 
+            div { class: "panel-shell",
             section { class: "panel",
                 Tabs {
                     tab: tab.clone(),
@@ -937,6 +938,7 @@ fn App() -> Element {
                         },
                     }
                 }
+            }
             }
         }
     }

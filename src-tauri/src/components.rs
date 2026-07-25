@@ -333,6 +333,10 @@ pub fn SettingsPanel(
     volume: u32,
     island_size: u32,
     music_mode: MusicMode,
+    update_status: String,
+    update_progress: Option<f64>,
+    update_available: bool,
+    update_busy: bool,
     onslider_focus: EventHandler<FocusEvent>,
     onslider_blur: EventHandler<FocusEvent>,
     onslider_down: EventHandler<MouseEvent>,
@@ -345,6 +349,7 @@ pub fn SettingsPanel(
     onquiet: EventHandler<MouseEvent>,
     onclean_cache: EventHandler<MouseEvent>,
     oncheck_update: EventHandler<MouseEvent>,
+    oninstall_update: EventHandler<MouseEvent>,
 ) -> Element {
     let opacity_progress = ((opacity.saturating_sub(10) as f64 / 90.0) * 100.0).clamp(0.0, 100.0);
     let volume_progress = (volume as f64).clamp(0.0, 100.0);
@@ -451,9 +456,23 @@ pub fn SettingsPanel(
                 span { "Updates" }
                 div { class: "cache-actions update-actions",
                     button {
+                        disabled: update_busy,
                         onclick: oncheck_update,
                         "Check update"
                     }
+                    if update_available {
+                        button {
+                            disabled: update_busy,
+                            onclick: oninstall_update,
+                            "Update"
+                        }
+                    }
+                }
+            }
+            div { class: "update-readout",
+                div { class: "update-copy", "{update_status}" }
+                if let Some(progress) = update_progress {
+                    i { style: "--update-progress: {progress:.2}%;" }
                 }
             }
             div { class: "status-text", "Right-click the island to exit CAPS." }

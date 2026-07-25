@@ -1275,6 +1275,7 @@ button {
   min-width: 0;
   display: flex;
   justify-content: flex-end;
+  gap: 7px;
 }
 
 .cache-actions button {
@@ -1292,6 +1293,12 @@ button {
   background: rgba(255, 69, 58, 0.3);
 }
 
+.cache-actions button:disabled {
+  cursor: default;
+  opacity: 0.48;
+  transform: none;
+}
+
 .update-actions button {
   background: rgba(121, 244, 205, 0.18);
   color: rgba(234, 255, 248, 0.94);
@@ -1303,6 +1310,40 @@ button {
 
 .cache-actions button:active {
   transform: scale(0.96);
+}
+
+.update-readout {
+  min-height: 42px;
+  display: grid;
+  gap: 7px;
+  padding: 5px 2px 2px 114px;
+}
+
+.update-copy {
+  min-width: 0;
+  color: rgba(248, 255, 252, 0.58);
+  font-size: 11.5px;
+  font-weight: 680;
+  line-height: 1.34;
+  overflow-wrap: anywhere;
+}
+
+.update-readout i {
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, var(--softer-alpha));
+}
+
+.update-readout i::before {
+  content: "";
+  display: block;
+  width: var(--update-progress, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #34c759, #7df2ca);
+  transition: width var(--motion-ui) var(--motion-ease);
 }
 
 .status-text {

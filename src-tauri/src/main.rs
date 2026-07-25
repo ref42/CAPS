@@ -172,6 +172,11 @@ fn App() -> Element {
     let mut total_upload = use_signal(|| 0_u64);
     let mut total_download = use_signal(|| 0_u64);
     let mut lyrics = use_signal(Vec::<LyricLine>::new);
+    let mut pending_update = use_signal(|| None::<updater::ReleaseUpdate>);
+    let mut update_busy = use_signal(|| false);
+    let mut update_progress = use_signal(|| None::<f64>);
+    let mut update_status =
+        use_signal(|| format!("Installed CAPS {}.", updater::current_version()));
 
     {
         let player = player.clone();
@@ -916,6 +921,10 @@ fn App() -> Element {
                         volume: volume(),
                         island_size: island_size(),
                         music_mode: music_mode(),
+                        update_status: update_status.read().clone(),
+                        update_progress: *update_progress.read(),
+                        update_available: pending_update.read().is_some(),
+                        update_busy: update_busy(),
                         onslider_focus: move |_| input_focused.set(true),
                         onslider_blur: {
                             move |_| {
@@ -1012,24 +1021,104 @@ fn App() -> Element {
                             }
                         },
                         oncheck_update: move |_| {
+                            if update_busy() {
+                                return;
+                            }
+                            pending_update.set(None);
+                            update_progress.set(None);
+                            update_busy.set(true);
+                            update_status.set("Checking latest release...".to_string());
                             status.set("Checking for updates...".to_string());
                             spawn(async move {
                                 match updater::check_latest_release().await {
-                                    Ok(updater::UpdateStatus::Current { version }) => {
-                                        status.set(format!("CAPS {version} is up to date."));
-                                    }
-                                    Ok(updater::UpdateStatus::Available {
+                                    Ok(updater::UpdateStatus::Current {
                                         current,
                                         latest,
-                                        url,
+                                        url: _,
                                     }) => {
-                                        status.set(format!(
-                                            "Update available: {current} -> {latest}. Release: {url}"
-                                        ));
+                                        let message = if current == latest {
+                                            format!("CAPS {current} is already the latest version.")
+                                        } else {
+                                            format!("CAPS {current} is current. Latest release: {latest}.")
+                                        };
+                                        update_status.set(message.clone());
+                                        status.set(message);
                                     }
-                                    Err(err) => status.set(err),
+                                    Ok(updater::UpdateStatus::Available(update)) => {
+                                        let size = format_bytes(update.asset_size);
+                                        let message = format!(
+                                            "CAPS {} is available. Download: {} ({size}).",
+                                            update.latest, update.asset_name
+                                        );
+                                        pending_update.set(Some(update));
+                                        update_status.set(message.clone());
+                                        status.set(message);
+                                    }
+                                    Err(err) => {
+                                        update_status.set(err.clone());
+                                        status.set(err);
+                                    }
                                 }
+                                update_busy.set(false);
                             });
+                        },
+                        oninstall_update: {
+                            let desktop_for_install = desktop.clone();
+                            move |_| {
+                                if update_busy() {
+                                    return;
+                                }
+                                let Some(update) = pending_update.read().clone() else {
+                                    update_status.set("Check for an update first.".to_string());
+                                    return;
+                                };
+                                update_busy.set(true);
+                                update_progress.set(Some(0.0));
+                                update_status.set(format!("Downloading CAPS {}...", update.latest));
+                                status.set(format!("Downloading CAPS {}...", update.latest));
+                                let desktop = desktop_for_install.clone();
+                                spawn(async move {
+                                    let latest = update.latest.clone();
+                                    let result = updater::download_and_install_update(
+                                        update,
+                                        |downloaded, total| {
+                                            if let Some(total) = total.filter(|value| *value > 0) {
+                                                let progress = (downloaded as f64 / total as f64 * 100.0)
+                                                    .clamp(0.0, 100.0);
+                                                update_progress.set(Some(progress));
+                                                update_status.set(format!(
+                                                    "Downloading CAPS {latest}: {} / {} ({progress:.0}%).",
+                                                    format_bytes(downloaded),
+                                                    format_bytes(total)
+                                                ));
+                                            } else {
+                                                update_status.set(format!(
+                                                    "Downloading CAPS {latest}: {}.",
+                                                    format_bytes(downloaded)
+                                                ));
+                                            }
+                                        },
+                                    )
+                                    .await;
+                                    match result {
+                                        Ok(()) => {
+                                            update_progress.set(Some(100.0));
+                                            update_status.set(
+                                                "Installing update. CAPS will restart.".to_string(),
+                                            );
+                                            status.set("Installing update. CAPS will restart.".to_string());
+                                            tokio::time::sleep(std::time::Duration::from_millis(180)).await;
+                                            desktop.close();
+                                        }
+                                        Err(err) => {
+                                            update_progress.set(None);
+                                            update_status.set(err.clone());
+                                            status.set(err);
+                                            update_busy.set(false);
+                                        }
+                                    }
+                                });
+                            }
                         },
                     }
                 }

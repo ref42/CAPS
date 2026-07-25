@@ -25,9 +25,15 @@
 
 CAPS 使用 Rust 和 Dioxus Desktop 构建。空闲时它显示 CPU、内存和网络速度；播放时它展开成音乐岛，显示封面、歌词、频谱、进度条和基础播放控制。
 
-<video width="700" controls loop muted autoplay>
-  <source src="assets/showcase.mp4" type="video/mp4">
-</video>
+<p align="center">
+  <a href="assets/showcase.mp4">
+    <img src="assets/brand.svg" alt="观看 CAPS 展示视频" width="700px">
+  </a>
+</p>
+
+<p align="center">
+  <a href="assets/showcase.mp4">观看展示视频</a>
+</p>
 
 ## 现在可以做什么
 

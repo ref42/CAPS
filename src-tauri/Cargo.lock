@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "caps"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "cpal 0.18.1",
  "dioxus",

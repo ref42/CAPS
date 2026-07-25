@@ -1,6 +1,6 @@
 [package]
 name = "caps"
-version = "1.0.2"
+version = "1.0.3"
 description = "CAPS"
 authors = ["ref42"]
 edition = "2024"
@@ -27,5 +27,4 @@ log = "0.4.33"
 symphonia = { version = "0.6.0", features = ["mp3", "aac", "isomp4", "flac", "vorbis", "ogg", "wav", "all-meta"] }
 
 [build-dependencies]
-embedinator = "0.1.0"
-image = { version = "0.25.10", default-features = false, features = ["png"] }
+winresource = "0.1.31"

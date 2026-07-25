@@ -50,6 +50,17 @@ struct GitHubAsset {
 pub async fn check_latest_release() -> Result<UpdateStatus, String> {
     let current = current_version();
     let client = http_client()?;
+
+    match check_latest_release_from_api(&client, &current).await {
+        Ok(status) => Ok(status),
+        Err(_) => check_latest_release_from_redirect(&client, &current).await,
+    }
+}
+
+async fn check_latest_release_from_api(
+    client: &reqwest::Client,
+    current: &str,
+) -> Result<UpdateStatus, String> {
     let release: GitHubRelease = client
         .get(RELEASE_API_URL)
         .send()
@@ -64,14 +75,14 @@ pub async fn check_latest_release() -> Result<UpdateStatus, String> {
     let latest_url = release_url(&release);
     if release.draft || release.prerelease {
         return Ok(UpdateStatus::Current {
-            current: current.clone(),
-            latest: current,
+            current: current.to_string(),
+            latest: current.to_string(),
             url: latest_url,
         });
     }
 
     let latest = normalize_version(&release.tag_name);
-    if is_newer_version(&latest, &current) {
+    if is_newer_version(&latest, current) {
         let asset = release
             .assets
             .into_iter()
@@ -87,7 +98,7 @@ pub async fn check_latest_release() -> Result<UpdateStatus, String> {
             ));
         }
         Ok(UpdateStatus::Available(ReleaseUpdate {
-            current,
+            current: current.to_string(),
             latest,
             url: latest_url,
             asset_name: asset.name,
@@ -96,11 +107,69 @@ pub async fn check_latest_release() -> Result<UpdateStatus, String> {
         }))
     } else {
         Ok(UpdateStatus::Current {
-            current,
+            current: current.to_string(),
             latest,
             url: latest_url,
         })
     }
+}
+
+async fn check_latest_release_from_redirect(
+    client: &reqwest::Client,
+    current: &str,
+) -> Result<UpdateStatus, String> {
+    let tag_name = latest_release_tag_from_redirect(client).await?;
+    let latest = normalize_version(&tag_name);
+    if is_newer_version(&latest, current) {
+        let asset_name = format!("CAPS-{tag_name}-windows-x64.exe");
+        let asset_url =
+            format!("https://github.com/ref42/CAPS/releases/download/{tag_name}/{asset_name}");
+        let asset_size = remote_content_length(client, &asset_url).await.unwrap_or(0);
+        Ok(UpdateStatus::Available(ReleaseUpdate {
+            current: current.to_string(),
+            latest,
+            url: RELEASE_PAGE_URL.to_string(),
+            asset_name,
+            asset_url,
+            asset_size,
+        }))
+    } else {
+        Ok(UpdateStatus::Current {
+            current: current.to_string(),
+            latest,
+            url: RELEASE_PAGE_URL.to_string(),
+        })
+    }
+}
+
+async fn latest_release_tag_from_redirect(client: &reqwest::Client) -> Result<String, String> {
+    let response = client
+        .get(RELEASE_PAGE_URL)
+        .send()
+        .await
+        .map_err(|_| "Update check unavailable.".to_string())?
+        .error_for_status()
+        .map_err(|_| "Update check unavailable.".to_string())?;
+    let Some(tag) = response
+        .url()
+        .path_segments()
+        .and_then(|mut segments| segments.next_back())
+        .filter(|segment| *segment != "latest")
+    else {
+        return Err("Update check unavailable.".to_string());
+    };
+    Ok(tag.to_string())
+}
+
+async fn remote_content_length(client: &reqwest::Client, url: &str) -> Option<u64> {
+    client
+        .head(url)
+        .send()
+        .await
+        .ok()?
+        .error_for_status()
+        .ok()?
+        .content_length()
 }
 
 pub async fn download_and_install_update<F>(

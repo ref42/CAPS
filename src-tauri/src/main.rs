@@ -1027,8 +1027,7 @@ fn App() -> Element {
                             pending_update.set(None);
                             update_progress.set(None);
                             update_busy.set(true);
-                            update_status.set("Checking latest release...".to_string());
-                            status.set("Checking for updates...".to_string());
+                            update_status.set("Checking updates...".to_string());
                             spawn(async move {
                                 match updater::check_latest_release().await {
                                     Ok(updater::UpdateStatus::Current {
@@ -1037,26 +1036,25 @@ fn App() -> Element {
                                         url: _,
                                     }) => {
                                         let message = if current == latest {
-                                            format!("CAPS {current} is already the latest version.")
+                                            "Already latest.".to_string()
                                         } else {
-                                            format!("CAPS {current} is current. Latest release: {latest}.")
+                                            format!("Already latest: CAPS {latest}.")
                                         };
-                                        update_status.set(message.clone());
-                                        status.set(message);
+                                        update_status.set(message);
                                     }
                                     Ok(updater::UpdateStatus::Available(update)) => {
-                                        let size = format_bytes(update.asset_size);
-                                        let message = format!(
-                                            "CAPS {} is available. Download: {} ({size}).",
-                                            update.latest, update.asset_name
-                                        );
+                                        let size = if update.asset_size > 0 {
+                                            format!(" ({})", format_bytes(update.asset_size))
+                                        } else {
+                                            String::new()
+                                        };
+                                        let message =
+                                            format!("Ready to update: CAPS {}{size}.", update.latest);
                                         pending_update.set(Some(update));
-                                        update_status.set(message.clone());
-                                        status.set(message);
+                                        update_status.set(message);
                                     }
                                     Err(err) => {
-                                        update_status.set(err.clone());
-                                        status.set(err);
+                                        update_status.set(err);
                                     }
                                 }
                                 update_busy.set(false);
@@ -1075,7 +1073,6 @@ fn App() -> Element {
                                 update_busy.set(true);
                                 update_progress.set(Some(0.0));
                                 update_status.set(format!("Downloading CAPS {}...", update.latest));
-                                status.set(format!("Downloading CAPS {}...", update.latest));
                                 let desktop = desktop_for_install.clone();
                                 spawn(async move {
                                     let latest = update.latest.clone();
@@ -1106,14 +1103,12 @@ fn App() -> Element {
                                             update_status.set(
                                                 "Installing update. CAPS will restart.".to_string(),
                                             );
-                                            status.set("Installing update. CAPS will restart.".to_string());
                                             tokio::time::sleep(std::time::Duration::from_millis(180)).await;
                                             desktop.close();
                                         }
                                         Err(err) => {
                                             update_progress.set(None);
-                                            update_status.set(err.clone());
-                                            status.set(err);
+                                            update_status.set(err);
                                             update_busy.set(false);
                                         }
                                     }

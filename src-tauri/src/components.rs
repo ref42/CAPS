@@ -255,7 +255,7 @@ pub fn SearchPanel(
                         input {
                             r#type: "text",
                             value: "{local_music_folder}",
-                            placeholder: "D:\\Music",
+                            placeholder: "path/to/your/audios",
                             onfocus,
                             onblur,
                             oninput: move |event| onlocal_music_folder.call(event.value()),

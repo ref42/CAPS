@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>一个轻量、常驻、像胶囊一样的 Windows 桌面音乐岛。</strong>
+  <strong>一个常驻桌面顶部的轻量音乐岛：搜索、导入、播放和观察系统状态。</strong>
 </p>
 
 <p align="center">
@@ -14,73 +14,59 @@
 
 <p align="center">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
-  <img alt="Dioxus" src="https://avatars.githubusercontent.com/u/79236386?s=20" width="20" height="20">
   <img alt="Dioxus" src="https://img.shields.io/badge/Dioxus-Desktop-22a6f2?logo=dioxus&logoColor=white">
   <img alt="Windows" src="https://img.shields.io/badge/Windows-Desktop-0078d4?logo=windows11&logoColor=white">
-  <img alt="RustAudio" src="https://avatars.githubusercontent.com/u/9999738?s=20&v=4" width="20" height="20">
   <img alt="Audio" src="https://img.shields.io/badge/Audio-Rodio%20%2B%20CPAL-ff69b4">
-  <img alt="FFT" src="https://img.shields.io/badge/Spectrum-RustFFT-7df2ca">
+  <img alt="Spectrum" src="https://img.shields.io/badge/Spectrum-RustFFT-7df2ca">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-white">
 </p>
 
-**CAPS** 是 **`C`atch `A`ll `P`ossible `S`ources** 的缩写，也来自 **capsule**：像一颗可以治愈的小胶囊一样，轻巧地装下音乐、状态和控制。
+**CAPS** 是 **`C`atch `A`ll `P`ossible `S`ources**，也来自 **capsule**。它不是一个完整音乐平台，而是一个安静、常驻、可以快速把不同来源内容变成可听队列的桌面控制层。
 
-CAPS 用 Rust 和 Dioxus Desktop 构建。它停留在屏幕顶部，默认只显示必要的系统状态；当音乐播放时，它会变成一个动态音乐岛，展示封面、歌词、进度、频谱和基础播放控制。
+CAPS 使用 Rust 和 Dioxus Desktop 构建。空闲时它显示 CPU、内存和网络速度；播放时它展开成音乐岛，显示封面、歌词、频谱、进度条和基础播放控制。
 
-## 状态
+## 现在可以做什么
 
-- **空闲**：显示 CPU、RAM、上传速度、下载速度和实时音频频谱。
-- **音乐**：显示专辑封面、同步歌词、播放进度、播放控制和更有弹性的 FFT 频谱。
+- 从 NetEase 搜索音乐并加入队列。
+- 随机加载一批在线歌曲。
+- 扫描本地音乐文件夹，批量加入队列，并避免重复加入同一首本地歌。
+- 从 Bilibili 视频链接提取可听音频。
+- 从 YouTube 视频链接提取可播放音频流。
+- 显示导入内容的时长、大小、码率、编码和下载进度。
+- 播放、暂停、停止、上一首、下一首和拖动进度条。
+- 显示歌词，播放时旋转封面，并根据封面提取频谱/进度条颜色。
+- 在 Settings 中调节透明度、音量、岛尺寸和播放模式。
+- 在 Settings 中清理下载到磁盘的音频缓存。
+- 右键音乐岛清理缓存并退出。
 
-CAPS 的目标不是成为完整音乐软件，而是做一个轻、小、好看的桌面音乐控制层。
+## 来源
 
-## 功能
+| 来源 | 用法 | 说明 |
+| --- | --- | --- |
+| NetEase | 输入歌曲、歌手或专辑关键词 | 搜索结果可直接加入队列；支持随机加载。 |
+| Bilibili | 粘贴 Bilibili 视频 URL | 解析视频元数据和 DASH 音频，下载后缓存播放。 |
+| YouTube | 粘贴 YouTube 视频 URL | 使用纯 Rust 的窄路径解析 YouTube Innertube 响应，优先选择可播放的 MP4/M4A 兼容流。 |
+| Local | 填入本地音乐文件夹路径 | 扫描 mp3、flac、ogg、wav、m4a 等常见音频文件，并读取元数据、封面和时长。 |
 
-- 搜索在线音乐，并把可播放歌曲加入队列。
-- 随机加载指定数量的可播放歌曲。
-- 加载本地音乐文件夹，并批量加入播放队列。
-- 播放、暂停、停止、上一首、下一首和拖动进度。
-- 显示同步歌词，并带有平滑过渡效果。
-- 播放时旋转专辑封面。
-- 根据专辑封面提取频谱和进度条颜色。
-- 空闲时显示 CPU、RAM 和网络速度。
-- 右键音乐岛即可清理歌曲缓存并退出 CAPS。
+Bilibili 和 YouTube 标签页会严格校验对应来源。YouTube 链接不会在 Bilibili 标签页导入，反过来也一样。
+
+## 下载和缓存
+
+视频来源的音频会下载到 CAPS 的歌曲缓存目录中，后续播放会直接复用缓存。较大的文件会先尝试并发 HTTP range 下载；如果 CDN 不支持 range，CAPS 会回退到普通串行下载。
+
+缓存可以通过 Settings 里的 **Clean cache** 清理。清理时 CAPS 会先停止当前播放，避免 Windows 因文件句柄未释放而删除失败。
 
 ## 技术栈
 
 | 技术 | 用途 |
 | --- | --- |
-| ![Rust](https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white) | 主程序、音频、状态管理 |
-| <img alt="Dioxus" src="https://avatars.githubusercontent.com/u/79236386?s=18" width="18" height="18"> ![Dioxus](https://img.shields.io/badge/Dioxus-Desktop-22a6f2?logo=dioxus&logoColor=white) | 桌面 UI |
-| <img alt="Rodio" src="https://avatars.githubusercontent.com/u/9999738?s=18&v=4" width="18" height="18"> ![Rodio](https://img.shields.io/badge/Rodio-Playback-ff69b4) | 音频播放 |
-| <img alt="RustAudio" src="https://avatars.githubusercontent.com/u/9999738?s=18&v=4" width="18" height="18"> ![CPAL](https://img.shields.io/badge/CPAL-Audio%20Device-8e8e93) | 音频设备与采样 |
-| ![RustFFT](https://img.shields.io/badge/RustFFT-Spectrum-7df2ca) | 频谱分析 |
-| ![Reqwest](https://img.shields.io/badge/Reqwest-HTTP-34c759) | 在线音乐请求 |
-| ![Sysinfo](https://img.shields.io/badge/Sysinfo-System%20Stats-0078d4) | CPU、RAM、网络状态 |
-| ![Symphonia](https://img.shields.io/badge/Symphonia-Metadata-f5c542) | 本地音乐元数据和封面 |
-
-## 项目结构
-
-```text
-.
-├── assets/              # README 和项目品牌资产
-├── src-tauri/
-│   ├── Cargo.toml
-│   ├── Cargo.lock
-│   └── src/
-│       ├── main.rs          # Dioxus Desktop 入口和应用状态
-│       ├── components.rs    # Island、搜索、队列、设置等 UI
-│       ├── app.css          # 视觉样式和动画
-│       ├── audio.rs         # 音频播放线程
-│       ├── audio_spectrum.rs
-│       ├── local_music.rs   # 本地音乐扫描和元数据
-│       ├── lyrics.rs
-│       ├── storage.rs
-│       └── windowing.rs
-├── README.md
-├── README.en.md
-└── LICENSE
-```
+| Rust 2024 | 主程序、音频、下载、状态管理 |
+| Dioxus Desktop | 桌面 UI |
+| Rodio + CPAL | 音频播放和设备 |
+| RustFFT | 实时频谱 |
+| Reqwest + Tokio | 在线请求和异步下载 |
+| Symphonia | 本地音乐元数据、封面和时长 |
+| Sysinfo | CPU、内存和网络状态 |
 
 ## 作者
 

@@ -14,7 +14,7 @@ pub fn set_island_window(
     size_scale: f64,
     collapsed_width: f64,
 ) {
-    let size_scale = size_scale.clamp(0.85, 1.35);
+    let size_scale = size_scale.clamp(0.85, 1.50);
     let (base_width, base_height) = if expanded {
         (
             EXPANDED_W + ISLAND_BLEED * 2.0,

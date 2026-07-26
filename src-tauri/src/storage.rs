@@ -52,7 +52,7 @@ impl AppSettings {
     fn normalized(mut self) -> Self {
         self.opacity = self.opacity.clamp(10, 100);
         self.volume = self.volume.clamp(0, 100);
-        self.island_size = self.island_size.clamp(85, 135);
+        self.island_size = self.island_size.clamp(85, 150);
         self.random_count = self.random_count.clamp(1, 100);
         if !matches!(
             self.active_tab.as_str(),

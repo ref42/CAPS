@@ -354,7 +354,7 @@ pub fn SettingsPanel(
     let opacity_progress = ((opacity.saturating_sub(10) as f64 / 90.0) * 100.0).clamp(0.0, 100.0);
     let volume_progress = (volume as f64).clamp(0.0, 100.0);
     let island_progress =
-        ((island_size.saturating_sub(85) as f64 / 50.0) * 100.0).clamp(0.0, 100.0);
+        ((island_size.saturating_sub(85) as f64 / 65.0) * 100.0).clamp(0.0, 100.0);
     rsx! {
         div { class: "panel-section settings",
             label { class: "setting",
@@ -407,7 +407,7 @@ pub fn SettingsPanel(
                     input {
                         r#type: "range",
                         min: "85",
-                        max: "135",
+                        max: "150",
                         value: "{island_size}",
                         style: "--setting-progress: {island_progress:.2}%;",
                         onfocus: move |event| onslider_focus.call(event),
@@ -416,7 +416,7 @@ pub fn SettingsPanel(
                         onmouseup: move |event| onslider_up.call(event),
                         oninput: move |event| {
                             if let Ok(value) = event.value().parse::<u32>() {
-                                onisland_size.call(value.clamp(85, 135));
+                                onisland_size.call(value.clamp(85, 150));
                             }
                         },
                     }

@@ -140,7 +140,8 @@ fn App() -> Element {
     });
     let mut search_source = use_signal(|| SearchSource::Netease);
     let mut query = use_signal(String::new);
-    let mut video_url = use_signal(String::new);
+    let mut bilibili_video_url = use_signal(String::new);
+    let mut youtube_video_url = use_signal(String::new);
     let results = use_signal(Vec::<Track>::new);
     let mut queue = use_signal({
         let saved_state = saved_state.clone();
@@ -574,7 +575,7 @@ fn App() -> Element {
     };
     let is_expanded = *expanded.read();
     let opacity_css = (*opacity.read() as f64 / 100.0).clamp(0.1, 1.0);
-    let island_scale = (*island_size.read() as f64 / 100.0).clamp(0.85, 1.35);
+    let island_scale = (*island_size.read() as f64 / 100.0).clamp(0.85, 1.50);
     let collapsed_width = collapsed_width_for_text(&primary_text, has_music);
     let stage_width = collapsed_width + ISLAND_BLEED * 2.0;
     let stage_height = COLLAPSED_H + ISLAND_BLEED * 2.0;
@@ -790,7 +791,11 @@ fn App() -> Element {
                     SearchPanel {
                         source: search_source(),
                         query: query.read().clone(),
-                        video_url: video_url.read().clone(),
+                        video_url: match search_source() {
+                            SearchSource::Bilibili => bilibili_video_url.read().clone(),
+                            SearchSource::Youtube => youtube_video_url.read().clone(),
+                            _ => String::new(),
+                        },
                         local_music_folder: local_music_folder.read().clone(),
                         results: results.read().clone(),
                         random_count: random_count(),
@@ -812,7 +817,11 @@ fn App() -> Element {
                             }
                         },
                         onquery: move |value| query.set(value),
-                        onvideo_url: move |value| video_url.set(value),
+                        onvideo_url: move |value| match search_source() {
+                            SearchSource::Bilibili => bilibili_video_url.set(value),
+                            SearchSource::Youtube => youtube_video_url.set(value),
+                            _ => {}
+                        },
                         onsearch: move |text: String| spawn_search(text, results, status),
                         onimport_video: move |(source, text): (SearchSource, String)| {
                             let import_source = match source {

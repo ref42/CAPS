@@ -117,7 +117,7 @@ pub fn SearchPanel(
     onvideo_url: EventHandler<String>,
     onsearch: EventHandler<String>,
     onimport_video: EventHandler<(SearchSource, String)>,
-    onlocal_music_folder: EventHandler<String>,
+    onlocal_music_folder: EventHandler<MouseEvent>,
     onload_local: EventHandler<MouseEvent>,
     onrandom_append: EventHandler<u32>,
     onrandom_replace: EventHandler<u32>,
@@ -252,15 +252,21 @@ pub fn SearchPanel(
                 div { class: "source-mode local-mode",
                     div { class: "local-loader",
                         span { "Folder" }
-                        input {
-                            r#type: "text",
-                            value: "{local_music_folder}",
-                            placeholder: "path/to/your/audios",
+                        button {
+                            class: "local-folder-picker",
+                            r#type: "button",
+                            title: "{local_music_folder}",
                             onfocus,
                             onblur,
-                            oninput: move |event| onlocal_music_folder.call(event.value()),
+                            onclick: onlocal_music_folder,
+                            if local_music_folder.trim().is_empty() {
+                                "path/to/your/audios"
+                            } else {
+                                "{local_music_folder}"
+                            }
                         }
                         button {
+                            r#type: "button",
                             onclick: onload_local,
                             "Load"
                         }

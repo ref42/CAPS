@@ -34,6 +34,7 @@ use dioxus::prelude::*;
 use formatting::{format_bytes, format_rate};
 use lyrics::{LyricLine, current_lyric_line};
 use mode::MusicMode;
+use std::path::Path;
 use std::sync::Arc;
 use storage::AppSettings;
 use sysinfo::{MINIMUM_CPU_UPDATE_INTERVAL, Networks, System};
@@ -831,7 +832,20 @@ fn App() -> Element {
                             };
                             spawn_import_video_url(import_source, text, queue, status)
                         },
-                        onlocal_music_folder: move |value| local_music_folder.set(value),
+                        onlocal_music_folder: move |_| {
+                            let current = local_music_folder.read().clone();
+                            spawn(async move {
+                                match tokio::task::spawn_blocking(move || pick_folder(&current))
+                                    .await
+                                {
+                                    Ok(Some(folder)) => local_music_folder.set(folder),
+                                    Ok(None) => {}
+                                    Err(err) => {
+                                        status.set(format!("Folder picker failed: {err}"));
+                                    }
+                                }
+                            });
+                        },
                         onload_local: move |_| {
                             spawn_load_local_queue(local_music_folder.read().clone(), queue, status)
                         },
@@ -1138,6 +1152,18 @@ fn collapsed_width_for_text(_text: &str, has_music: bool) -> f64 {
     } else {
         COLLAPSED_W
     }
+}
+
+fn pick_folder(current: &str) -> Option<String> {
+    let mut dialog = rfd::FileDialog::new();
+    let current = current.trim();
+    if !current.is_empty() {
+        let path = Path::new(current);
+        if path.exists() {
+            dialog = dialog.set_directory(path);
+        }
+    }
+    dialog.pick_folder().map(|path| path.display().to_string())
 }
 
 fn schedule_window_collapse(

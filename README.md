@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand.svg" alt="CAPS brand logo" width="600px">
+  <img src="assets/brand.svg" alt="CAPS brand logo" width="600px" height = "100px">
 </p>
 
 <p align="center">

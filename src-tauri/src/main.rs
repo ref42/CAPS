@@ -174,6 +174,7 @@ fn App() -> Element {
     let mut total_upload = use_signal(|| 0_u64);
     let mut total_download = use_signal(|| 0_u64);
     let mut lyrics = use_signal(Vec::<LyricLine>::new);
+    let mut spectrum_color_request = use_signal(|| 0_u64);
     let mut pending_update = use_signal(|| None::<updater::ReleaseUpdate>);
     let mut update_busy = use_signal(|| false);
     let mut update_progress = use_signal(|| None::<f64>);
@@ -289,14 +290,22 @@ fn App() -> Element {
 
     let last_cover_for_color = use_hook(|| std::cell::RefCell::new(String::new()));
     use_effect(move || {
-        let cover_url = current_index
+        let cover_url = current_track
             .read()
-            .and_then(|index| queue.read().get(index).map(|track| track.cover.clone()))
+            .as_ref()
+            .map(|track| track.cover.clone())
+            .or_else(|| {
+                current_index
+                    .read()
+                    .and_then(|index| queue.read().get(index).map(|track| track.cover.clone()))
+            })
             .unwrap_or_default();
         if *last_cover_for_color.borrow() == cover_url {
             return;
         }
         *last_cover_for_color.borrow_mut() = cover_url.clone();
+        let request = spectrum_color_request().wrapping_add(1);
+        spectrum_color_request.set(request);
         if cover_url.is_empty() {
             spectrum_colors.set((
                 DEFAULT_SPECTRUM_FROM.to_string(),
@@ -313,7 +322,9 @@ fn App() -> Element {
                         DEFAULT_SPECTRUM_TO.to_string(),
                     )
                 });
-            spectrum_colors.set(colors);
+            if spectrum_color_request() == request {
+                spectrum_colors.set(colors);
+            }
         });
     });
 

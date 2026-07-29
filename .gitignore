@@ -15,6 +15,7 @@ src-tauri/target
 .agents
 .claude
 .codex
+todo.md
 
 .vscode/*
 !.vscode/extensions.json

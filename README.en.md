@@ -19,9 +19,7 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-white">
 </p>
 
-**CAPS** means **`C`atch `A`ll `P`ossible `S`ources**, and it also comes from **capsule**. It is not trying to be a full music platform. It is a quiet desktop control layer that turns different content sources into a listening queue.
-
-CAPS is built with Rust and Dioxus Desktop. While idle, it shows CPU, memory, and network speed. While music is active, it expands into a music island with cover art, lyrics, spectrum, progress, and compact playback controls.
+**CAPS** means **`C`atch `A`ll `P`ossible `S`ources**, and it also comes from **capsule**. CAPS is built with Rust and Dioxus Desktop. While idle, it shows CPU, memory, and network speed. While music is active, it expands into a music island with cover art, lyrics, spectrum, progress, and compact playback controls.
 
 ## For Users
 

@@ -19,9 +19,7 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-white">
 </p>
 
-**CAPS** 是 **`C`atch `A`ll `P`ossible `S`ources**，也来自 **capsule**。它不是一个完整音乐平台，而是一个安静、常驻、可以快速把不同来源内容变成可听队列的桌面控制层。
-
-CAPS 使用 Rust 和 Dioxus Desktop 构建。空闲时它显示 CPU、内存和网络速度；播放时它展开成音乐岛，显示封面、歌词、频谱、进度条和基础播放控制。
+**CAPS** 取自 **`C`atch `A`ll `P`ossible `S`ources**，或 **capsule**。CAPS 使用 Rust 和 Dioxus Desktop 构建。空闲时它显示 CPU、内存和网络速度；播放时它展开成音乐岛，显示封面、歌词、频谱、进度条和基础播放控制。
 
 ## 写给普通用户
 

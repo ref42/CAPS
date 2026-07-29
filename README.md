@@ -23,10 +23,6 @@
 
 CAPS 使用 Rust 和 Dioxus Desktop 构建。空闲时它显示 CPU、内存和网络速度；播放时它展开成音乐岛，显示封面、歌词、频谱、进度条和基础播放控制。
 
-<p align="center">
-  <a href="assets/showcase.mp4">观看展示视频</a>
-</p>
-
 ## 写给普通用户
 
 - Shift+鼠标左键，按住拖动胶囊，可以将胶囊放在你喜欢的位置。

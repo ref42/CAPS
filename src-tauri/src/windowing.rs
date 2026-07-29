@@ -7,22 +7,26 @@ pub const EXPANDED_W: f64 = 460.0;
 pub const EXPANDED_H: f64 = 490.0;
 pub const MUSIC_COLLAPSED_W: f64 = EXPANDED_W;
 pub const ISLAND_BLEED: f64 = 18.0;
+pub const ADDON_W: f64 = 138.0;
+pub const ADDON_GAP: f64 = 24.0;
 
 pub fn set_island_window(
     desktop: &DesktopContext,
     expanded: bool,
+    separated: bool,
     size_scale: f64,
     collapsed_width: f64,
 ) {
     let size_scale = size_scale.clamp(0.85, 1.50);
+    let extra_width = if separated { ADDON_GAP + ADDON_W } else { 0.0 };
     let (base_width, base_height) = if expanded {
         (
-            EXPANDED_W + ISLAND_BLEED * 2.0,
+            EXPANDED_W + extra_width + ISLAND_BLEED * 2.0,
             EXPANDED_H + ISLAND_BLEED * 2.0,
         )
     } else {
         (
-            collapsed_width.max(COLLAPSED_W) + ISLAND_BLEED * 2.0,
+            collapsed_width.max(COLLAPSED_W) + extra_width + ISLAND_BLEED * 2.0,
             COLLAPSED_H + ISLAND_BLEED * 2.0,
         )
     };

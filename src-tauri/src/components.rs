@@ -338,6 +338,7 @@ pub fn SettingsPanel(
     opacity: u32,
     volume: u32,
     island_size: u32,
+    companion: String,
     music_mode: MusicMode,
     update_status: String,
     update_progress: Option<f64>,
@@ -350,6 +351,7 @@ pub fn SettingsPanel(
     onopacity: EventHandler<u32>,
     onvolume: EventHandler<u32>,
     onisland_size: EventHandler<u32>,
+    oncompanion: EventHandler<String>,
     onnormal: EventHandler<MouseEvent>,
     onsilent: EventHandler<MouseEvent>,
     onquiet: EventHandler<MouseEvent>,
@@ -427,6 +429,21 @@ pub fn SettingsPanel(
                         },
                     }
                     output { "{island_size}%" }
+                }
+            }
+            label { class: "setting",
+                span { "Companion" }
+                div { class: "companion-actions",
+                    button {
+                        class: if companion == "coco" { "companion-button active" } else { "companion-button" },
+                        onclick: move |_| oncompanion.call("coco".to_string()),
+                        "Coco"
+                    }
+                    button {
+                        class: if companion == "dodo" { "companion-button active" } else { "companion-button" },
+                        onclick: move |_| oncompanion.call("dodo".to_string()),
+                        "Dodo"
+                    }
                 }
             }
             label { class: "setting",
@@ -514,6 +531,8 @@ pub fn Island(
     duration: f64,
     is_playing: bool,
     ondrag: EventHandler<MouseEvent>,
+    onsplit_press_start: EventHandler<MouseEvent>,
+    onsplit_press_end: EventHandler<MouseEvent>,
     onprev: EventHandler<MouseEvent>,
     onplaypause: EventHandler<MouseEvent>,
     onnext: EventHandler<MouseEvent>,
@@ -523,7 +542,11 @@ pub fn Island(
     rsx! {
         section {
             class: "{island_class}",
-            onmousedown: ondrag,
+            onmousedown: move |event| {
+                ondrag.call(event.clone());
+                onsplit_press_start.call(event);
+            },
+            onmouseup: move |event| onsplit_press_end.call(event),
             div { class: "{activity_class}", title: "{activity_title}", style: "{activity_style}" }
             div { class: "{core_class}",
                 if has_music {
@@ -621,6 +644,45 @@ pub fn Island(
                             }
                         },
                     }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn AddonIsland(
+    companion_style: String,
+    companion_name: &'static str,
+    cpu: String,
+    memory: String,
+    download: String,
+    upload: String,
+    spectrum: [f32; SPECTRUM_BANDS],
+    spectrum_style: String,
+    separated: bool,
+    splitting: bool,
+    is_playing: bool,
+    onhover: EventHandler<MouseEvent>,
+) -> Element {
+    let mut class = match (separated, splitting) {
+        (true, _) => "addon-island separated",
+        (false, true) => "addon-island splitting",
+        _ => "addon-island",
+    }
+    .to_string();
+    if is_playing {
+        class.push_str(" playing");
+    }
+    let title = format!("{companion_name}  CPU {cpu}  RAM {memory}  Down {download}  Up {upload}");
+    rsx! {
+        aside { class: "{class}", title: "{title}", onmouseenter: move |event| onhover.call(event),
+            div { class: "addon-pet", style: "{companion_style}", "aria-label": "{companion_name}",
+                div { class: "addon-pet-strip" }
+            }
+            div { class: "addon-spectrum", style: "{spectrum_style}",
+                for value in spectrum {
+                    i { style: "transform: scaleY({value});" }
                 }
             }
         }

@@ -25,8 +25,8 @@ use actions::{
 };
 use audio::{AudioCommand, AudioPlayer};
 use components::{
-    Island, QUEUE_RENDER_LIMIT, QueuePanel, SearchPanel, SearchSource, SettingsPanel, StatsPanel,
-    Tabs,
+    AddonIsland, Island, QUEUE_RENDER_LIMIT, QueuePanel, SearchPanel, SearchSource, SettingsPanel,
+    StatsPanel, Tabs,
 };
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
 use dioxus::html::input_data::MouseButton;
@@ -40,8 +40,8 @@ use storage::AppSettings;
 use sysinfo::{MINIMUM_CPU_UPDATE_INTERVAL, Networks, System};
 use track::Track;
 use windowing::{
-    COLLAPSED_H, COLLAPSED_W, EXPANDED_H, EXPANDED_W, ISLAND_BLEED, MUSIC_COLLAPSED_W,
-    place_top_center, set_island_window,
+    ADDON_GAP, ADDON_W, COLLAPSED_H, COLLAPSED_W, EXPANDED_H, EXPANDED_W, ISLAND_BLEED,
+    MUSIC_COLLAPSED_W, place_top_center, set_island_window,
 };
 
 #[cfg(target_os = "windows")]
@@ -57,6 +57,8 @@ struct LyricTransition {
 const DEFAULT_SPECTRUM_FROM: &str = "rgb(255, 196, 224)";
 const DEFAULT_SPECTRUM_TO: &str = "rgb(255, 105, 180)";
 const WINDOW_COLLAPSE_DELAY_MS: u64 = 280;
+const SPLIT_HOLD_MS: u64 = 520;
+const SPLIT_SETTLE_MS: u64 = 420;
 
 fn main() {
     audio_spectrum::start_monitor();
@@ -115,6 +117,12 @@ fn App() -> Element {
     let mut transition_ticket = use_signal(|| 0u64);
     let mut pointer_inside = use_signal(|| false);
     let mut input_focused = use_signal(|| false);
+    let mut separated_islands = use_signal(|| false);
+    let mut splitting_islands = use_signal(|| false);
+    let mut separating_islands = use_signal(|| false);
+    let mut merging_islands = use_signal(|| false);
+    let mut split_press_ticket = use_signal(|| 0u64);
+    let mut split_motion_ticket = use_signal(|| 0u64);
     let mut active_tab = use_signal({
         let saved_settings = saved_settings.clone();
         move || saved_settings.active_tab.clone()
@@ -130,6 +138,10 @@ fn App() -> Element {
     let mut island_size = use_signal({
         let saved_settings = saved_settings.clone();
         move || saved_settings.island_size
+    });
+    let mut companion = use_signal({
+        let saved_settings = saved_settings.clone();
+        move || saved_settings.companion.clone()
     });
     let mut random_count = use_signal({
         let saved_settings = saved_settings.clone();
@@ -180,6 +192,8 @@ fn App() -> Element {
     let mut update_progress = use_signal(|| None::<f64>);
     let mut update_status =
         use_signal(|| format!("Installed CAPS {}.", updater::current_version()));
+    let coco_sprite_src = use_hook(coco_sprite_data_uri);
+    let dodo_sprite_src = use_hook(dodo_sprite_data_uri);
 
     {
         let player = player.clone();
@@ -197,6 +211,7 @@ fn App() -> Element {
                 random_count: random_count(),
                 active_tab: active_tab.read().clone(),
                 local_music_folder: local_music_folder.read().clone(),
+                companion: companion.read().clone(),
             },
             &queue.read(),
             *current_index.read(),
@@ -580,6 +595,15 @@ fn App() -> Element {
             colors.0, colors.1
         )
     };
+    let companion_value = companion.read().clone();
+    let companion_is_dodo = companion_value == "dodo";
+    let companion_sprite_src = if companion_is_dodo {
+        dodo_sprite_src.clone()
+    } else {
+        coco_sprite_src.clone()
+    };
+    let companion_style = format!("--companion-image: url(\"{companion_sprite_src}\");");
+    let companion_name = if companion_is_dodo { "Dodo" } else { "Coco" };
     let tab = active_tab.read().clone();
     let (queue_len_for_panel, visible_queue_for_panel) = if tab == "queue" {
         let queue_ref = queue.read();
@@ -596,12 +620,28 @@ fn App() -> Element {
         (0, Vec::new())
     };
     let is_expanded = *expanded.read();
+    let is_separated = separated_islands();
+    let is_splitting = splitting_islands();
+    let is_separating = separating_islands();
+    let is_merging = merging_islands();
+    let separation_visible = is_separated || is_splitting || is_separating || is_merging;
     let opacity_css = (*opacity.read() as f64 / 100.0).clamp(0.1, 1.0);
     let island_scale = (*island_size.read() as f64 / 100.0).clamp(0.85, 1.50);
     let collapsed_width = collapsed_width_for_text(&primary_text, has_music);
-    let stage_width = collapsed_width + ISLAND_BLEED * 2.0;
+    let separation_extra_width = if separation_visible {
+        ADDON_GAP + ADDON_W
+    } else {
+        0.0
+    };
+    let main_island_width = if is_expanded {
+        EXPANDED_W
+    } else {
+        collapsed_width
+    };
+    let cluster_width = main_island_width + separation_extra_width;
+    let stage_width = collapsed_width + separation_extra_width + ISLAND_BLEED * 2.0;
     let stage_height = COLLAPSED_H + ISLAND_BLEED * 2.0;
-    let expanded_stage_width = EXPANDED_W + ISLAND_BLEED * 2.0;
+    let expanded_stage_width = EXPANDED_W + separation_extra_width + ISLAND_BLEED * 2.0;
     let expanded_stage_height = EXPANDED_H + ISLAND_BLEED * 2.0;
     let island_alpha = (opacity_css * 0.92).clamp(0.08, 0.92);
     let panel_alpha = (opacity_css * 0.86).clamp(0.08, 0.86);
@@ -612,13 +652,26 @@ fn App() -> Element {
     let green_alpha = (opacity_css * 0.2).clamp(0.03, 0.2);
     let red_alpha = (opacity_css * 0.22).clamp(0.03, 0.22);
     let stage_style = format!(
-        "--island-bg-alpha: {island_alpha:.3}; --panel-bg-alpha: {panel_alpha:.3}; --soft-alpha: {soft_alpha:.3}; --softer-alpha: {softer_alpha:.3}; --hover-alpha: {hover_alpha:.3}; --active-alpha: {active_alpha:.3}; --green-alpha: {green_alpha:.3}; --red-alpha: {red_alpha:.3}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --expanded-stage-width: {expanded_stage_width:.0}px; --expanded-stage-height: {expanded_stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px;"
+        "--island-bg-alpha: {island_alpha:.3}; --panel-bg-alpha: {panel_alpha:.3}; --soft-alpha: {soft_alpha:.3}; --softer-alpha: {softer_alpha:.3}; --hover-alpha: {hover_alpha:.3}; --active-alpha: {active_alpha:.3}; --green-alpha: {green_alpha:.3}; --red-alpha: {red_alpha:.3}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --expanded-stage-width: {expanded_stage_width:.0}px; --expanded-stage-height: {expanded_stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px; --addon-width: {ADDON_W:.0}px; --addon-gap: {ADDON_GAP:.0}px; --main-island-width: {main_island_width:.0}px; --cluster-width: {cluster_width:.0}px;"
     );
-    let stage_class = match (*window_expanded.read(), is_expanded) {
+    let base_stage_class = match (*window_expanded.read(), is_expanded) {
         (true, true) => "stage window-expanded visual-expanded",
         (true, false) => "stage window-expanded",
         (false, _) => "stage",
     };
+    let mut stage_class = base_stage_class.to_string();
+    if is_separated {
+        stage_class.push_str(" separated-islands");
+    }
+    if is_splitting {
+        stage_class.push_str(" splitting-islands");
+    }
+    if is_separating {
+        stage_class.push_str(" separating-islands");
+    }
+    if is_merging {
+        stage_class.push_str(" merging-islands");
+    }
     let island_class = if has_music {
         "island"
     } else {
@@ -675,25 +728,30 @@ fn App() -> Element {
             transition.id,
         )
     };
-    let window_size_cache = use_hook(|| std::cell::RefCell::new(None::<(bool, i32, u32)>));
+    let window_size_cache = use_hook(|| std::cell::RefCell::new(None::<(bool, bool, i32, u32)>));
 
     {
         let desktop = desktop.clone();
         let cache = window_size_cache.clone();
         use_effect(move || {
             let window_expanded_key = window_expanded();
+            let separated_key = separated_islands()
+                || splitting_islands()
+                || separating_islands()
+                || merging_islands();
             let width_key = if window_expanded_key {
                 EXPANDED_W.round() as i32
             } else {
                 collapsed_width.round() as i32
             };
             let size_key = island_size();
-            let next = (window_expanded_key, width_key, size_key);
+            let next = (window_expanded_key, separated_key, width_key, size_key);
             if *cache.borrow() != Some(next) {
                 *cache.borrow_mut() = Some(next);
                 set_island_window(
                     &desktop,
                     window_expanded_key,
+                    separated_key,
                     size_key as f64 / 100.0,
                     collapsed_width,
                 );
@@ -712,6 +770,8 @@ fn App() -> Element {
             },
             onmouseleave: move |_| {
                 pointer_inside.set(false);
+                splitting_islands.set(false);
+                split_press_ticket.set(split_press_ticket().wrapping_add(1));
                 collapse_window();
             },
             oncontextmenu: {
@@ -721,82 +781,160 @@ fn App() -> Element {
                     desktop.close()
                 }
             },
-            Island {
-                island_class,
-                activity_class,
-                activity_title,
-                activity_style,
-                core_class,
-                cover_class,
-                cover_style,
-                has_music,
-                is_expanded,
-                primary_class,
-                visible_primary_text,
-                outgoing_primary_text,
-                transition_key,
-                lyric_scroll_class,
-                lyric_scroll_style,
-                cpu: cpu_usage.read().clone(),
-                memory: memory_usage.read().clone(),
-                download: download.read().clone(),
-                upload: upload.read().clone(),
-                spectrum: *spectrum.read(),
-                spectrum_style,
-                progress,
-                progress_style,
-                duration: state.duration,
-                is_playing: state.is_playing,
-                ondrag: {
-                    let desktop = desktop.clone();
-                    move |event: MouseEvent| {
+            div { class: "island-cluster",
+                Island {
+                    island_class,
+                    activity_class,
+                    activity_title,
+                    activity_style,
+                    core_class,
+                    cover_class,
+                    cover_style,
+                    has_music,
+                    is_expanded,
+                    primary_class,
+                    visible_primary_text,
+                    outgoing_primary_text,
+                    transition_key,
+                    lyric_scroll_class,
+                    lyric_scroll_style,
+                    cpu: cpu_usage.read().clone(),
+                    memory: memory_usage.read().clone(),
+                    download: download.read().clone(),
+                    upload: upload.read().clone(),
+                    spectrum: *spectrum.read(),
+                    spectrum_style: spectrum_style.clone(),
+                    progress,
+                    progress_style,
+                    duration: state.duration,
+                    is_playing: state.is_playing,
+                    ondrag: {
+                        let desktop = desktop.clone();
+                        move |event: MouseEvent| {
+                            if event.modifiers().shift()
+                                && event
+                                    .trigger_button()
+                                    .is_some_and(|button| button == MouseButton::Primary)
+                            {
+                                desktop.drag();
+                            }
+                        }
+                    },
+                    onsplit_press_start: move |event: MouseEvent| {
                         if event.modifiers().shift()
-                            && event
+                            || !event
                                 .trigger_button()
                                 .is_some_and(|button| button == MouseButton::Primary)
                         {
-                            desktop.drag();
+                            return;
                         }
-                    }
-                },
-                onprev: play_prev,
-                onplaypause: {
-                    let player = player.clone();
-                    move |_| {
-                        if audio_ready_for_toggle {
-                            music_mode.set(MusicMode::Normal);
-                            player.send(AudioCommand::PlayPause);
-                        } else if let Some(track) = playpause_track.clone() {
-                            music_mode.set(MusicMode::Normal);
-                            spawn_play(
-                                track,
-                                player.clone(),
-                                current_index,
-                                current_track,
-                                status,
-                                lyrics,
-                            );
-                        } else {
-                            status.set("Queue is empty.".to_string());
+                        let ticket = split_press_ticket().wrapping_add(1);
+                        split_press_ticket.set(ticket);
+                        split_motion_ticket.set(split_motion_ticket().wrapping_add(1));
+                        separating_islands.set(false);
+                        merging_islands.set(false);
+                        splitting_islands.set(true);
+                        window_expanded.set(true);
+                        pointer_inside.set(true);
+                        spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(SPLIT_HOLD_MS)).await;
+                            if split_press_ticket() == ticket && splitting_islands() {
+                                let motion_ticket = split_motion_ticket().wrapping_add(1);
+                                split_motion_ticket.set(motion_ticket);
+                                splitting_islands.set(false);
+                                if separated_islands() {
+                                    merging_islands.set(true);
+                                    separating_islands.set(false);
+                                    spawn(async move {
+                                        tokio::time::sleep(std::time::Duration::from_millis(
+                                            SPLIT_SETTLE_MS,
+                                        ))
+                                        .await;
+                                        if split_motion_ticket() == motion_ticket {
+                                            separated_islands.set(false);
+                                            merging_islands.set(false);
+                                        }
+                                    });
+                                } else {
+                                    separated_islands.set(true);
+                                    separating_islands.set(true);
+                                    merging_islands.set(false);
+                                    spawn(async move {
+                                        tokio::time::sleep(std::time::Duration::from_millis(
+                                            SPLIT_SETTLE_MS,
+                                        ))
+                                        .await;
+                                        if split_motion_ticket() == motion_ticket {
+                                            separating_islands.set(false);
+                                        }
+                                    });
+                                }
+                            }
+                        });
+                    },
+                    onsplit_press_end: move |_| {
+                        split_press_ticket.set(split_press_ticket().wrapping_add(1));
+                        splitting_islands.set(false);
+                    },
+                    onprev: play_prev,
+                    onplaypause: {
+                        let player = player.clone();
+                        move |_| {
+                            if audio_ready_for_toggle {
+                                music_mode.set(MusicMode::Normal);
+                                player.send(AudioCommand::PlayPause);
+                            } else if let Some(track) = playpause_track.clone() {
+                                music_mode.set(MusicMode::Normal);
+                                spawn_play(
+                                    track,
+                                    player.clone(),
+                                    current_index,
+                                    current_track,
+                                    status,
+                                    lyrics,
+                                );
+                            } else {
+                                status.set("Queue is empty.".to_string());
+                            }
                         }
-                    }
-                },
-                onnext: play_next,
-                onstop: {
-                    let player = player.clone();
-                    move |_| {
-                        current_index.set(None);
-                        current_track.set(None);
-                        music_mode.set(MusicMode::Silent);
-                        lyrics.set(Vec::new());
-                        player.send(AudioCommand::Stop);
-                        status.set("Stopped.".to_string());
-                    }
-                },
-                onseek: {
-                    let player = player.clone();
-                    move |position| player.send(AudioCommand::Seek(position))
-                },
+                    },
+                    onnext: play_next,
+                    onstop: {
+                        let player = player.clone();
+                        move |_| {
+                            current_index.set(None);
+                            current_track.set(None);
+                            music_mode.set(MusicMode::Silent);
+                            lyrics.set(Vec::new());
+                            player.send(AudioCommand::Stop);
+                            status.set("Stopped.".to_string());
+                        }
+                    },
+                    onseek: {
+                        let player = player.clone();
+                        move |position| player.send(AudioCommand::Seek(position))
+                    },
+                }
+                div { class: "separation-neck" }
+                AddonIsland {
+                    companion_style,
+                    companion_name,
+                    cpu: cpu_usage.read().clone(),
+                    memory: memory_usage.read().clone(),
+                    download: download.read().clone(),
+                    upload: upload.read().clone(),
+                    spectrum: *spectrum.read(),
+                    spectrum_style,
+                    separated: is_separated,
+                    splitting: is_splitting,
+                    is_playing: state.is_playing,
+                    onhover: move |_| {
+                        pointer_inside.set(true);
+                        transition_ticket.set(transition_ticket().wrapping_add(1));
+                        window_expanded.set(true);
+                        expanded.set(true);
+                    },
+                }
             }
 
             div { class: "panel-shell",
@@ -964,6 +1102,7 @@ fn App() -> Element {
                         opacity: opacity(),
                         volume: volume(),
                         island_size: island_size(),
+                        companion: companion_value,
                         music_mode: music_mode(),
                         update_status: update_status.read().clone(),
                         update_progress: *update_progress.read(),
@@ -1014,11 +1153,16 @@ fn App() -> Element {
                                 set_island_window(
                                     &desktop,
                                     expanded(),
+                                    separated_islands()
+                                        || splitting_islands()
+                                        || separating_islands()
+                                        || merging_islands(),
                                     value as f64 / 100.0,
                                     collapsed_width,
                                 );
                             }
                         },
+                        oncompanion: move |value| companion.set(value),
                         onnormal: move |_| {
                             if has_active_music {
                                 music_mode.set(MusicMode::Normal);
@@ -1265,6 +1409,47 @@ fn rate_progress(rate: u64, peak: f64) -> f64 {
         return 0.0;
     }
     (rate as f64 / peak * 100.0).clamp(0.0, 100.0)
+}
+
+fn coco_sprite_data_uri() -> String {
+    format!(
+        "data:image/svg+xml;base64,{}",
+        base64_encode(include_bytes!("../../assets/coco.svg"))
+    )
+}
+
+fn dodo_sprite_data_uri() -> String {
+    format!(
+        "data:image/svg+xml;base64,{}",
+        base64_encode(include_bytes!("../../assets/dodo.svg"))
+    )
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
+
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        let value = ((b0 as u32) << 16) | ((b1 as u32) << 8) | b2 as u32;
+
+        encoded.push(TABLE[((value >> 18) & 0x3f) as usize] as char);
+        encoded.push(TABLE[((value >> 12) & 0x3f) as usize] as char);
+        if chunk.len() > 1 {
+            encoded.push(TABLE[((value >> 6) & 0x3f) as usize] as char);
+        } else {
+            encoded.push('=');
+        }
+        if chunk.len() > 2 {
+            encoded.push(TABLE[(value & 0x3f) as usize] as char);
+        } else {
+            encoded.push('=');
+        }
+    }
+
+    encoded
 }
 
 const APP_CSS: &str = include_str!("app.css");

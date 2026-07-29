@@ -15,6 +15,7 @@ pub struct AppSettings {
     pub random_count: u32,
     pub active_tab: String,
     pub local_music_folder: String,
+    pub companion: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -34,6 +35,7 @@ impl Default for AppSettings {
             random_count: 50,
             active_tab: "search".to_string(),
             local_music_folder: String::new(),
+            companion: "coco".to_string(),
         }
     }
 }
@@ -59,6 +61,9 @@ impl AppSettings {
             "search" | "queue" | "stats" | "settings"
         ) {
             self.active_tab = "search".to_string();
+        }
+        if !matches!(self.companion.as_str(), "coco" | "dodo") {
+            self.companion = "coco".to_string();
         }
         self
     }

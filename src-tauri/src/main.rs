@@ -500,22 +500,32 @@ fn App() -> Element {
         "plain-title"
     };
     let lyric_units = text_visual_units(&primary_text);
-    let lyric_scroll_class = if has_music && lyric_units > 36.0 {
+    let lyric_scroll_class = if has_music && lyric_units > 30.0 {
         "lyric-wrap lyric-dense"
-    } else if has_music && lyric_units > 18.0 {
+    } else if has_music && lyric_units > 14.0 {
         "lyric-wrap"
     } else {
         ""
     };
     let lyric_scroll_style = if has_music {
-        let target_units = if lyric_units > 36.0 {
-            42.0
-        } else if lyric_units > 18.0 {
-            28.0
+        let target_units = if lyric_units > 48.0 {
+            34.0
+        } else if lyric_units > 30.0 {
+            30.0
+        } else if lyric_units > 14.0 {
+            22.0
         } else {
             14.2
         };
-        let fit_floor = if lyric_units > 36.0 { 0.46 } else { 0.56 };
+        let fit_floor = if lyric_units > 48.0 {
+            0.38
+        } else if lyric_units > 30.0 {
+            0.44
+        } else if lyric_units > 14.0 {
+            0.58
+        } else {
+            0.76
+        };
         let fit_ratio = if lyric_units > f64::EPSILON {
             (target_units / lyric_units).clamp(fit_floor, 1.0)
         } else {
@@ -1187,14 +1197,18 @@ fn text_visual_units(text: &str) -> f64 {
         .map(|ch| {
             if ch.is_ascii_whitespace() {
                 0.28
+            } else if ch.is_ascii_uppercase() {
+                0.68
             } else if ch.is_ascii_alphanumeric() {
-                0.56
+                0.58
             } else if ch.is_ascii_punctuation() {
                 0.34
             } else if ch.is_whitespace() {
                 0.36
+            } else if ch.is_ascii() {
+                0.5
             } else {
-                1.0
+                0.92
             }
         })
         .sum()

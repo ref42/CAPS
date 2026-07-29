@@ -282,7 +282,7 @@ button {
   justify-content: center;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
   text-align: center;
   pointer-events: none;
   transform-origin: center;
@@ -310,14 +310,17 @@ button {
   flex-wrap: wrap;
   align-content: center;
   row-gap: 1px;
-  max-height: 2.42em;
-  line-height: 1.16;
+  max-height: 100%;
+  line-height: 1.08;
   white-space: normal;
 }
 
 .music-copy .lyric-dense .lyric-particles {
-  max-height: 3.64em;
-  line-height: 1.14;
+  line-height: 1.02;
+}
+
+.lyric-viewport:has(.lyric-wrap) {
+  mask-image: none;
 }
 
 .visual-expanded .music-copy strong {

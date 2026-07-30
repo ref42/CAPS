@@ -26,7 +26,7 @@ use actions::{
 use audio::{AudioCommand, AudioPlayer};
 use components::{
     AddonIsland, Island, PetPanel, QUEUE_RENDER_LIMIT, QueuePanel, SearchPanel, SearchSource,
-    SettingsPanel, Tabs,
+    SettingsPanel, Tabs, UiLanguage,
 };
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
 use dioxus::html::input_data::MouseButton;
@@ -143,6 +143,10 @@ fn App() -> Element {
         let saved_settings = saved_settings.clone();
         move || saved_settings.companion.clone()
     });
+    let mut language_code = use_signal({
+        let saved_settings = saved_settings.clone();
+        move || saved_settings.language.clone()
+    });
     let mut random_count = use_signal({
         let saved_settings = saved_settings.clone();
         move || saved_settings.random_count
@@ -162,8 +166,8 @@ fn App() -> Element {
     });
     let mut current_index = use_signal(move || saved_state.current_index);
     let mut current_track = use_signal(|| None::<Track>);
-    let mut status =
-        use_signal(|| "Search music, add songs, then play from the island.".to_string());
+    let initial_language = UiLanguage::from_code(&saved_settings.language);
+    let mut status = use_signal(move || default_status(initial_language).to_string());
     let mut music_mode = use_signal(|| MusicMode::Silent);
     let mut audio_state = use_signal(|| player.get_state());
     let mut spectrum = use_signal(audio_spectrum::get_audio_spectrum);
@@ -212,6 +216,7 @@ fn App() -> Element {
                 active_tab: active_tab.read().clone(),
                 local_music_folder: local_music_folder.read().clone(),
                 companion: companion.read().clone(),
+                language: language_code.read().clone(),
             },
             &queue.read(),
             *current_index.read(),
@@ -394,7 +399,8 @@ fn App() -> Element {
     let play_next = move |_| {
         let len = queue.read().len();
         if len == 0 {
-            status.set("Queue is empty.".to_string());
+            let language = UiLanguage::from_code(&language_code.read());
+            status.set(localized_status(language, "queue_empty").to_string());
             return;
         }
         let next = (*current_index.read()).map(|i| (i + 1) % len).unwrap_or(0);
@@ -416,7 +422,8 @@ fn App() -> Element {
     let play_prev = move |_| {
         let len = queue.read().len();
         if len == 0 {
-            status.set("Queue is empty.".to_string());
+            let language = UiLanguage::from_code(&language_code.read());
+            status.set(localized_status(language, "queue_empty").to_string());
             return;
         }
         let prev = (*current_index.read())
@@ -596,6 +603,7 @@ fn App() -> Element {
         )
     };
     let companion_value = companion.read().clone();
+    let language = UiLanguage::from_code(&language_code.read());
     let companion_is_dodo = companion_value == "dodo";
     let companion_sprite_src = if companion_is_dodo {
         dodo_sprite_src.clone()
@@ -903,7 +911,7 @@ fn App() -> Element {
                                     lyrics,
                                 );
                             } else {
-                                status.set("Queue is empty.".to_string());
+                                status.set(localized_status(language, "queue_empty").to_string());
                             }
                         }
                     },
@@ -916,7 +924,7 @@ fn App() -> Element {
                             music_mode.set(MusicMode::Silent);
                             lyrics.set(Vec::new());
                             player.send(AudioCommand::Stop);
-                            status.set("Stopped.".to_string());
+                            status.set(localized_status(language, "stopped").to_string());
                         }
                     },
                     onseek: {
@@ -942,6 +950,7 @@ fn App() -> Element {
             div { class: "panel-shell",
             section { class: "panel",
                 Tabs {
+                    language,
                     tab: tab.clone(),
                     onsearch: move |_| active_tab.set("search".to_string()),
                     onqueue: move |_| active_tab.set("queue".to_string()),
@@ -951,6 +960,7 @@ fn App() -> Element {
 
                 if tab == "search" {
                     SearchPanel {
+                        language,
                         source: search_source(),
                         query: query.read().clone(),
                         video_url: match search_source() {
@@ -1002,7 +1012,10 @@ fn App() -> Element {
                                     Ok(Some(folder)) => local_music_folder.set(folder),
                                     Ok(None) => {}
                                     Err(err) => {
-                                        status.set(format!("Folder picker failed: {err}"));
+                                        status.set(format!(
+                                            "{} {err}",
+                                            localized_status(language, "folder_picker_failed")
+                                        ));
                                     }
                                 }
                             });
@@ -1020,14 +1033,21 @@ fn App() -> Element {
                                 (added, next.len())
                             };
                             if added == 0 {
-                                status.set("Track is already in the queue.".to_string());
+                                status.set(
+                                    localized_status(language, "already_in_queue").to_string(),
+                                );
                             } else {
-                                status.set(format!("Queued {total} tracks."));
+                                status.set(format!(
+                                    "{} {total} {}",
+                                    localized_status(language, "queued_prefix"),
+                                    localized_status(language, "tracks")
+                                ));
                             }
                         },
                     }
                 } else if tab == "queue" {
                     QueuePanel {
+                        language,
                         queue_len: queue_len_for_panel,
                         visible_tracks: visible_queue_for_panel,
                         current_index: *current_index.read(),
@@ -1040,7 +1060,7 @@ fn App() -> Element {
                                 music_mode.set(MusicMode::Silent);
                                 lyrics.set(Vec::new());
                                 player.send(AudioCommand::Stop);
-                                status.set("Queue cleared.".to_string());
+                                status.set(localized_status(language, "queue_cleared").to_string());
                             }
                         },
                         onplay: {
@@ -1075,7 +1095,10 @@ fn App() -> Element {
                                             music_mode.set(MusicMode::Silent);
                                             lyrics.set(Vec::new());
                                             player.send(AudioCommand::Stop);
-                                            status.set("Removed current track.".to_string());
+                                            status.set(
+                                                localized_status(language, "removed_current")
+                                                    .to_string(),
+                                            );
                                         }
                                         Some(i) if i > index => current_index.set(Some(i - 1)),
                                         _ => {}
@@ -1093,6 +1116,7 @@ fn App() -> Element {
                     }
                 } else {
                     SettingsPanel {
+                        language,
                         opacity: opacity(),
                         volume: volume(),
                         island_size: island_size(),
@@ -1155,12 +1179,15 @@ fn App() -> Element {
                                 );
                             }
                         },
+                        onlanguage: move |value: String| {
+                            language_code.set(UiLanguage::from_code(&value).code().to_string());
+                        },
                         onnormal: move |_| {
                             if has_active_music {
                                 music_mode.set(MusicMode::Normal);
-                                status.set("Normal mode.".to_string());
+                                status.set(localized_status(language, "normal").to_string());
                             } else {
-                                status.set("No active music.".to_string());
+                                status.set(localized_status(language, "no_active").to_string());
                             }
                         },
                         onsilent: {
@@ -1171,33 +1198,15 @@ fn App() -> Element {
                                 music_mode.set(MusicMode::Silent);
                                 lyrics.set(Vec::new());
                                 player.send(AudioCommand::Stop);
-                                status.set("Silent.".to_string());
+                                status.set(localized_status(language, "silent").to_string());
                             }
                         },
                         onquiet: move |_| {
                             if has_active_music {
                                 music_mode.set(MusicMode::Quiet);
-                                status.set("Quiet mode: music keeps playing.".to_string());
+                                status.set(localized_status(language, "quiet").to_string());
                             } else {
-                                status.set("No active music.".to_string());
-                            }
-                        },
-                        onclean_cache: {
-                            let player = player.clone();
-                            move |_| {
-                                current_index.set(None);
-                                current_track.set(None);
-                                music_mode.set(MusicMode::Silent);
-                                lyrics.set(Vec::new());
-                                player.send(AudioCommand::Stop);
-                                status.set("Cleaning downloaded audio cache...".to_string());
-                                spawn(async move {
-                                    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-                                    match storage::clean_song_cache() {
-                                        Ok(()) => status.set("Downloaded audio cache cleaned.".to_string()),
-                                        Err(err) => status.set(err),
-                                    }
-                                });
+                                status.set(localized_status(language, "no_active").to_string());
                             }
                         },
                         oncheck_update: move |_| {
@@ -1207,7 +1216,7 @@ fn App() -> Element {
                             pending_update.set(None);
                             update_progress.set(None);
                             update_busy.set(true);
-                            update_status.set("Checking updates...".to_string());
+                            update_status.set(localized_status(language, "checking_updates").to_string());
                             spawn(async move {
                                 match updater::check_latest_release().await {
                                     Ok(updater::UpdateStatus::Current {
@@ -1216,9 +1225,12 @@ fn App() -> Element {
                                         url: _,
                                     }) => {
                                         let message = if current == latest {
-                                            "Already latest.".to_string()
+                                            localized_status(language, "already_latest").to_string()
                                         } else {
-                                            format!("Already latest: CAPS {latest}.")
+                                            format!(
+                                                "{} CAPS {latest}.",
+                                                localized_status(language, "already_latest_prefix")
+                                            )
                                         };
                                         update_status.set(message);
                                     }
@@ -1228,8 +1240,11 @@ fn App() -> Element {
                                         } else {
                                             String::new()
                                         };
-                                        let message =
-                                            format!("Ready to update: CAPS {}{size}.", update.latest);
+                                        let message = format!(
+                                            "{} CAPS {}{size}.",
+                                            localized_status(language, "ready_update"),
+                                            update.latest
+                                        );
                                         pending_update.set(Some(update));
                                         update_status.set(message);
                                     }
@@ -1247,12 +1262,18 @@ fn App() -> Element {
                                     return;
                                 }
                                 let Some(update) = pending_update.read().clone() else {
-                                    update_status.set("Check for an update first.".to_string());
+                                    update_status.set(
+                                        localized_status(language, "check_update_first").to_string(),
+                                    );
                                     return;
                                 };
                                 update_busy.set(true);
                                 update_progress.set(Some(0.0));
-                                update_status.set(format!("Downloading CAPS {}...", update.latest));
+                                update_status.set(format!(
+                                    "{} CAPS {}...",
+                                    localized_status(language, "downloading"),
+                                    update.latest
+                                ));
                                 let desktop = desktop_for_install.clone();
                                 spawn(async move {
                                     let latest = update.latest.clone();
@@ -1264,13 +1285,15 @@ fn App() -> Element {
                                                     .clamp(0.0, 100.0);
                                                 update_progress.set(Some(progress));
                                                 update_status.set(format!(
-                                                    "Downloading CAPS {latest}: {} / {} ({progress:.0}%).",
+                                                    "{} CAPS {latest}: {} / {} ({progress:.0}%).",
+                                                    localized_status(language, "downloading"),
                                                     format_bytes(downloaded),
                                                     format_bytes(total)
                                                 ));
                                             } else {
                                                 update_status.set(format!(
-                                                    "Downloading CAPS {latest}: {}.",
+                                                    "{} CAPS {latest}: {}.",
+                                                    localized_status(language, "downloading"),
                                                     format_bytes(downloaded)
                                                 ));
                                             }
@@ -1281,7 +1304,8 @@ fn App() -> Element {
                                         Ok(()) => {
                                             update_progress.set(Some(100.0));
                                             update_status.set(
-                                                "Installing update. CAPS will restart.".to_string(),
+                                                localized_status(language, "installing_update")
+                                                    .to_string(),
                                             );
                                             tokio::time::sleep(std::time::Duration::from_millis(180)).await;
                                             desktop.close();
@@ -1300,6 +1324,55 @@ fn App() -> Element {
             }
             }
         }
+    }
+}
+
+fn default_status(language: UiLanguage) -> &'static str {
+    localized_status(language, "default")
+}
+
+fn localized_status(language: UiLanguage, key: &str) -> &'static str {
+    match (language, key) {
+        (UiLanguage::Zh, "default") => "搜索音乐，添加歌曲，然后从岛屿播放。",
+        (UiLanguage::Zh, "queue_empty") => "队列为空。",
+        (UiLanguage::Zh, "stopped") => "已停止。",
+        (UiLanguage::Zh, "already_in_queue") => "这首歌已经在队列中。",
+        (UiLanguage::Zh, "queued_prefix") => "已加入",
+        (UiLanguage::Zh, "tracks") => "首歌曲。",
+        (UiLanguage::Zh, "queue_cleared") => "队列已清空。",
+        (UiLanguage::Zh, "removed_current") => "已移除当前歌曲。",
+        (UiLanguage::Zh, "folder_picker_failed") => "文件夹选择失败：",
+        (UiLanguage::Zh, "normal") => "普通模式。",
+        (UiLanguage::Zh, "silent") => "静音。",
+        (UiLanguage::Zh, "quiet") => "安静模式：音乐会继续播放。",
+        (UiLanguage::Zh, "no_active") => "没有正在播放的音乐。",
+        (UiLanguage::Zh, "checking_updates") => "正在检查更新...",
+        (UiLanguage::Zh, "already_latest") => "已经是最新版本。",
+        (UiLanguage::Zh, "already_latest_prefix") => "已经是最新版本：",
+        (UiLanguage::Zh, "ready_update") => "可更新：",
+        (UiLanguage::Zh, "check_update_first") => "请先检查更新。",
+        (UiLanguage::Zh, "downloading") => "正在下载",
+        (UiLanguage::Zh, "installing_update") => "正在安装更新。CAPS 将重启。",
+        (_, "queue_empty") => "Queue is empty.",
+        (_, "stopped") => "Stopped.",
+        (_, "already_in_queue") => "Track is already in the queue.",
+        (_, "queued_prefix") => "Queued",
+        (_, "tracks") => "tracks.",
+        (_, "queue_cleared") => "Queue cleared.",
+        (_, "removed_current") => "Removed current track.",
+        (_, "folder_picker_failed") => "Folder picker failed:",
+        (_, "normal") => "Normal mode.",
+        (_, "silent") => "Silent.",
+        (_, "quiet") => "Quiet mode: music keeps playing.",
+        (_, "no_active") => "No active music.",
+        (_, "checking_updates") => "Checking updates...",
+        (_, "already_latest") => "Already latest.",
+        (_, "already_latest_prefix") => "Already latest:",
+        (_, "ready_update") => "Ready to update:",
+        (_, "check_update_first") => "Check for an update first.",
+        (_, "downloading") => "Downloading",
+        (_, "installing_update") => "Installing update. CAPS will restart.",
+        _ => "Search music, add songs, then play from the island.",
     }
 }
 

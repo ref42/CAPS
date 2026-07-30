@@ -80,16 +80,18 @@ button {
 .island-cluster::before {
   content: "";
   position: absolute;
-  left: calc(var(--main-island-width) + 4px);
-  top: 17px;
-  width: calc(var(--addon-gap) - 8px);
-  height: 22px;
+  left: calc(var(--main-island-width) + 2px);
+  top: 19px;
+  width: calc(var(--addon-gap) + 10px);
+  height: 18px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, calc(var(--softer-alpha) * 0.58));
+  background: rgba(255, 255, 255, calc(var(--softer-alpha) * 0.42));
+  border: 0;
+  box-shadow: none;
   opacity: 0;
-  transform: translateX(-4px) scaleX(0.18) scaleY(0.72);
+  transform: translateX(-6px) scaleX(0.16) scaleY(0.58);
   transform-origin: left center;
-  filter: blur(2.8px);
+  filter: blur(1.4px);
   transition:
     opacity 150ms ease,
     transform var(--split-settle-response) var(--split-ease),
@@ -106,7 +108,8 @@ button {
 }
 
 .visual-expanded .island-cluster::before {
-  top: 32px;
+  top: 34px;
+  height: 18px;
 }
 
 .island-cluster > .island {
@@ -162,22 +165,22 @@ button {
 
 .separated-islands .island:not(.idle-island),
 .splitting-islands .island:not(.idle-island) {
-  grid-template-columns: 10px minmax(0, 1fr) auto 0;
+  grid-template-columns: 10px minmax(0, 1fr) auto 52px;
 }
 
 .visual-expanded.separated-islands .island:not(.idle-island),
 .visual-expanded.splitting-islands .island:not(.idle-island) {
-  grid-template-columns: 10px minmax(0, 1fr) 116px 0;
+  grid-template-columns: 10px minmax(0, 1fr) 116px 52px;
 }
 
 .idle-island {
-  grid-template-columns: 10px 68px 70px 86px 72px 52px;
+  grid-template-columns: 10px 64px 66px 86px 78px 44px;
   justify-content: space-between;
   gap: 0;
 }
 
 .visual-expanded .idle-island {
-  grid-template-columns: 10px 68px 70px 86px 72px 52px;
+  grid-template-columns: 10px 64px 66px 86px 78px 44px;
   justify-content: space-between;
   gap: 0;
 }
@@ -186,7 +189,7 @@ button {
 .splitting-islands .idle-island,
 .visual-expanded.separated-islands .idle-island,
 .visual-expanded.splitting-islands .idle-island {
-  grid-template-columns: 10px repeat(4, minmax(0, 1fr));
+  grid-template-columns: 10px repeat(4, minmax(0, 1fr)) 52px;
   justify-content: stretch;
   gap: 8px;
 }
@@ -229,53 +232,53 @@ button {
 
 .splitting-islands .island-cluster::before,
 .separated-islands.splitting-islands .island-cluster::before {
-  opacity: 0.22;
-  transform: translateX(0) scaleX(1) scaleY(0.78);
-  filter: blur(1px);
+  opacity: 0.34;
+  transform: translateX(-2px) scaleX(1) scaleY(0.72);
+  filter: blur(0.9px);
 }
 
 .separating-islands .island-cluster::before {
-  opacity: 0.1;
-  transform: translateX(4px) scaleX(0.64) scaleY(0.62);
-  filter: blur(1.8px);
+  opacity: 0;
+  transform: translateX(6px) scaleX(0.18) scaleY(0.52);
+  filter: blur(1.6px);
 }
 
 .merging-islands .island-cluster::before {
-  opacity: 0.2;
-  transform: translateX(-2px) scaleX(0.82) scaleY(0.72);
+  opacity: 0.3;
+  transform: translateX(-4px) scaleX(0.72) scaleY(0.64);
   filter: blur(1px);
 }
 
 .separated-islands .island-cluster::before {
   opacity: 0;
-  transform: translateX(0) scaleX(1) scaleY(1);
-  filter: blur(2.5px);
-}
-
-.separated-islands.separating-islands .island-cluster::before {
-  opacity: 0.1;
-  transform: translateX(4px) scaleX(0.64) scaleY(0.62);
+  transform: translateX(8px) scaleX(0.16) scaleY(0.52);
   filter: blur(1.8px);
 }
 
+.separated-islands.separating-islands .island-cluster::before {
+  opacity: 0;
+  transform: translateX(6px) scaleX(0.18) scaleY(0.52);
+  filter: blur(1.6px);
+}
+
 .separated-islands.merging-islands .island-cluster::before {
-  opacity: 0.2;
-  transform: translateX(-2px) scaleX(0.82) scaleY(0.72);
+  opacity: 0.3;
+  transform: translateX(-4px) scaleX(0.72) scaleY(0.64);
   filter: blur(1px);
 }
 
 .separation-neck {
   position: absolute;
-  left: calc(var(--main-island-width) + 8px);
-  top: 22px;
-  width: calc(var(--addon-gap) + 12px);
-  height: 12px;
+  left: calc(var(--main-island-width) + 1px);
+  top: 20px;
+  width: calc(var(--addon-gap) + 8px);
+  height: 16px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, calc(var(--softer-alpha) * 0.7));
+  background: rgba(255, 255, 255, calc(var(--softer-alpha) * 0.46));
+  border: 0;
   box-shadow: none;
-  backdrop-filter: none;
   opacity: 0;
-  transform: translateX(-4px) scaleX(0.12) scaleY(0.72);
+  transform: translateX(-5px) scaleX(0.1) scaleY(0.56);
   transform-origin: left center;
   filter: blur(0.2px);
   transition: opacity 150ms ease, transform var(--split-hold-response) var(--split-ease), filter var(--split-response) ease, left var(--motion-ui) var(--motion-ease), top var(--motion-ui) var(--motion-ease), height var(--motion-ui) var(--motion-ease);
@@ -284,49 +287,50 @@ button {
 }
 
 .visual-expanded .separation-neck {
-  top: 37px;
+  top: 35px;
+  height: 16px;
 }
 
 .splitting-islands .separation-neck {
-  opacity: 0.18;
-  transform: translateX(0) scaleX(1) scaleY(0.72);
+  opacity: 0.36;
+  transform: translateX(0) scaleX(1) scaleY(0.62);
   filter: blur(0.8px);
 }
 
 .separating-islands .separation-neck {
-  opacity: 0.08;
-  transform: translateX(4px) scaleX(0.54) scaleY(0.62);
-  filter: blur(1.4px);
+  opacity: 0;
+  transform: translateX(6px) scaleX(0.14) scaleY(0.46);
+  filter: blur(1.5px);
 }
 
 .merging-islands .separation-neck {
-  opacity: 0.18;
-  transform: translateX(-2px) scaleX(0.82) scaleY(0.7);
-  filter: blur(1px);
+  opacity: 0.32;
+  transform: translateX(-4px) scaleX(0.7) scaleY(0.58);
+  filter: blur(0.9px);
 }
 
 .separated-islands .separation-neck {
   opacity: 0;
-  transform: translateX(4px) scaleX(0.16) scaleY(0.72);
-  filter: blur(1.4px);
+  transform: translateX(8px) scaleX(0.12) scaleY(0.5);
+  filter: blur(1.5px);
 }
 
 .separated-islands.splitting-islands .separation-neck {
-  opacity: 0.16;
-  transform: translateX(0) scaleX(0.94) scaleY(0.72);
+  opacity: 0.34;
+  transform: translateX(0) scaleX(0.94) scaleY(0.62);
   filter: blur(0.8px);
 }
 
 .separated-islands.separating-islands .separation-neck {
-  opacity: 0.08;
-  transform: translateX(4px) scaleX(0.54) scaleY(0.62);
-  filter: blur(1.4px);
+  opacity: 0;
+  transform: translateX(6px) scaleX(0.14) scaleY(0.46);
+  filter: blur(1.5px);
 }
 
 .separated-islands.merging-islands .separation-neck {
-  opacity: 0.18;
-  transform: translateX(-2px) scaleX(0.82) scaleY(0.7);
-  filter: blur(1px);
+  opacity: 0.32;
+  transform: translateX(-4px) scaleX(0.7) scaleY(0.58);
+  filter: blur(0.9px);
 }
 
 .addon-island {
@@ -334,13 +338,12 @@ button {
   left: calc(var(--main-island-width) + var(--addon-gap));
   top: 0;
   width: var(--addon-width);
-  height: 56px;
+  height: var(--addon-width);
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
+  place-items: center;
   align-items: center;
-  gap: 10px;
-  padding: 6px 12px 6px 8px;
-  border-radius: 999px;
+  padding: 0;
+  border-radius: 50%;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.038), rgba(255, 255, 255, 0.008) 42%, rgba(0, 0, 0, 0.052)),
     var(--glass-tint);
@@ -353,9 +356,9 @@ button {
   backdrop-filter: var(--glass-filter);
   clip-path: inset(0 round 999px);
   opacity: 0;
-  transform: translateX(calc(-1 * (var(--addon-gap) + 62px))) scaleX(0.38) scaleY(0.84);
-  transform-origin: left center;
-  transition: left var(--motion-ui) var(--motion-ease), top var(--motion-ui) var(--motion-ease), height var(--motion-ui) var(--motion-ease), padding var(--motion-ui) var(--motion-ease), grid-template-columns var(--motion-ui) var(--motion-ease), opacity var(--split-settle-response) ease, transform var(--split-settle-response) var(--split-ease), filter var(--split-settle-response) ease;
+  transform: translateX(calc(-1 * (var(--addon-gap) + var(--addon-width) * 0.62))) scale(0.42);
+  transform-origin: center;
+  transition: left var(--motion-ui) var(--motion-ease), width var(--motion-ui) var(--motion-ease), height var(--motion-ui) var(--motion-ease), opacity var(--split-settle-response) ease, transform var(--split-settle-response) var(--split-ease), filter var(--split-settle-response) ease, border-radius var(--motion-ui) var(--motion-ease);
   pointer-events: none;
   overflow: hidden;
   z-index: 2;
@@ -365,34 +368,26 @@ button {
 
 .visual-expanded .addon-island {
   top: 0;
-  height: 86px;
-  grid-template-columns: 52px minmax(0, 1fr);
-  padding: 17px 14px 17px 10px;
+  width: var(--addon-expanded-width);
+  height: var(--addon-expanded-width);
+  padding: 0;
 }
 
 .visual-expanded .addon-pet {
-  width: 46px;
-  height: 46px;
-}
-
-.visual-expanded .addon-spectrum {
-  height: 42px;
-}
-
-.visual-expanded .addon-spectrum i {
-  height: 30px;
+  width: 62px;
+  height: 62px;
 }
 
 .splitting-islands .addon-island,
 .addon-island.splitting {
   opacity: 0.78;
-  transform: translateX(-10px) scaleX(0.9) scaleY(0.98);
+  transform: translateX(-10px) scale(0.82);
   filter: blur(0.2px);
 }
 
 .separating-islands .addon-island {
   opacity: 1;
-  transform: translateX(5px) scaleX(1.025) scaleY(0.99);
+  transform: translateX(5px) scale(1.015);
   filter: blur(0);
 }
 
@@ -406,27 +401,27 @@ button {
 
 .separated-islands.splitting-islands .addon-island {
   opacity: 0.78;
-  transform: translateX(-10px) scaleX(0.9) scaleY(0.98);
+  transform: translateX(-10px) scale(0.82);
   filter: blur(0.2px);
 }
 
 .merging-islands .addon-island {
   opacity: 0;
-  transform: translateX(calc(-1 * (var(--addon-gap) + 18px))) scaleX(0.44) scaleY(0.88);
+  transform: translateX(calc(-1 * (var(--addon-gap) + var(--addon-width) * 0.44))) scale(0.48);
   filter: blur(1.4px);
   pointer-events: none;
 }
 
 .separated-islands.separating-islands .addon-island {
   opacity: 1;
-  transform: translateX(5px) scaleX(1.025) scaleY(0.99);
+  transform: translateX(5px) scale(1.015);
   filter: blur(0);
 }
 
 .addon-pet {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   overflow: hidden;
   filter: none;
   transform: translateZ(0);
@@ -452,35 +447,6 @@ button {
   to {
     transform: translateX(-100%);
   }
-}
-
-.addon-spectrum {
-  width: 58px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  opacity: 0.72;
-  transform: translateZ(0);
-  transition: height var(--motion-ui) var(--motion-ease), opacity var(--motion-bg) ease, transform var(--split-response) var(--split-ease);
-  z-index: 1;
-}
-
-.addon-island.playing .addon-spectrum {
-  opacity: 1;
-  transform: scaleX(1.04);
-}
-
-.addon-spectrum i {
-  width: 5px;
-  height: 25px;
-  min-height: 6px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, var(--spectrum-from, #ffc4e0), var(--spectrum-to, #ff69b4));
-  transform-origin: center;
-  transition: height var(--motion-ui) var(--motion-ease), transform var(--motion-spectrum) var(--motion-spring);
-  will-change: transform;
 }
 
 .panel {
@@ -569,10 +535,12 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   flex: 0 0 auto;
   min-width: 0;
   justify-self: center;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .separated-islands .idle-island .speed-stat,
@@ -597,10 +565,10 @@ button {
 }
 
 .speed-arrow {
-  width: 11px;
+  width: 10px;
   display: inline-block;
   color: rgba(248, 255, 252, 0.76);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 900;
   line-height: 0.9;
   text-align: center;
@@ -611,7 +579,7 @@ button {
 }
 
 .upload-stat .speed-arrow {
-  color: #7df2ca;
+  color: rgba(248, 255, 252, 0.82);
 }
 
 .music-copy {
@@ -746,7 +714,7 @@ button {
 }
 
 .idle-speeds strong {
-  font-size: 11.5px;
+  font-size: 11px;
   flex: 1 1 auto;
   text-overflow: clip;
 }
@@ -881,7 +849,7 @@ button {
   grid-row: 1;
   justify-self: end;
   align-self: center;
-  width: 52px;
+  width: 44px;
   height: 34px;
   display: flex;
   align-items: center;
@@ -891,24 +859,13 @@ button {
   transition: opacity var(--motion-bg) ease, transform var(--motion-panel) var(--motion-ease);
 }
 
-.splitting-islands .island > .spectrum {
-  opacity: 0;
-  transform: translateX(18px) scaleX(0.52);
-}
-
-.separated-islands .island > .spectrum {
-  opacity: 0;
-  transform: translateX(22px) scale(0.68);
-}
-
-.separated-islands .idle-island > .spectrum,
-.splitting-islands .idle-island > .spectrum {
-  display: none;
-}
-
 .idle-island .spectrum {
   grid-column: 6;
   justify-self: center;
+}
+
+.idle-island .spectrum i {
+  width: 4px;
 }
 
 .spectrum i {
@@ -916,7 +873,7 @@ button {
   height: 24px;
   min-height: 6px;
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--spectrum-from, #ffc4e0), var(--spectrum-to, #ff69b4));
+  background: linear-gradient(180deg, var(--spectrum-from, #7df2ca), var(--spectrum-to, #34c759));
   transform-origin: center;
   transition: transform var(--motion-spectrum) var(--motion-spring);
   will-change: transform;
@@ -950,7 +907,7 @@ button {
 .playback-progress input::-webkit-slider-runnable-track {
   height: 3px;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--spectrum-to, #ff69b4) 0, var(--spectrum-from, #ffc4e0) var(--progress, 0%), rgba(255, 255, 255, var(--softer-alpha)) var(--progress, 0%), rgba(255, 255, 255, var(--softer-alpha)) 100%);
+  background: linear-gradient(90deg, var(--spectrum-to, #34c759) 0, var(--spectrum-from, #7df2ca) var(--progress, 0%), rgba(255, 255, 255, var(--softer-alpha)) var(--progress, 0%), rgba(255, 255, 255, var(--softer-alpha)) 100%);
 }
 
 .playback-progress input::-webkit-slider-thumb {
@@ -960,7 +917,7 @@ button {
   border: 0;
   border-radius: 50%;
   appearance: none;
-  background: var(--spectrum-from, #ffc4e0);
+  background: var(--spectrum-from, #7df2ca);
   opacity: 0;
   transition: opacity var(--motion-bg) ease, transform var(--motion-fast) var(--motion-spring);
 }
@@ -1146,6 +1103,10 @@ button {
   box-shadow: inset 0 0 0 1px rgba(121, 244, 205, 0.55);
 }
 
+.search-field.no-trailing-icon input {
+  padding-right: 10px;
+}
+
 .local-folder-picker {
   width: 100%;
   min-width: 0;
@@ -1223,10 +1184,6 @@ button {
   font-size: 16px;
   font-weight: 800;
   pointer-events: none;
-}
-
-.video-source-mark {
-  font-size: 14px;
 }
 
 .import-readout {

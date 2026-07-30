@@ -199,7 +199,7 @@ pub fn SearchPanel(
             if source == SearchSource::Bilibili || source == SearchSource::Youtube {
                 div { class: "source-mode video-mode",
                     div { class: "search-row",
-                        div { class: "search-field",
+                        div { class: "search-field no-trailing-icon",
                             input {
                                 value: "{video_url}",
                                 placeholder: "{video_placeholder}",
@@ -212,7 +212,6 @@ pub fn SearchPanel(
                                     }
                                 }
                             }
-                            span { class: "search-icon video-source-mark", "↧" }
                         }
                         button {
                             class: "source-action video-import",
@@ -618,36 +617,20 @@ pub fn Island(
 pub fn AddonIsland(
     companion_style: String,
     companion_name: &'static str,
-    cpu: String,
-    memory: String,
-    download: String,
-    upload: String,
-    spectrum: [f32; SPECTRUM_BANDS],
-    spectrum_style: String,
     separated: bool,
     splitting: bool,
-    is_playing: bool,
     onhover: EventHandler<MouseEvent>,
 ) -> Element {
-    let mut class = match (separated, splitting) {
+    let class = match (separated, splitting) {
         (true, _) => "addon-island separated",
         (false, true) => "addon-island splitting",
         _ => "addon-island",
     }
     .to_string();
-    if is_playing {
-        class.push_str(" playing");
-    }
-    let title = format!("{companion_name}  CPU {cpu}  RAM {memory}  Down {download}  Up {upload}");
     rsx! {
-        aside { class: "{class}", title: "{title}", onmouseenter: move |event| onhover.call(event),
+        aside { class: "{class}", title: "{companion_name}", onmouseenter: move |event| onhover.call(event),
             div { class: "addon-pet", style: "{companion_style}", "aria-label": "{companion_name}",
                 div { class: "addon-pet-strip" }
-            }
-            div { class: "addon-spectrum", style: "{spectrum_style}",
-                for value in spectrum {
-                    i { style: "transform: scaleY({value});" }
-                }
             }
         }
     }

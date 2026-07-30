@@ -150,7 +150,7 @@ mod tests {
             .unwrap();
         let colors = extract_colors(&bytes).expect("monochrome cover should produce colors");
 
-        assert_ne!(colors.0, "rgb(255, 196, 224)");
-        assert_ne!(colors.1, "rgb(255, 105, 180)");
+        assert_ne!(colors.0, "rgb(125, 242, 202)");
+        assert_ne!(colors.1, "rgb(52, 199, 89)");
     }
 }

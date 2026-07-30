@@ -31,7 +31,7 @@
 
 - Hold Shift + left mouse button to drag the capsule to a position you like.
 - Hover over the capsule to expand it and access search, queue, pet, and settings.
-- Long-press the left mouse button on the capsule to split out the companion island.
+- Long-press the left mouse button on the capsule to split or merge the companion island beside the main island.
 - Right-click the capsule to exit `CAPS`.
 - Use the Pet page to switch between Coco and Dodo.
 - Mode notes in Settings:

@@ -46,11 +46,14 @@
 - 每个人都有自己的想法，但是不管如何拓展，都不要让CAPS吃掉超过150MB+30MB（Webview+CAPS）的内存。
 
 ## 参考
-- [apple animation design](https://developer.apple.com/design/human-interface-guidelines/motion)
-- [apple dynamic island](https://developer.apple.com/documentation/widgetkit/dynamicisland)
+- [human-interface-guidelines/motion](https://developer.apple.com/design/human-interface-guidelines/motion)
+- [widgetkit/dynamicisland](https://developer.apple.com/documentation/widgetkit/dynamicisland)
 - [apple motion/ui ref](https://developer.apple.com/design/human-interface-guidelines/live-activities?pubDate=20250703&utm_source=openai)
 - [mdn http requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Range_requests)
-
+- [human-interface-guidelines/materials](https://developer.apple.com/design/human-interface-guidelines/materials)
+- [liquid-glass](https://developer.apple.com/documentation/technologyoverviews/liquid-glass)
+- [wwdc2025/219/](https://developer.apple.com/videos/play/wwdc2025/219/)
+- [css-liquid-glass/](https://freefrontend.com/css-liquid-glass/)
 ## 致谢
 - 所有开源项目维护者。
 

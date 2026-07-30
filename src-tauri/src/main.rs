@@ -645,14 +645,14 @@ fn App() -> Element {
     let stage_height = COLLAPSED_H + ISLAND_BLEED * 2.0;
     let expanded_stage_width = EXPANDED_W + separation_extra_width + ISLAND_BLEED * 2.0;
     let expanded_stage_height = EXPANDED_H + ISLAND_BLEED * 2.0;
-    let island_alpha = (opacity_css * 0.92).clamp(0.08, 0.92);
-    let panel_alpha = (opacity_css * 0.86).clamp(0.08, 0.86);
-    let soft_alpha = (opacity_css * 0.16).clamp(0.02, 0.16);
-    let softer_alpha = (opacity_css * 0.08).clamp(0.01, 0.08);
-    let hover_alpha = (opacity_css * 0.15).clamp(0.02, 0.15);
-    let active_alpha = (opacity_css * 0.18).clamp(0.02, 0.18);
-    let green_alpha = (opacity_css * 0.2).clamp(0.03, 0.2);
-    let red_alpha = (opacity_css * 0.22).clamp(0.03, 0.22);
+    let island_alpha = (opacity_css * 0.46).clamp(0.04, 0.46);
+    let panel_alpha = (opacity_css * 0.52).clamp(0.06, 0.52);
+    let soft_alpha = (opacity_css * 0.11).clamp(0.015, 0.11);
+    let softer_alpha = (opacity_css * 0.065).clamp(0.01, 0.065);
+    let hover_alpha = (opacity_css * 0.12).clamp(0.015, 0.12);
+    let active_alpha = (opacity_css * 0.14).clamp(0.02, 0.14);
+    let green_alpha = (opacity_css * 0.16).clamp(0.025, 0.16);
+    let red_alpha = (opacity_css * 0.18).clamp(0.025, 0.18);
     let stage_style = format!(
         "--island-bg-alpha: {island_alpha:.3}; --panel-bg-alpha: {panel_alpha:.3}; --soft-alpha: {soft_alpha:.3}; --softer-alpha: {softer_alpha:.3}; --hover-alpha: {hover_alpha:.3}; --active-alpha: {active_alpha:.3}; --green-alpha: {green_alpha:.3}; --red-alpha: {red_alpha:.3}; --island-scale: {island_scale:.2}; --collapsed-width: {collapsed_width:.0}px; --stage-width: {stage_width:.0}px; --stage-height: {stage_height:.0}px; --expanded-stage-width: {expanded_stage_width:.0}px; --expanded-stage-height: {expanded_stage_height:.0}px; --island-bleed: {ISLAND_BLEED:.0}px; --addon-width: {ADDON_W:.0}px; --addon-gap: {ADDON_GAP:.0}px; --main-island-width: {main_island_width:.0}px; --cluster-width: {cluster_width:.0}px;"
     );

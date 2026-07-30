@@ -1,6 +1,6 @@
 [package]
 name = "caps"
-version = "1.0.9"
+version = "1.0.10"
 description = "CAPS"
 authors = ["ref42"]
 edition = "2024"

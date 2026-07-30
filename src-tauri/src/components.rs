@@ -18,7 +18,7 @@ pub fn Tabs(
     tab: String,
     onsearch: EventHandler<MouseEvent>,
     onqueue: EventHandler<MouseEvent>,
-    onstats: EventHandler<MouseEvent>,
+    onpet: EventHandler<MouseEvent>,
     onsettings: EventHandler<MouseEvent>,
 ) -> Element {
     rsx! {
@@ -34,9 +34,9 @@ pub fn Tabs(
                 "Queue"
             }
             button {
-                class: if tab == "stats" { "tab active" } else { "tab" },
-                onclick: onstats,
-                "Stats"
+                class: if tab == "pet" { "tab active" } else { "tab" },
+                onclick: onpet,
+                "Pet"
             }
             button {
                 class: if tab == "settings" { "tab active" } else { "tab" },
@@ -48,55 +48,34 @@ pub fn Tabs(
 }
 
 #[component]
-pub fn StatsPanel(
-    cpu: String,
-    memory: String,
-    upload: String,
-    download: String,
-    cpu_progress: f64,
-    memory_progress: f64,
-    upload_progress: f64,
-    download_progress: f64,
-    total_upload: String,
-    total_download: String,
-    month_total: String,
-    status: String,
+pub fn PetPanel(
+    companion: String,
+    coco_style: String,
+    dodo_style: String,
+    oncompanion: EventHandler<String>,
 ) -> Element {
     rsx! {
-        div { class: "panel-section stats",
-            div { class: "live-grid",
-                LiveStatTile { label: "CPU", value: cpu, progress: cpu_progress }
-                LiveStatTile { label: "RAM", value: memory, progress: memory_progress }
-                LiveStatTile { label: "Upload", value: upload, progress: upload_progress }
-                LiveStatTile { label: "Download", value: download, progress: download_progress }
+        div { class: "panel-section pet-panel",
+            div { class: "pet-card-grid",
+                button {
+                    class: if companion == "coco" { "pet-card active" } else { "pet-card" },
+                    onclick: move |_| oncompanion.call("coco".to_string()),
+                    div { class: "pet-card-sprite", style: "{coco_style}",
+                        div { class: "addon-pet-strip" }
+                    }
+                    strong { "Coco" }
+                    span { "Cat" }
+                }
+                button {
+                    class: if companion == "dodo" { "pet-card active" } else { "pet-card" },
+                    onclick: move |_| oncompanion.call("dodo".to_string()),
+                    div { class: "pet-card-sprite", style: "{dodo_style}",
+                        div { class: "addon-pet-strip" }
+                        }
+                    strong { "Dodo" }
+                    span { "Dog" }
+                }
             }
-            div { class: "total-list",
-                div { class: "stat-line",
-                    span { "Total up" }
-                    strong { "{total_upload}" }
-                }
-                div { class: "stat-line",
-                    span { "Total down" }
-                    strong { "{total_download}" }
-                }
-                div { class: "stat-line",
-                    span { "This month" }
-                    strong { "{month_total}" }
-                }
-            }
-            div { class: "status-text", "{status}" }
-        }
-    }
-}
-
-#[component]
-fn LiveStatTile(label: &'static str, value: String, progress: f64) -> Element {
-    let progress = progress.clamp(0.0, 100.0);
-    rsx! {
-        div { class: "live-stat", style: "--stat-progress: {progress:.2}%;",
-            span { "{label}" }
-            strong { "{value}" }
-            i {}
         }
     }
 }
@@ -338,7 +317,6 @@ pub fn SettingsPanel(
     opacity: u32,
     volume: u32,
     island_size: u32,
-    companion: String,
     music_mode: MusicMode,
     update_status: String,
     update_progress: Option<f64>,
@@ -351,7 +329,6 @@ pub fn SettingsPanel(
     onopacity: EventHandler<u32>,
     onvolume: EventHandler<u32>,
     onisland_size: EventHandler<u32>,
-    oncompanion: EventHandler<String>,
     onnormal: EventHandler<MouseEvent>,
     onsilent: EventHandler<MouseEvent>,
     onquiet: EventHandler<MouseEvent>,
@@ -363,6 +340,7 @@ pub fn SettingsPanel(
     let volume_progress = (volume as f64).clamp(0.0, 100.0);
     let island_progress =
         ((island_size.saturating_sub(85) as f64 / 65.0) * 100.0).clamp(0.0, 100.0);
+    let show_update_status = !update_status.starts_with("Installed CAPS");
     rsx! {
         div { class: "panel-section settings",
             label { class: "setting",
@@ -432,21 +410,6 @@ pub fn SettingsPanel(
                 }
             }
             label { class: "setting",
-                span { "Companion" }
-                div { class: "companion-actions",
-                    button {
-                        class: if companion == "coco" { "companion-button active" } else { "companion-button" },
-                        onclick: move |_| oncompanion.call("coco".to_string()),
-                        "Coco"
-                    }
-                    button {
-                        class: if companion == "dodo" { "companion-button active" } else { "companion-button" },
-                        onclick: move |_| oncompanion.call("dodo".to_string()),
-                        "Dodo"
-                    }
-                }
-            }
-            label { class: "setting",
                 span { "Mode" }
                 div { class: "mode-actions",
                     button {
@@ -475,8 +438,16 @@ pub fn SettingsPanel(
                     }
                 }
             }
-            label { class: "setting",
+            label { class: "setting update-setting",
                 span { "Updates" }
+                div { class: "update-inline",
+                    if show_update_status {
+                        div { class: "update-copy", "{update_status}" }
+                    }
+                    if let Some(progress) = update_progress {
+                        i { style: "--update-progress: {progress:.2}%;" }
+                    }
+                }
                 div { class: "cache-actions update-actions",
                     button {
                         disabled: update_busy,
@@ -492,13 +463,6 @@ pub fn SettingsPanel(
                     }
                 }
             }
-            div { class: "update-readout",
-                div { class: "update-copy", "{update_status}" }
-                if let Some(progress) = update_progress {
-                    i { style: "--update-progress: {progress:.2}%;" }
-                }
-            }
-            div { class: "status-text", "Right-click the island to exit CAPS." }
         }
     }
 }

@@ -56,9 +56,12 @@ impl AppSettings {
         self.volume = self.volume.clamp(0, 100);
         self.island_size = self.island_size.clamp(85, 150);
         self.random_count = self.random_count.clamp(1, 100);
+        if self.active_tab == "stats" {
+            self.active_tab = "pet".to_string();
+        }
         if !matches!(
             self.active_tab.as_str(),
-            "search" | "queue" | "stats" | "settings"
+            "search" | "queue" | "pet" | "settings"
         ) {
             self.active_tab = "search".to_string();
         }

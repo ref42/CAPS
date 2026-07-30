@@ -25,8 +25,8 @@ use actions::{
 };
 use audio::{AudioCommand, AudioPlayer};
 use components::{
-    AddonIsland, Island, QUEUE_RENDER_LIMIT, QueuePanel, SearchPanel, SearchSource, SettingsPanel,
-    StatsPanel, Tabs,
+    AddonIsland, Island, PetPanel, QUEUE_RENDER_LIMIT, QueuePanel, SearchPanel, SearchSource,
+    SettingsPanel, Tabs,
 };
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
 use dioxus::html::input_data::MouseButton;
@@ -602,6 +602,8 @@ fn App() -> Element {
     } else {
         coco_sprite_src.clone()
     };
+    let coco_style = format!("--companion-image: url(\"{coco_sprite_src}\");");
+    let dodo_style = format!("--companion-image: url(\"{dodo_sprite_src}\");");
     let companion_style = format!("--companion-image: url(\"{companion_sprite_src}\");");
     let companion_name = if companion_is_dodo { "Dodo" } else { "Coco" };
     let tab = active_tab.read().clone();
@@ -917,14 +919,14 @@ fn App() -> Element {
                 }
                 div { class: "separation-neck" }
                 AddonIsland {
-                    companion_style,
+                    companion_style: companion_style.clone(),
                     companion_name,
                     cpu: cpu_usage.read().clone(),
                     memory: memory_usage.read().clone(),
                     download: download.read().clone(),
                     upload: upload.read().clone(),
                     spectrum: *spectrum.read(),
-                    spectrum_style,
+                    spectrum_style: spectrum_style.clone(),
                     separated: is_separated,
                     splitting: is_splitting,
                     is_playing: state.is_playing,
@@ -943,7 +945,7 @@ fn App() -> Element {
                     tab: tab.clone(),
                     onsearch: move |_| active_tab.set("search".to_string()),
                     onqueue: move |_| active_tab.set("queue".to_string()),
-                    onstats: move |_| active_tab.set("stats".to_string()),
+                    onpet: move |_| active_tab.set("pet".to_string()),
                     onsettings: move |_| active_tab.set("settings".to_string()),
                 }
 
@@ -1082,27 +1084,18 @@ fn App() -> Element {
                             }
                         },
                     }
-                } else if tab == "stats" {
-                    StatsPanel {
-                        cpu: cpu_usage.read().clone(),
-                        memory: memory_usage.read().clone(),
-                        upload: upload.read().clone(),
-                        download: download.read().clone(),
-                        cpu_progress: cpu_progress(),
-                        memory_progress: memory_progress(),
-                        upload_progress: upload_progress(),
-                        download_progress: download_progress(),
-                        total_upload: format_bytes(*total_upload.read()),
-                        total_download: format_bytes(*total_download.read()),
-                        month_total: format_bytes(total_upload() + total_download()),
-                        status: status.read().clone(),
+                } else if tab == "pet" {
+                    PetPanel {
+                        companion: companion_value.clone(),
+                        coco_style: coco_style.clone(),
+                        dodo_style: dodo_style.clone(),
+                        oncompanion: move |value| companion.set(value),
                     }
                 } else {
                     SettingsPanel {
                         opacity: opacity(),
                         volume: volume(),
                         island_size: island_size(),
-                        companion: companion_value,
                         music_mode: music_mode(),
                         update_status: update_status.read().clone(),
                         update_progress: *update_progress.read(),
@@ -1162,7 +1155,6 @@ fn App() -> Element {
                                 );
                             }
                         },
-                        oncompanion: move |value| companion.set(value),
                         onnormal: move |_| {
                             if has_active_music {
                                 music_mode.set(MusicMode::Normal);

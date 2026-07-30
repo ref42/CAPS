@@ -19,13 +19,21 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-white">
 </p>
 
-**CAPS** means **`C`atch `A`ll `P`ossible `S`ources**, and it also comes from **capsule**. CAPS is built with Rust and Dioxus Desktop. While idle, it shows CPU, memory, and network speed. While music is active, it expands into a music island with cover art, lyrics, spectrum, progress, and compact playback controls.
+**CAPS** means **`C`atch `A`ll `P`ossible `S`ources**, and it also comes from **capsule**. CAPS is built with Rust and Dioxus Desktop. While idle, it shows CPU, memory, and network speed. While music is active, it expands into a music island with cover art, lyrics, spectrum, progress, and compact playback controls. It can also split out a smaller companion island so Coco or Dodo can stay beside the main island.
+
+<p align="center">
+  <img src="assets/coco.gif" alt="Coco companion" width="96">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="assets/dodo.gif" alt="Dodo companion" width="96">
+</p>
 
 ## For Users
 
 - Hold Shift + left mouse button to drag the capsule to a position you like.
-- Hover over the capsule to expand it and access settings.
+- Hover over the capsule to expand it and access search, queue, pet, and settings.
+- Long-press the left mouse button on the capsule to split out the companion island.
 - Right-click the capsule to exit `CAPS`.
+- Use the Pet page to switch between Coco and Dodo.
 - Mode notes in Settings:
   - Normal mode: when no song is playing, CAPS shows CPU usage, memory usage, upload speed, and download speed. After you pick a song from the queue, it starts playback and shows lyrics for NetEase tracks plus the spectrum.
   - Silent mode: only shows CPU usage, memory usage, upload speed, and download speed.
@@ -35,7 +43,7 @@
 
 - Issues are welcome for bugs, feedback, and feature requests.
 - For PRs, it is better to open an issue first and discuss the idea before implementation, so effort is not wasted.
-- Everyone has different ideas, but no matter how CAPS grows, please keep memory usage under 30 MB. Normal usage is currently around 5-25 MB.
+- Everyone has different ideas, but no matter how CAPS grows, please keep memory usage under 150 MB + 30 MB (WebView + CAPS).
 
 ## References
 

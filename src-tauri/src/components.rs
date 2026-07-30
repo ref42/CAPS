@@ -13,8 +13,35 @@ pub enum SearchSource {
     Local,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UiLanguage {
+    En,
+    Zh,
+}
+
+impl UiLanguage {
+    pub fn from_code(code: &str) -> Self {
+        if code == "zh" { Self::Zh } else { Self::En }
+    }
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::En => "en",
+            Self::Zh => "zh",
+        }
+    }
+}
+
+fn tr(language: UiLanguage, en: &'static str, zh: &'static str) -> &'static str {
+    match language {
+        UiLanguage::En => en,
+        UiLanguage::Zh => zh,
+    }
+}
+
 #[component]
 pub fn Tabs(
+    language: UiLanguage,
     tab: String,
     onsearch: EventHandler<MouseEvent>,
     onqueue: EventHandler<MouseEvent>,
@@ -26,22 +53,22 @@ pub fn Tabs(
             button {
                 class: if tab == "search" { "tab active" } else { "tab" },
                 onclick: onsearch,
-                "Search"
+                "{tr(language, \"Search\", \"搜索\")}"
             }
             button {
                 class: if tab == "queue" { "tab active" } else { "tab" },
                 onclick: onqueue,
-                "Queue"
+                "{tr(language, \"Queue\", \"队列\")}"
             }
             button {
                 class: if tab == "pet" { "tab active" } else { "tab" },
                 onclick: onpet,
-                "Pet"
+                "{tr(language, \"Pet\", \"宠物\")}"
             }
             button {
                 class: if tab == "settings" { "tab active" } else { "tab" },
                 onclick: onsettings,
-                "Settings"
+                "{tr(language, \"Settings\", \"设置\")}"
             }
         }
     }
@@ -64,7 +91,6 @@ pub fn PetPanel(
                         div { class: "addon-pet-strip" }
                     }
                     strong { "Coco" }
-                    span { "Cat" }
                 }
                 button {
                     class: if companion == "dodo" { "pet-card active" } else { "pet-card" },
@@ -73,7 +99,6 @@ pub fn PetPanel(
                         div { class: "addon-pet-strip" }
                         }
                     strong { "Dodo" }
-                    span { "Dog" }
                 }
             }
         }
@@ -82,6 +107,7 @@ pub fn PetPanel(
 
 #[component]
 pub fn SearchPanel(
+    language: UiLanguage,
     source: SearchSource,
     query: String,
     video_url: String,
@@ -113,9 +139,22 @@ pub fn SearchPanel(
         _ => "",
     };
     let video_placeholder = match source {
-        SearchSource::Bilibili => "Paste Bilibili video URL",
-        SearchSource::Youtube => "Paste YouTube video URL",
+        SearchSource::Bilibili => tr(
+            language,
+            "Paste Bilibili video URL",
+            "粘贴 Bilibili 视频链接",
+        ),
+        SearchSource::Youtube => tr(language, "Paste YouTube video URL", "粘贴 YouTube 视频链接"),
         _ => "",
+    };
+    let search_placeholder = tr(language, "Song, artist, album", "歌曲、歌手、专辑");
+    let random_label = tr(language, "Random", "随机");
+    let folder_label = tr(language, "Folder", "文件夹");
+    let local_placeholder = tr(language, "path/to/your/audios", "你的音频文件夹");
+    let empty_status = if status.trim().is_empty() {
+        tr(language, "No results.", "暂无结果。")
+    } else {
+        status.as_str()
     };
     let random_progress =
         ((random_count.saturating_sub(1) as f64 / 99.0) * 100.0).clamp(0.0, 100.0);
@@ -140,7 +179,7 @@ pub fn SearchPanel(
                 button {
                     class: if source == SearchSource::Local { "source-option active" } else { "source-option" },
                     onclick: move |_| onsource.call(SearchSource::Local),
-                    "Local"
+                    "{tr(language, \"Local\", \"本地\")}"
                 }
             }
 
@@ -150,7 +189,7 @@ pub fn SearchPanel(
                         div { class: "search-field",
                             input {
                                 value: "{query}",
-                                placeholder: "Song, artist, album",
+                                placeholder: "{search_placeholder}",
                                 onfocus,
                                 onblur,
                                 oninput: move |event| onquery.call(event.value()),
@@ -165,11 +204,11 @@ pub fn SearchPanel(
                         button {
                             class: "source-action",
                             onclick: move |_| onsearch.call(search_from_button.clone()),
-                            "Search"
+                            "{tr(language, \"Search\", \"搜索\")}"
                         }
                     }
                     div { class: "random-control",
-                        span { "Random {random_count}" }
+                        span { "{random_label} {random_count}" }
                         input {
                             r#type: "range",
                             min: "1",
@@ -185,12 +224,12 @@ pub fn SearchPanel(
                         button {
                             class: "random-add",
                             onclick: move |_| onrandom_append.call(random_count),
-                            "Append"
+                            "{tr(language, \"Append\", \"追加\")}"
                         }
                         button {
                             class: "random-add random-replace",
                             onclick: move |_| onrandom_replace.call(random_count),
-                            "Replace"
+                            "{tr(language, \"Replace\", \"替换\")}"
                         }
                     }
                 }
@@ -216,7 +255,7 @@ pub fn SearchPanel(
                         button {
                             class: "source-action video-import",
                             onclick: move |_| onimport_video.call((source, import_from_button.clone())),
-                            "Extract"
+                            "{tr(language, \"Extract\", \"提取\")}"
                         }
                     }
                     div { class: "import-readout",
@@ -229,7 +268,7 @@ pub fn SearchPanel(
             if source == SearchSource::Local {
                 div { class: "source-mode local-mode",
                     div { class: "local-loader",
-                        span { "Folder" }
+                        span { "{folder_label}" }
                         button {
                             class: "local-folder-picker",
                             r#type: "button",
@@ -238,7 +277,7 @@ pub fn SearchPanel(
                             onblur,
                             onclick: onlocal_music_folder,
                             if local_music_folder.trim().is_empty() {
-                                "path/to/your/audios"
+                                "{local_placeholder}"
                             } else {
                                 "{local_music_folder}"
                             }
@@ -246,11 +285,11 @@ pub fn SearchPanel(
                         button {
                             r#type: "button",
                             onclick: onload_local,
-                            "Load"
+                            "{tr(language, \"Load\", \"加载\")}"
                         }
                     }
                     div { class: "import-readout",
-                        span { "Local" }
+                        span { "{tr(language, \"Local\", \"本地\")}" }
                         strong { "{status}" }
                     }
                 }
@@ -267,7 +306,7 @@ pub fn SearchPanel(
                         }
                     }
                     if results.is_empty() {
-                        div { class: "empty", "{status}" }
+                        div { class: "empty", "{empty_status}" }
                     }
                 }
             }
@@ -277,6 +316,7 @@ pub fn SearchPanel(
 
 #[component]
 pub fn QueuePanel(
+    language: UiLanguage,
     queue_len: usize,
     visible_tracks: Vec<(usize, Track)>,
     current_index: Option<usize>,
@@ -288,8 +328,8 @@ pub fn QueuePanel(
     rsx! {
         div { class: "panel-section",
             div { class: "queue-toolbar",
-                span { "{queue_len} tracks" }
-                button { onclick: onclear, "Clear" }
+                span { "{queue_len} {tr(language, \"tracks\", \"首\")}" }
+                button { onclick: onclear, "{tr(language, \"Clear\", \"清空\")}" }
             }
             div { class: "song-list",
                 for (index, track) in visible_tracks {
@@ -301,10 +341,10 @@ pub fn QueuePanel(
                     }
                 }
                 if hidden_count > 0 {
-                    div { class: "empty", "Showing first {QUEUE_RENDER_LIMIT}. {hidden_count} more tracks stay in the queue." }
+                    div { class: "empty", "{tr(language, \"Showing first\", \"仅显示前\")} {QUEUE_RENDER_LIMIT}. {hidden_count} {tr(language, \"more tracks stay in the queue.\", \"首仍在队列中。\")}" }
                 }
                 if queue_len == 0 {
-                    div { class: "empty", "Queue is empty." }
+                    div { class: "empty", "{tr(language, \"Queue is empty.\", \"队列为空。\")}" }
                 }
             }
         }
@@ -313,6 +353,7 @@ pub fn QueuePanel(
 
 #[component]
 pub fn SettingsPanel(
+    language: UiLanguage,
     opacity: u32,
     volume: u32,
     island_size: u32,
@@ -328,10 +369,10 @@ pub fn SettingsPanel(
     onopacity: EventHandler<u32>,
     onvolume: EventHandler<u32>,
     onisland_size: EventHandler<u32>,
+    onlanguage: EventHandler<String>,
     onnormal: EventHandler<MouseEvent>,
     onsilent: EventHandler<MouseEvent>,
     onquiet: EventHandler<MouseEvent>,
-    onclean_cache: EventHandler<MouseEvent>,
     oncheck_update: EventHandler<MouseEvent>,
     oninstall_update: EventHandler<MouseEvent>,
 ) -> Element {
@@ -343,7 +384,7 @@ pub fn SettingsPanel(
     rsx! {
         div { class: "panel-section settings",
             label { class: "setting",
-                span { "Opacity" }
+                span { "{tr(language, \"Opacity\", \"透明度\")}" }
                 div { class: "setting-control",
                     input {
                         r#type: "range",
@@ -365,7 +406,7 @@ pub fn SettingsPanel(
                 }
             }
             label { class: "setting",
-                span { "Volume" }
+                span { "{tr(language, \"Volume\", \"音量\")}" }
                 div { class: "setting-control",
                     input {
                         r#type: "range",
@@ -387,7 +428,7 @@ pub fn SettingsPanel(
                 }
             }
             label { class: "setting",
-                span { "Island size" }
+                span { "{tr(language, \"Island size\", \"岛屿大小\")}" }
                 div { class: "setting-control",
                     input {
                         r#type: "range",
@@ -409,36 +450,42 @@ pub fn SettingsPanel(
                 }
             }
             label { class: "setting",
-                span { "Mode" }
+                span { "{tr(language, \"Mode\", \"模式\")}" }
                 div { class: "mode-actions",
                     button {
                         class: if music_mode == MusicMode::Normal { "mode-button normal-button active" } else { "mode-button normal-button" },
                         onclick: onnormal,
-                        "Normal"
+                        "{tr(language, \"Normal\", \"普通\")}"
                     }
                     button {
                         class: if music_mode == MusicMode::Silent { "mode-button silent-button active" } else { "mode-button silent-button" },
                         onclick: onsilent,
-                        "Silent"
+                        "{tr(language, \"Silent\", \"静音\")}"
                     }
                     button {
                         class: if music_mode == MusicMode::Quiet { "mode-button quiet-button active" } else { "mode-button quiet-button" },
                         onclick: onquiet,
-                        "Quiet"
+                        "{tr(language, \"Quiet\", \"安静\")}"
                     }
                 }
             }
             label { class: "setting",
-                span { "Disk cache" }
-                div { class: "cache-actions",
+                span { "{tr(language, \"Language\", \"语言\")}" }
+                div { class: "mode-actions language-actions",
                     button {
-                        onclick: onclean_cache,
-                        "Clean cache"
+                        class: if language == UiLanguage::En { "mode-button language-button active" } else { "mode-button language-button" },
+                        onclick: move |_| onlanguage.call("en".to_string()),
+                        "EN"
+                    }
+                    button {
+                        class: if language == UiLanguage::Zh { "mode-button language-button active" } else { "mode-button language-button" },
+                        onclick: move |_| onlanguage.call("zh".to_string()),
+                        "中文"
                     }
                 }
             }
             label { class: "setting update-setting",
-                span { "Updates" }
+                span { "{tr(language, \"Updates\", \"更新\")}" }
                 div { class: "update-inline",
                     if show_update_status {
                         div { class: "update-copy", "{update_status}" }
@@ -447,17 +494,17 @@ pub fn SettingsPanel(
                         i { style: "--update-progress: {progress:.2}%;" }
                     }
                 }
-                div { class: "cache-actions update-actions",
+                div { class: "setting-actions update-actions",
                     button {
                         disabled: update_busy,
                         onclick: oncheck_update,
-                        "Check update"
+                        "{tr(language, \"Check update\", \"检查更新\")}"
                     }
                     if update_available {
                         button {
                             disabled: update_busy,
                             onclick: oninstall_update,
-                            "Update"
+                            "{tr(language, \"Update\", \"更新\")}"
                         }
                     }
                 }

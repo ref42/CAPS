@@ -16,6 +16,7 @@ pub struct AppSettings {
     pub active_tab: String,
     pub local_music_folder: String,
     pub companion: String,
+    pub language: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -36,6 +37,7 @@ impl Default for AppSettings {
             active_tab: "search".to_string(),
             local_music_folder: String::new(),
             companion: "coco".to_string(),
+            language: "en".to_string(),
         }
     }
 }
@@ -67,6 +69,9 @@ impl AppSettings {
         }
         if !matches!(self.companion.as_str(), "coco" | "dodo") {
             self.companion = "coco".to_string();
+        }
+        if !matches!(self.language.as_str(), "en" | "zh") {
+            self.language = "en".to_string();
         }
         self
     }

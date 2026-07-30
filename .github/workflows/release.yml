@@ -67,8 +67,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = $env:GITHUB_REF_NAME
+          $notes = ".github/release-notes/$tag.md"
           gh release view $tag *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title $tag --notes "Windows x64 build for CAPS $tag."
+            if (Test-Path $notes) {
+              gh release create $tag --title $tag --notes-file $notes
+            } else {
+              gh release create $tag --title $tag --notes "CAPS $tag"
+            }
           }
           gh release upload $tag "dist/CAPS-$tag-windows-x64.exe" "dist/CAPS-$tag-windows-x64.exe.sha256" --clobber

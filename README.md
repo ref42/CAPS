@@ -54,18 +54,9 @@
 - [liquid-glass](https://developer.apple.com/documentation/technologyoverviews/liquid-glass)
 - [wwdc2025/219/](https://developer.apple.com/videos/play/wwdc2025/219/)
 - [css-liquid-glass/](https://freefrontend.com/css-liquid-glass/)
+
 ## 致谢
 - 所有开源项目维护者。
-
-## 打赏
-
-- 如果你觉得这个项目还不错，可以考虑给我打赏。感谢~
-- 推荐添加打赏备注，如果CAPS让您体验很糟糕，可以进行退款。
-- 感谢支持。
-<div align="center">
-微信/支付宝<br>
-<img src="qr/pay.jpg" width="200" alt="收款码">
-</div>
 
 ## 许可证
 

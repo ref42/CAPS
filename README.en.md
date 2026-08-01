@@ -60,17 +60,6 @@
 
 - Thanks to all open-source project maintainers.
 
-## Donate
-
-- If you think this project is useful, you can consider donating. Thank you.
-- A donation note is recommended. If CAPS gives you a bad experience, refunds are available.
-- Thank you for your support.
-
-<div align="center">
-WeChat / Alipay<br>
-<img src="qr/pay.jpg" width="200" alt="Payment QR code">
-</div>
-
 ## License
 
 MIT License. See [LICENSE](LICENSE).

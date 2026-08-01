@@ -43,7 +43,6 @@
 
 - 欢迎给我提issue，反馈bug或者添加新功能。
 - 若是想要进行pr，最好是先在issue里提出，讨论之后再开始实现，避免浪费精力。
-- 每个人都有自己的想法，但是不管如何拓展，都不要让CAPS吃掉超过150MB+30MB（Webview+CAPS）的内存。
 
 ## 参考
 - [human-interface-guidelines/motion](https://developer.apple.com/design/human-interface-guidelines/motion)

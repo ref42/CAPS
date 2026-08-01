@@ -43,7 +43,6 @@
 
 - Issues are welcome for bugs, feedback, and feature requests.
 - For PRs, it is better to open an issue first and discuss the idea before implementation, so effort is not wasted.
-- Everyone has different ideas, but no matter how CAPS grows, please keep memory usage under 150 MB + 30 MB (WebView + CAPS).
 
 ## References
 

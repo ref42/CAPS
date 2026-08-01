@@ -10,7 +10,7 @@ node_modules
 dist
 dist-ssr
 target
-src-tauri/target
+/gen/schemas
 *.local
 .agents
 .claude

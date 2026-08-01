@@ -1,11 +1,11 @@
 fn main() {
-    println!("cargo:rerun-if-changed=../assets/caps.ico");
+    println!("cargo:rerun-if-changed=assets/caps.ico");
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
 
-    let icon_path = std::path::Path::new("../assets/caps.ico")
+    let icon_path = std::path::Path::new("assets/caps.ico")
         .canonicalize()
         .expect("failed to locate CAPS Windows icon");
     let mut resource = winresource::WindowsResource::new();

@@ -1479,14 +1479,14 @@ fn rate_progress(rate: u64, peak: f64) -> f64 {
 fn coco_sprite_data_uri() -> String {
     format!(
         "data:image/svg+xml;base64,{}",
-        base64_encode(include_bytes!("../../assets/coco.svg"))
+        base64_encode(include_bytes!("../assets/coco.svg"))
     )
 }
 
 fn dodo_sprite_data_uri() -> String {
     format!(
         "data:image/svg+xml;base64,{}",
-        base64_encode(include_bytes!("../../assets/dodo.svg"))
+        base64_encode(include_bytes!("../assets/dodo.svg"))
     )
 }
 

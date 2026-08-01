@@ -35,13 +35,12 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            src-tauri/target
-          key: windows-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+            target
+          key: windows-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             windows-cargo-
 
       - name: Build release executable
-        working-directory: src-tauri
         run: cargo build --release
 
       - name: Package executable
@@ -49,7 +48,7 @@ jobs:
         run: |
           $tag = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME } else { "manual-$env:GITHUB_RUN_NUMBER" }
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item src-tauri/target/release/caps.exe "dist/CAPS-$tag-windows-x64.exe"
+          Copy-Item target/release/caps.exe "dist/CAPS-$tag-windows-x64.exe"
           Get-FileHash "dist/CAPS-$tag-windows-x64.exe" -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash)  CAPS-$tag-windows-x64.exe" } |
             Set-Content "dist/CAPS-$tag-windows-x64.exe.sha256"

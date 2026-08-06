@@ -158,7 +158,7 @@ button {
   --rail-height: 52px;
   width: 460px;
   height: 86px;
-  grid-template-columns: 10px minmax(0, 1fr) 116px 52px;
+  grid-template-columns: 10px minmax(0, 1fr) 108px 52px;
   padding: 17px 13px;
   border-radius: 999px;
 }
@@ -592,8 +592,14 @@ button {
 }
 
 .visual-expanded .music-copy {
+  grid-column: 2;
+  grid-row: 1;
   height: var(--rail-height);
   padding-right: 0;
+}
+
+.expanded-music-copy {
+  justify-content: center;
 }
 
 .lyric-viewport {
@@ -613,6 +619,39 @@ button {
 
 .visual-expanded .lyric-viewport {
   height: 100%;
+  width: min(100%, 180px);
+  margin-inline: auto;
+}
+
+.expanded-title-viewport {
+  position: relative;
+  width: min(100%, 178px);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  isolation: isolate;
+  mask-image: linear-gradient(90deg, transparent 0, #000 9%, #000 91%, transparent 100%);
+}
+
+.expanded-title-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(248, 255, 252, 0.96);
+  text-align: center;
+  transform: translate3d(0, 0, 0);
+}
+
+.expanded-title-text.title-marquee {
+  max-width: none;
+  overflow: visible;
+  padding-inline: 14px;
+  animation: titleMarquee var(--title-duration, 9s) cubic-bezier(0.45, 0, 0.2, 1) infinite;
+  will-change: transform;
 }
 
 .music-copy strong,
@@ -678,7 +717,21 @@ button {
 }
 
 .visual-expanded .music-copy strong {
-  font-size: var(--expanded-plain-font-size, 19px);
+  font-size: var(--expanded-plain-font-size, 16px);
+}
+
+.music-copy .expanded-title-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.music-copy .expanded-title-text.title-marquee {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .visual-expanded .speed-copy strong {
@@ -697,6 +750,10 @@ button {
   line-height: 1.1;
   font-weight: 650;
   letter-spacing: 0;
+}
+
+.visual-expanded .music-copy .lyric-particles {
+  justify-content: center;
 }
 
 .idle-speeds span {
@@ -1358,8 +1415,9 @@ button {
 }
 
 .queue-song {
-  grid-template-columns: minmax(0, 1fr) auto 30px;
-  padding: 4px 5px 4px 7px;
+  grid-template-columns: minmax(0, 1fr) auto 36px;
+  padding: 4px 4px 4px 7px;
+  column-gap: 7px;
 }
 
 .queue-main {
@@ -1374,19 +1432,32 @@ button {
 }
 
 .remove-song {
-  width: 26px;
-  height: 26px;
+  justify-self: center;
+  align-self: center;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: rgba(255, 255, 255, var(--softer-alpha));
   color: rgba(248, 255, 252, 0.62);
   font-size: 18px;
   line-height: 1;
+  z-index: 3;
+  cursor: pointer;
+  touch-action: manipulation;
   transition: background-color var(--motion-bg) ease, color var(--motion-bg) ease, transform var(--motion-fast) var(--motion-spring);
 }
 
 .remove-song:hover {
   background: rgba(255, 69, 58, var(--red-alpha));
   color: #ff9b94;
+}
+
+.remove-song:active {
+  transform: scale(0.94);
+}
+
+.queue-song:has(.remove-song:active) {
+  transform: none;
 }
 
 .song.active {
@@ -1873,6 +1944,20 @@ button {
   }
 }
 
+@keyframes titleMarquee {
+  0%,
+  18% {
+    transform: translate3d(0, 0, 0);
+  }
+  58%,
+  76% {
+    transform: translate3d(var(--title-distance, -72px), 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
 @keyframes activityLoading {
   0%,
   100% {
@@ -1891,6 +1976,7 @@ button {
   .cover,
   .spectrum i,
   .activity-dot,
+  .title-marquee,
   button {
     animation: none;
     transition: opacity 120ms ease, background-color 120ms ease;

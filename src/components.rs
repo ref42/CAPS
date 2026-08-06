@@ -526,6 +526,9 @@ pub fn Island(
     is_expanded: bool,
     primary_class: &'static str,
     visible_primary_text: String,
+    expanded_title_text: String,
+    expanded_title_class: &'static str,
+    expanded_title_style: String,
     outgoing_primary_text: Option<String>,
     transition_key: u64,
     lyric_scroll_class: &'static str,
@@ -583,6 +586,17 @@ pub fn Island(
                                         primary_class,
                                         outgoing: false,
                                     }
+                                }
+                            }
+                        }
+                    } else {
+                        div { class: "music-copy expanded-music-copy",
+                            div { class: "expanded-title-viewport", title: "{expanded_title_text}",
+                                strong {
+                                    class: "{expanded_title_class}",
+                                    style: "{expanded_title_style}",
+                                    key: "expanded-title-{transition_key}-{expanded_title_text}",
+                                    "{expanded_title_text}"
                                 }
                             }
                         }
@@ -790,7 +804,10 @@ pub fn QueueTrackRow(
             if !duration.is_empty() {
                 span { class: "track-duration queue-duration", "{duration}" }
             }
-            button { class: "remove-song", onclick: onremove, title: "Remove", "×" }
+            button { class: "remove-song", onclick: move |event| {
+                event.stop_propagation();
+                onremove.call(event);
+            }, title: "Remove", "×" }
         }
     }
 }

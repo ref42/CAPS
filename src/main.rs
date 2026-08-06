@@ -574,6 +574,19 @@ fn App() -> Element {
     } else {
         String::new()
     };
+    let title_units = text_visual_units(&current_title);
+    let expanded_title_class = if has_music && title_units > 18.0 {
+        "plain-title expanded-title-text title-marquee"
+    } else {
+        "plain-title expanded-title-text"
+    };
+    let expanded_title_style = if has_music && title_units > 18.0 {
+        let overflow_px = ((title_units - 18.0) * 8.2).clamp(26.0, 220.0);
+        let duration = (title_units * 0.42).clamp(7.0, 15.0);
+        format!("--title-distance: -{overflow_px:.1}px; --title-duration: {duration:.1}s;")
+    } else {
+        String::new()
+    };
     let cover_style = active_track
         .as_ref()
         .filter(|track| !track.cover.is_empty())
@@ -811,6 +824,9 @@ fn App() -> Element {
                     is_expanded,
                     primary_class,
                     visible_primary_text,
+                    expanded_title_text: current_title.clone(),
+                    expanded_title_class,
+                    expanded_title_style,
                     outgoing_primary_text,
                     transition_key,
                     lyric_scroll_class,

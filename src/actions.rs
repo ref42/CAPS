@@ -4,9 +4,10 @@ use crate::formatting::format_bytes;
 use crate::local_music;
 use crate::lyrics::LyricLine;
 use crate::mode::MusicMode;
+use crate::qqmusic;
 use crate::shitease;
 use crate::storage;
-use crate::track::{SOURCE_BILIBILI, SOURCE_LOCAL, SOURCE_YOUTUBE, Track};
+use crate::track::{SOURCE_BILIBILI, SOURCE_LOCAL, SOURCE_QQMUSIC, SOURCE_YOUTUBE, Track};
 use crate::youtube;
 use dioxus::prelude::*;
 use std::collections::HashSet;
@@ -49,21 +50,33 @@ pub fn spawn_play(
 }
 
 pub fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: Signal<String>) {
-    if text.is_empty() {
+    if text.trim().is_empty() {
         status.set("Type a song name first.".to_string());
         return;
     }
     spawn(async move {
-        status.set("Searching music...".to_string());
-        match shitease::search_shitease_songs(text, Some(18), None).await {
-            Ok(items) => {
-                let tracks = items.into_iter().map(Track::from).collect::<Vec<_>>();
-                let count = tracks.len();
-                results.set(tracks);
-                status.set(format!("Found {count} tracks."));
-            }
-            Err(err) => status.set(err),
+        status.set("Searching online...".to_string());
+        let (netease, qqmusic) = tokio::join!(
+            shitease::search_shitease_songs(text.clone(), Some(18), None),
+            qqmusic::search(text, 18),
+        );
+        let mut tracks = Vec::new();
+        let netease_ok = netease.is_ok();
+        let qqmusic_ok = qqmusic.is_ok();
+        if let Ok(items) = netease {
+            tracks.extend(items.into_iter().map(Track::from));
         }
+        if let Ok(items) = qqmusic {
+            tracks.extend(items.into_iter().map(Track::from));
+        }
+        let count = tracks.len();
+        results.set(tracks);
+        status.set(match (netease_ok, qqmusic_ok) {
+            (true, true) => format!("Found {count} online tracks."),
+            (true, false) => format!("Found {count} tracks from NetEase."),
+            (false, true) => format!("Found {count} tracks from QQ Music."),
+            (false, false) => "Online music search is unavailable.".to_string(),
+        });
     });
 }
 
@@ -283,6 +296,44 @@ async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<St
             ));
         })
         .await?;
+        return Ok(path.to_string_lossy().to_string());
+    }
+    if track.source == SOURCE_QQMUSIC {
+        let path = storage::song_cache_file(&track.source, &track.id)
+            .ok_or_else(|| "Song cache path is not available.".to_string())?;
+        if path.exists() && path.metadata().map(|meta| meta.len()).unwrap_or(0) > 0 {
+            return Ok(path.to_string_lossy().to_string());
+        }
+        let url = qqmusic::stream_url(&track.id).await?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| "Song cache path is not valid.".to_string())?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|err| format!("Song cache unavailable: {err}"))?;
+        let mut response = reqwest::get(&url)
+            .await
+            .map_err(|err| format!("Stream request failed: {err}"))?;
+        let temp_path = path.with_extension("download");
+        let mut file = tokio::fs::File::create(&temp_path)
+            .await
+            .map_err(|err| format!("Song cache write failed: {err}"))?;
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|err| format!("Stream read failed: {err}"))?
+        {
+            file.write_all(&chunk)
+                .await
+                .map_err(|err| format!("Song cache write failed: {err}"))?;
+        }
+        file.flush()
+            .await
+            .map_err(|err| format!("Song cache write failed: {err}"))?;
+        drop(file);
+        tokio::fs::rename(&temp_path, &path)
+            .await
+            .map_err(|err| format!("Song cache finalize failed: {err}"))?;
         return Ok(path.to_string_lossy().to_string());
     }
     let info =

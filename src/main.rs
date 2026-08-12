@@ -12,6 +12,7 @@ mod icon;
 mod local_music;
 mod lyrics;
 mod mode;
+mod qqmusic;
 mod shitease;
 mod storage;
 mod track;
@@ -159,7 +160,7 @@ fn App() -> Element {
     let mut query = use_signal(String::new);
     let mut bilibili_video_url = use_signal(String::new);
     let mut youtube_video_url = use_signal(String::new);
-    let results = use_signal(Vec::<Track>::new);
+    let mut results = use_signal(Vec::<Track>::new);
     let mut queue = use_signal({
         let saved_state = saved_state.clone();
         move || saved_state.queue.clone()
@@ -988,7 +989,11 @@ fn App() -> Element {
                         results: results.read().clone(),
                         random_count: random_count(),
                         status: status.read().clone(),
-                        onsource: move |source| search_source.set(source),
+                        onsource: move |source| {
+                            search_source.set(source);
+                            results.set(Vec::new());
+                            status.set(String::new());
+                        },
                         onfocus: move |_| input_focused.set(true),
                         onblur: {
                             move |_| {

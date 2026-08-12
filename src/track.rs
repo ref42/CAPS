@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const SOURCE_SHITEASE: &str = "shitease";
+pub const SOURCE_NETEASE: &str = "netease";
+pub const SOURCE_QQMUSIC: &str = "qqmusic";
 pub const SOURCE_LOCAL: &str = "local";
 pub const SOURCE_BILIBILI: &str = "bilibili";
 pub const SOURCE_YOUTUBE: &str = "youtube";
@@ -23,17 +25,37 @@ pub struct Track {
 impl From<shitease::ShiteaseSong> for Track {
     fn from(song: shitease::ShiteaseSong) -> Self {
         Self {
-            source: song
-                .source
-                .or(song.provider)
-                .unwrap_or_else(|| SOURCE_SHITEASE.to_string()),
+            source: SOURCE_NETEASE.to_string(),
             id: value_id(&song.id),
-            name: song.name,
+            name: source_name(song.name, "netease"),
             artist: clean_or(song.artist, "Unknown artist"),
             album: clean_or(song.album, "Unknown album"),
             cover: song.cover.unwrap_or_default(),
             duration: song.duration.and_then(normalized_duration_seconds),
         }
+    }
+}
+
+impl From<crate::qqmusic::QqMusicSong> for Track {
+    fn from(song: crate::qqmusic::QqMusicSong) -> Self {
+        Self {
+            source: SOURCE_QQMUSIC.to_string(),
+            id: song.songmid,
+            name: source_name(song.name, "qqmusic"),
+            artist: clean_or(Some(song.artist), "Unknown artist"),
+            album: clean_or(Some(song.album), "Unknown album"),
+            cover: song.cover,
+            duration: (song.duration > 0).then_some(song.duration),
+        }
+    }
+}
+
+fn source_name(name: String, source: &str) -> String {
+    let suffix = format!("-{source}");
+    if name.ends_with(&suffix) {
+        name
+    } else {
+        format!("{name}{suffix}")
     }
 }
 

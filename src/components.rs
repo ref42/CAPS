@@ -164,7 +164,7 @@ pub fn SearchPanel(
                 button {
                     class: if source == SearchSource::Netease { "source-option active" } else { "source-option" },
                     onclick: move |_| onsource.call(SearchSource::Netease),
-                    "NetEase"
+                    "Online"
                 }
                 button {
                     class: if source == SearchSource::Bilibili { "source-option active" } else { "source-option" },

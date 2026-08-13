@@ -46,6 +46,8 @@ pub async fn preview_from_url(url: String) -> Result<ImportPreview, String> {
         track: Track {
             source: SOURCE_BILIBILI.to_string(),
             id: track_id(&resolved.bvid, resolved.page),
+            media_id: String::new(),
+            stream_url: String::new(),
             name: resolved.title,
             artist: resolved.uploader,
             album: "Bilibili video".to_string(),

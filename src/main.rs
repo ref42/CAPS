@@ -12,6 +12,7 @@ mod icon;
 mod local_music;
 mod lyrics;
 mod mode;
+mod qqmusic;
 mod shitease;
 mod storage;
 mod track;
@@ -21,7 +22,7 @@ mod youtube;
 
 use actions::{
     RandomQueueMode, VideoImportSource, append_unique_tracks, spawn_import_video_url,
-    spawn_load_local_queue, spawn_play, spawn_random_queue, spawn_search,
+    spawn_load_local_queue, spawn_play, spawn_prefetch_next, spawn_random_queue, spawn_search,
 };
 use audio::{AudioCommand, AudioPlayer};
 use components::{
@@ -159,7 +160,7 @@ fn App() -> Element {
     let mut query = use_signal(String::new);
     let mut bilibili_video_url = use_signal(String::new);
     let mut youtube_video_url = use_signal(String::new);
-    let results = use_signal(Vec::<Track>::new);
+    let mut results = use_signal(Vec::<Track>::new);
     let mut queue = use_signal({
         let saved_state = saved_state.clone();
         move || saved_state.queue.clone()
@@ -415,6 +416,7 @@ fn App() -> Element {
                 status,
                 lyrics,
             );
+            spawn_prefetch_next(queue, next);
         }
     };
 
@@ -440,6 +442,7 @@ fn App() -> Element {
                 status,
                 lyrics,
             );
+            spawn_prefetch_next(queue, prev);
         }
     };
 
@@ -490,6 +493,7 @@ fn App() -> Element {
                 status,
                 lyrics,
             );
+            spawn_prefetch_next(queue, next);
         }
     });
 
@@ -988,7 +992,11 @@ fn App() -> Element {
                         results: results.read().clone(),
                         random_count: random_count(),
                         status: status.read().clone(),
-                        onsource: move |source| search_source.set(source),
+                        onsource: move |source| {
+                            search_source.set(source);
+                            results.set(Vec::new());
+                            status.set(String::new());
+                        },
                         onfocus: move |_| input_focused.set(true),
                         onblur: {
                             move |_| {
@@ -1093,6 +1101,7 @@ fn App() -> Element {
                                         status,
                                         lyrics,
                                     );
+                                    spawn_prefetch_next(queue, index);
                                 }
                             }
                         },

@@ -5,6 +5,7 @@ use serde_json::Value;
 // `client_search_cp` endpoint returns an empty list without a web session.
 const SEARCH_URL: &str = "https://c.y.qq.com/soso/fcgi-bin/search_cp";
 const PLAY_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
+const STREAM_HOST: &str = "https://isure.stream.qqmusic.qq.com/";
 const COVER_URL: &str = "https://y.gtimg.cn/music/photo_new/T002R300x300M000";
 const UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36";
@@ -103,11 +104,30 @@ pub async fn stream_url(songmid: &str) -> Result<String, String> {
         return Err("Missing QQ Music song id.".to_string());
     }
     let filename = format!("M500{songmid}{songmid}.mp3");
-    let data = serde_json::json!({"req_0":{"module":"vkey.GetVkeyServer","method":"CgiGetVkey","param":{"filename":[filename],"guid":"1429839143","songmid":[songmid],"songtype":[0],"uin":"0","loginflag":1,"platform":"20"}},"loginUin":"0","comm":{"uin":0,"format":"json","ct":24,"cv":0}});
-    let data_text = data.to_string();
+    let data = serde_json::json!({
+        "req": {
+            "module": "CDN.SrfCdnDispatchServer",
+            "method": "GetCdnDispatch",
+            "param": {"guid": "658650575", "calltype": 0, "userip": ""}
+        },
+        "req_0": {
+            "module": "vkey.GetVkeyServer",
+            "method": "CgiGetVkey",
+            "param": {
+                "filename": [filename],
+                "guid": "658650575",
+                "songmid": [songmid],
+                "songtype": [0],
+                "uin": "0",
+                "loginflag": 1,
+                "platform": "20"
+            }
+        },
+        "comm": {"uin": 0, "format": "json", "ct": 24, "cv": 0}
+    });
     let url = format!(
-        "{PLAY_URL}?format=json&sign=zzannc1o6o9b4i971602f3554385022046ab796512b7012&data={}",
-        urlencoding::encode(&data_text)
+        "{PLAY_URL}?format=json&data={}",
+        urlencoding::encode(&data.to_string())
     );
     let body: Value = client()?
         .get(url)
@@ -118,16 +138,6 @@ pub async fn stream_url(songmid: &str) -> Result<String, String> {
         .await
         .map_err(|err| format!("Invalid QQ Music stream response: {err}"))?;
     let data = body.pointer("/req_0/data").unwrap_or(&Value::Null);
-    let domain = data
-        .get("sip")
-        .and_then(Value::as_array)
-        .and_then(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .find(|url| !url.starts_with("http://ws"))
-        })
-        .unwrap_or_default();
     let path = data
         .get("midurlinfo")
         .and_then(Value::as_array)
@@ -135,8 +145,12 @@ pub async fn stream_url(songmid: &str) -> Result<String, String> {
         .and_then(|item| item.get("purl"))
         .and_then(Value::as_str)
         .unwrap_or_default();
-    if domain.is_empty() || path.is_empty() {
+    if path.is_empty() {
         return Err("QQ Music did not provide a playable stream. The song may require a login or may be unavailable.".to_string());
     }
-    Ok(format!("{domain}{path}"))
+    if path.starts_with("http://") || path.starts_with("https://") {
+        Ok(path.to_string())
+    } else {
+        Ok(format!("{STREAM_HOST}{path}"))
+    }
 }

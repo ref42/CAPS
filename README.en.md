@@ -21,6 +21,14 @@
 
 **CAPS** means **`C`atch `A`ll `P`ossible `S`ources**, and it also comes from **capsule**. CAPS is built with Rust and Dioxus Desktop. While idle, it shows CPU, memory, and network speed. While music is active, it expands into a music island with cover art, lyrics, spectrum, progress, and compact playback controls. It can also split out a smaller companion island so Coco or Dodo can stay beside the main island.
 
+CAPS supports these audio sources:
+
+- **Online**: search NetEase Cloud Music and QQ Music. QQ results are limited to tracks currently playable without a membership.
+- **Bilibili / YouTube**: paste a video link to extract available audio content.
+- **Local**: choose a local audio folder and add its tracks to the queue in batches.
+- Lyrics are shown when available for NetEase and QQ Music tracks; local tracks can also load lyric files from the same folder.
+- Random Online queues aim for an equal NetEase and QQ Music split while preserving the total number requested.
+
 <p align="center">
   <img src="assets/coco.gif" alt="Coco companion" width="96">
   &nbsp;&nbsp;&nbsp;&nbsp;
@@ -35,7 +43,7 @@
 - Right-click the capsule to exit `CAPS`.
 - Use the Pet page to switch between Coco and Dodo.
 - Mode notes in Settings:
-  - Normal mode: when no song is playing, CAPS shows CPU usage, memory usage, upload speed, and download speed. After you pick a song from the queue, it starts playback and shows lyrics for NetEase tracks plus the spectrum.
+  - Normal mode: when no song is playing, CAPS shows CPU usage, memory usage, upload speed, and download speed. Picking a song from the queue starts playback immediately and shows available lyrics plus the spectrum.
   - Silent mode: only shows CPU usage, memory usage, upload speed, and download speed.
   - Quiet mode: hides song title, lyrics, and related music details, and only shows CPU usage, memory usage, upload speed, and download speed. It becomes a desktop widget for low-profile use.
 

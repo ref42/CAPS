@@ -22,7 +22,7 @@ mod youtube;
 
 use actions::{
     RandomQueueMode, VideoImportSource, append_unique_tracks, spawn_import_video_url,
-    spawn_load_local_queue, spawn_play, spawn_random_queue, spawn_search,
+    spawn_load_local_queue, spawn_play, spawn_prefetch_next, spawn_random_queue, spawn_search,
 };
 use audio::{AudioCommand, AudioPlayer};
 use components::{
@@ -416,6 +416,7 @@ fn App() -> Element {
                 status,
                 lyrics,
             );
+            spawn_prefetch_next(queue, next);
         }
     };
 
@@ -441,6 +442,7 @@ fn App() -> Element {
                 status,
                 lyrics,
             );
+            spawn_prefetch_next(queue, prev);
         }
     };
 
@@ -491,6 +493,7 @@ fn App() -> Element {
                 status,
                 lyrics,
             );
+            spawn_prefetch_next(queue, next);
         }
     });
 
@@ -1098,6 +1101,7 @@ fn App() -> Element {
                                         status,
                                         lyrics,
                                     );
+                                    spawn_prefetch_next(queue, index);
                                 }
                             }
                         },

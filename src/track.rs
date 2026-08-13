@@ -14,6 +14,10 @@ pub struct Track {
     #[serde(default = "default_source")]
     pub source: String,
     pub id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub media_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub stream_url: String,
     pub name: String,
     pub artist: String,
     pub album: String,
@@ -27,6 +31,8 @@ impl From<shitease::ShiteaseSong> for Track {
         Self {
             source: SOURCE_NETEASE.to_string(),
             id: value_id(&song.id),
+            media_id: String::new(),
+            stream_url: String::new(),
             name: source_name(song.name, "netease"),
             artist: clean_or(song.artist, "Unknown artist"),
             album: clean_or(song.album, "Unknown album"),
@@ -41,6 +47,8 @@ impl From<crate::qqmusic::QqMusicSong> for Track {
         Self {
             source: SOURCE_QQMUSIC.to_string(),
             id: song.songmid,
+            media_id: song.media_mid,
+            stream_url: String::new(),
             name: source_name(song.name, "qqmusic"),
             artist: clean_or(Some(song.artist), "Unknown artist"),
             album: clean_or(Some(song.album), "Unknown album"),
@@ -51,12 +59,8 @@ impl From<crate::qqmusic::QqMusicSong> for Track {
 }
 
 fn source_name(name: String, source: &str) -> String {
-    let suffix = format!("-{source}");
-    if name.ends_with(&suffix) {
-        name
-    } else {
-        format!("{name}{suffix}")
-    }
+    let _ = source;
+    name
 }
 
 fn default_source() -> String {

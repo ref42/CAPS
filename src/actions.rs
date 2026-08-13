@@ -7,7 +7,9 @@ use crate::mode::MusicMode;
 use crate::qqmusic;
 use crate::shitease;
 use crate::storage;
-use crate::track::{SOURCE_BILIBILI, SOURCE_LOCAL, SOURCE_QQMUSIC, SOURCE_YOUTUBE, Track};
+use crate::track::{
+    SOURCE_BILIBILI, SOURCE_LOCAL, SOURCE_NETEASE, SOURCE_QQMUSIC, SOURCE_YOUTUBE, Track,
+};
 use crate::youtube;
 use dioxus::prelude::*;
 use std::collections::HashSet;
@@ -58,7 +60,7 @@ pub fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: S
         status.set("Searching online...".to_string());
         let (netease, qqmusic) = tokio::join!(
             shitease::search_shitease_songs(text.clone(), Some(18), None),
-            qqmusic::search(text, 18),
+            qqmusic::search(text.clone(), 18),
         );
         let mut tracks = Vec::new();
         let netease_ok = netease.is_ok();
@@ -72,7 +74,7 @@ pub fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: S
         let count = tracks.len();
         results.set(tracks);
         status.set(match (netease_ok, qqmusic_ok) {
-            (true, true) => format!("Found {count} online tracks."),
+            (true, true) => format!("Found {count} NetEase and QQ Music tracks."),
             (true, false) => format!("Found {count} tracks from NetEase."),
             (false, true) => format!("Found {count} tracks from QQ Music."),
             (false, false) => "Online music search is unavailable.".to_string(),
@@ -139,31 +141,64 @@ pub fn spawn_random_queue(
 ) {
     spawn(async move {
         status.set(format!("Loading random {count}..."));
-        match shitease::random_shitease_queue(Some(count), None).await {
-            Ok(items) => {
-                let tracks = items.into_iter().map(Track::from).collect::<Vec<_>>();
-                let loaded = tracks.len();
-                match mode {
-                    RandomQueueMode::Append => {
-                        let total = {
-                            let mut next = queue.write();
-                            next.extend(tracks);
-                            next.len()
-                        };
-                        status.set(format!("Added {loaded} random tracks. Queue has {total}."));
-                    }
-                    RandomQueueMode::Replace => {
-                        queue.set(tracks);
-                        current_index.set(None);
-                        current_track.set(None);
-                        music_mode.set(MusicMode::Silent);
-                        lyrics.set(Vec::new());
-                        player.send(AudioCommand::Stop);
-                        status.set(format!("Replaced queue with {loaded} random tracks."));
-                    }
+        let provider_count = count.div_ceil(2);
+        let netease_request = shitease::random_shitease_queue(Some(provider_count), None);
+        let qqmusic_request = qqmusic::search_random(provider_count);
+        tokio::pin!(netease_request);
+        tokio::pin!(qqmusic_request);
+        let mut netease = None;
+        let mut qqmusic = None;
+        while netease.is_none() || qqmusic.is_none() {
+            tokio::select! {
+                result = &mut netease_request, if netease.is_none() => {
+                    let items = result
+                        .map(|items| items.into_iter().map(Track::from).collect::<Vec<_>>())
+                        .unwrap_or_default();
+                    netease = Some(items);
+                }
+                result = &mut qqmusic_request, if qqmusic.is_none() => {
+                    let items = result
+                        .map(|items| items.into_iter().map(Track::from).collect::<Vec<_>>())
+                        .unwrap_or_default();
+                    qqmusic = Some(items);
                 }
             }
-            Err(err) => status.set(err),
+        }
+        let netease = netease.unwrap_or_default();
+        let qqmusic = qqmusic.unwrap_or_default();
+        let mut providers = vec![netease, qqmusic];
+        let mut tracks = Vec::with_capacity(count as usize);
+        for slot in 0..provider_count as usize {
+            for items in &mut providers {
+                if let Some(track) = items.get(slot).cloned() {
+                    tracks.push(track);
+                }
+            }
+        }
+        tracks.truncate(count as usize);
+        if !tracks.is_empty() {
+            let loaded = tracks.len();
+            match mode {
+                RandomQueueMode::Append => {
+                    let total = {
+                        let mut next = queue.write();
+                        next.extend(tracks);
+                        next.len()
+                    };
+                    status.set(format!("Added {loaded} random tracks. Queue has {total}."));
+                }
+                RandomQueueMode::Replace => {
+                    queue.set(tracks);
+                    current_index.set(None);
+                    current_track.set(None);
+                    music_mode.set(MusicMode::Silent);
+                    lyrics.set(Vec::new());
+                    player.send(AudioCommand::Stop);
+                    status.set(format!("Replaced queue with {loaded} random tracks."));
+                }
+            }
+        } else {
+            status.set("Online random music is unavailable.".to_string());
         }
     });
 }
@@ -304,37 +339,38 @@ async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<St
         if path.exists() && path.metadata().map(|meta| meta.len()).unwrap_or(0) > 0 {
             return Ok(path.to_string_lossy().to_string());
         }
-        let url = qqmusic::stream_url(&track.id).await?;
+        let url = qqmusic::stream_url_with_media(&track.id, &track.media_id).await?;
         let parent = path
             .parent()
             .ok_or_else(|| "Song cache path is not valid.".to_string())?;
         tokio::fs::create_dir_all(parent)
             .await
             .map_err(|err| format!("Song cache unavailable: {err}"))?;
-        let mut response = reqwest::get(&url)
+        let http = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36")
+            .default_headers({
+                let mut headers = reqwest::header::HeaderMap::new();
+                headers.insert(
+                    reqwest::header::REFERER,
+                    reqwest::header::HeaderValue::from_static("https://y.qq.com/"),
+                );
+                headers
+            })
+            .build()
+            .map_err(|err| format!("QQ Music client unavailable: {err}"))?;
+        let mut response = http
+            .get(&url)
+            .send()
             .await
-            .map_err(|err| format!("Stream request failed: {err}"))?;
-        let temp_path = path.with_extension("download");
-        let mut file = tokio::fs::File::create(&temp_path)
-            .await
-            .map_err(|err| format!("Song cache write failed: {err}"))?;
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|err| format!("Stream read failed: {err}"))?
-        {
-            file.write_all(&chunk)
-                .await
-                .map_err(|err| format!("Song cache write failed: {err}"))?;
+            .map_err(|err| format!("QQ Music stream request failed: {err}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "QQ Music stream request failed with HTTP {}.",
+                response.status()
+            ));
         }
-        file.flush()
-            .await
-            .map_err(|err| format!("Song cache write failed: {err}"))?;
-        drop(file);
-        tokio::fs::rename(&temp_path, &path)
-            .await
-            .map_err(|err| format!("Song cache finalize failed: {err}"))?;
-        return Ok(path.to_string_lossy().to_string());
+        return download_response_to_cache(response, &path, &track.name, &mut status, "Buffering")
+            .await;
     }
     let info =
         shitease::get_shitease_song_url(track.id.clone(), Some("exhigh".to_string()), None).await?;
@@ -377,6 +413,96 @@ async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<St
         .await
         .map_err(|err| format!("Song cache finalize failed: {err}"))?;
     Ok(path.to_string_lossy().to_string())
+}
+
+async fn download_response_to_cache(
+    mut response: reqwest::Response,
+    path: &std::path::Path,
+    title: &str,
+    status: &mut Signal<String>,
+    label: &str,
+) -> Result<String, String> {
+    let total = response.content_length();
+    let temp_path = path.with_extension("download");
+    let mut file = tokio::fs::File::create(&temp_path)
+        .await
+        .map_err(|err| format!("Song cache write failed: {err}"))?;
+    let mut downloaded = 0_u64;
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|err| format!("Stream read failed: {err}"))?
+    {
+        downloaded += chunk.len() as u64;
+        file.write_all(&chunk)
+            .await
+            .map_err(|err| format!("Song cache write failed: {err}"))?;
+        if let Some(total) = total {
+            let percent = downloaded.saturating_mul(100) / total.max(1);
+            status.set(format!("{label} {title}: {percent}%"));
+        } else {
+            status.set(format!("{label} {title}: {}", format_bytes(downloaded)));
+        }
+    }
+    file.flush()
+        .await
+        .map_err(|err| format!("Song cache write failed: {err}"))?;
+    drop(file);
+    tokio::fs::rename(&temp_path, path)
+        .await
+        .map_err(|err| format!("Song cache finalize failed: {err}"))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+pub fn spawn_prefetch(track: Track) {
+    spawn(async move {
+        let Some(path) = storage::song_cache_file(&track.source, &track.id) else {
+            return;
+        };
+        if path.exists() || track.stream_url.is_empty() {
+            return;
+        }
+        let _ = prefetch_track(track, path).await;
+    });
+}
+
+pub fn spawn_prefetch_next(queue: Signal<Vec<Track>>, index: usize) {
+    if let Some(track) = queue.read().get(index + 1).cloned() {
+        spawn_prefetch(track);
+    }
+}
+
+async fn prefetch_track(track: Track, path: std::path::PathBuf) -> Result<(), String> {
+    let url = if track.source == SOURCE_QQMUSIC {
+        qqmusic::stream_url_with_media(&track.id, &track.media_id).await?
+    } else if track.source == SOURCE_NETEASE {
+        shitease::get_shitease_song_url(track.id.clone(), Some("exhigh".to_string()), None)
+            .await?
+            .url
+            .unwrap_or_default()
+    } else {
+        track.stream_url.clone()
+    };
+    if url.is_empty() {
+        return Ok(());
+    }
+    let response = reqwest::Client::new()
+        .get(url)
+        .send()
+        .await
+        .map_err(|err| err.to_string())?
+        .error_for_status()
+        .map_err(|err| err.to_string())?;
+    let mut ignored_status = Signal::new(String::new());
+    let _ = download_response_to_cache(
+        response,
+        &path,
+        &track.name,
+        &mut ignored_status,
+        "Prefetching",
+    )
+    .await?;
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -499,8 +625,17 @@ async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
     if track.source == SOURCE_YOUTUBE {
         return Vec::new();
     }
-    shitease::get_shitease_lyric(track.id.clone(), None)
-        .await
-        .map(|response| crate::lyrics::parse_lrc(response.lyric.as_deref().unwrap_or_default()))
-        .unwrap_or_default()
+    if track.source == SOURCE_QQMUSIC {
+        return qqmusic::lyric(&track.id)
+            .await
+            .map(|text| crate::lyrics::parse_lrc(&text))
+            .unwrap_or_default();
+    }
+    if track.source == crate::track::SOURCE_NETEASE {
+        return shitease::get_shitease_lyric(track.id.clone(), None)
+            .await
+            .map(|response| crate::lyrics::parse_lrc(response.lyric.as_deref().unwrap_or_default()))
+            .unwrap_or_default();
+    }
+    Vec::new()
 }

@@ -111,6 +111,7 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                 let new_player = rodio::Player::connect_new(output.mixer());
                 new_player.set_volume(volume);
                 new_player.append(source);
+                new_player.play();
                 player = Some(new_player);
                 update_state(
                     &state,

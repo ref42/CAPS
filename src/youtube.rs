@@ -41,6 +41,8 @@ pub async fn preview_from_url(url: String) -> Result<ImportPreview, String> {
         track: Track {
             source: SOURCE_YOUTUBE.to_string(),
             id: resolved.video_id,
+            media_id: String::new(),
+            stream_url: String::new(),
             name: resolved.title,
             artist: resolved.uploader,
             album: "YouTube video".to_string(),

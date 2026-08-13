@@ -129,6 +129,8 @@ fn track_from_path(path: &Path, id: String) -> Track {
     Track {
         source: SOURCE_LOCAL.to_string(),
         id,
+        media_id: String::new(),
+        stream_url: String::new(),
         name,
         artist,
         album,

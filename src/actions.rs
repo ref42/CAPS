@@ -359,7 +359,7 @@ async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<St
             })
             .build()
             .map_err(|err| format!("QQ Music client unavailable: {err}"))?;
-        let mut response = http
+        let response = http
             .get(&url)
             .send()
             .await

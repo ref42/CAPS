@@ -8,7 +8,8 @@ use crate::qqmusic;
 use crate::shitease;
 use crate::storage;
 use crate::track::{
-    SOURCE_BILIBILI, SOURCE_LOCAL, SOURCE_NETEASE, SOURCE_QQMUSIC, SOURCE_YOUTUBE, Track,
+    SOURCE_BILIBILI, SOURCE_LOCAL, SOURCE_NETEASE, SOURCE_QQMUSIC, SOURCE_SHITEASE, SOURCE_YOUTUBE,
+    Track,
 };
 use crate::youtube;
 use dioxus::prelude::*;
@@ -631,7 +632,7 @@ async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
             .map(|text| crate::lyrics::parse_lrc(&text))
             .unwrap_or_default();
     }
-    if track.source == crate::track::SOURCE_NETEASE {
+    if track.source == SOURCE_NETEASE || track.source == SOURCE_SHITEASE {
         return shitease::get_shitease_lyric(track.id.clone(), None)
             .await
             .map(|response| crate::lyrics::parse_lrc(response.lyric.as_deref().unwrap_or_default()))

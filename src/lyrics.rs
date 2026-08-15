@@ -48,3 +48,15 @@ fn parse_lrc_time(text: &str) -> Option<f64> {
     let seconds = seconds.parse::<f64>().ok()?;
     Some(minutes * 60.0 + seconds)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{current_lyric_line, parse_lrc};
+
+    #[test]
+    fn parses_provider_lyrics_and_selects_current_line() {
+        let lines = parse_lrc("[ti:Song]\n[00:00.00]Intro\n[00:01.50]Verse");
+        assert_eq!(lines.len(), 2);
+        assert_eq!(current_lyric_line(&lines, 1.2).as_deref(), Some("Verse"));
+    }
+}

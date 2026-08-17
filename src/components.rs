@@ -127,10 +127,10 @@ pub fn SearchPanel(
     onrandom_append: EventHandler<u32>,
     onrandom_replace: EventHandler<u32>,
     onrandom_count: EventHandler<u32>,
+    onclear_results: EventHandler<()>,
     onadd: EventHandler<Track>,
 ) -> Element {
     let search_from_key = query.trim().to_string();
-    let search_from_button = search_from_key.clone();
     let import_from_key = video_url.trim().to_string();
     let import_from_button = import_from_key.clone();
     let video_source_label = match source {
@@ -148,7 +148,6 @@ pub fn SearchPanel(
         _ => "",
     };
     let search_placeholder = tr(language, "Song, artist, album", "歌曲、歌手、专辑");
-    let random_label = tr(language, "Random", "随机");
     let folder_label = tr(language, "Folder", "文件夹");
     let local_placeholder = tr(language, "path/to/your/audios", "你的音频文件夹");
     let empty_status = if status.trim().is_empty() {
@@ -156,8 +155,6 @@ pub fn SearchPanel(
     } else {
         status.as_str()
     };
-    let random_progress =
-        ((random_count.saturating_sub(1) as f64 / 99.0) * 100.0).clamp(0.0, 100.0);
     rsx! {
         div { class: "panel-section",
             div { class: "source-switch",
@@ -201,23 +198,17 @@ pub fn SearchPanel(
                             }
                             span { class: "search-icon", "⌕" }
                         }
-                        button {
-                            class: "source-action",
-                            onclick: move |_| onsearch.call(search_from_button.clone()),
-                            "{tr(language, \"Search\", \"搜索\")}"
-                        }
                     }
                     div { class: "random-control",
-                        span { "{random_label} {random_count}" }
                         input {
-                            r#type: "range",
+                            class: "random-count-input",
+                            r#type: "number",
                             min: "1",
-                            max: "100",
+                            max: "999",
                             value: "{random_count}",
-                            style: "--random-progress: {random_progress:.2}%;",
                             oninput: move |event| {
                                 if let Ok(value) = event.value().parse::<u32>() {
-                                    onrandom_count.call(value.clamp(1, 100));
+                                    onrandom_count.call(value.clamp(1, 999));
                                 }
                             },
                         }
@@ -230,6 +221,12 @@ pub fn SearchPanel(
                             class: "random-add random-replace",
                             onclick: move |_| onrandom_replace.call(random_count),
                             "{tr(language, \"Replace\", \"替换\")}"
+                        }
+                        button {
+                            class: "random-clear",
+                            title: "{tr(language, \"Clear search results\", \"清空搜索结果\")}",
+                            onclick: move |_| onclear_results.call(()),
+                            "{tr(language, \"Clear\", \"清空\")}"
                         }
                     }
                 }

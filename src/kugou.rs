@@ -1,7 +1,7 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use reqwest::header::{HeaderMap, HeaderValue, REFERER, USER_AGENT};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 const SEARCH_URL: &str = "https://songsearch.kugou.com/song_search_v2";
 const PLAY_URL: &str = "https://gateway.kugou.com/v5/url";
@@ -33,14 +33,19 @@ fn client() -> Result<reqwest::Client, String> {
 }
 
 pub async fn search(keywords: String, limit: u32) -> Result<Vec<KugouSong>, String> {
+    search_page(keywords, limit, 1).await
+}
+
+async fn search_page(keywords: String, limit: u32, page: u32) -> Result<Vec<KugouSong>, String> {
     let keywords = keywords.trim();
     if keywords.is_empty() {
         return Ok(Vec::new());
     }
     let url = format!(
-        "{SEARCH_URL}?keyword={}&page=1&pagesize={}",
+        "{SEARCH_URL}?keyword={}&page={}&pagesize={}",
         urlencoding::encode(keywords),
-        limit.clamp(1, 30)
+        page.max(1),
+        limit.clamp(1, 99)
     );
     let body: Value = client()?
         .get(url)
@@ -60,6 +65,67 @@ pub async fn search(keywords: String, limit: u32) -> Result<Vec<KugouSong>, Stri
                 .collect::<Vec<KugouSong>>()
         })
         .unwrap_or_default())
+}
+
+pub async fn search_random(limit: u32) -> Result<Vec<KugouSong>, String> {
+    let target = limit.clamp(1, 999) as usize;
+    let queries = [
+        "热门歌曲",
+        "经典歌曲",
+        "流行音乐",
+        "华语歌曲",
+        "英文歌曲",
+        "粤语歌曲",
+        "日语歌曲",
+        "韩语歌曲",
+        "欧美流行",
+        "怀旧金曲",
+        "古风歌曲",
+        "国风音乐",
+        "古风纯音乐",
+        "民谣",
+        "摇滚",
+        "电子音乐",
+        "R&B",
+        "说唱",
+        "爵士",
+        "轻音乐",
+        "纯音乐",
+        "影视原声",
+        "动漫歌曲",
+        "游戏原声",
+        "治愈系",
+        "夜晚听歌",
+        "工作学习",
+        "运动节奏",
+        "旅行音乐",
+        "新歌热门",
+    ];
+    let offset = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_secs() as usize % queries.len())
+        .unwrap_or(0);
+    let mut songs = Vec::with_capacity(target);
+    let mut seen = HashSet::new();
+    for page in 1..=12 {
+        for index in 0..queries.len() {
+            let query = queries[(index + offset) % queries.len()];
+            let remaining = target.saturating_sub(songs.len()).clamp(1, 99);
+            let found = search_page(query.to_string(), remaining as u32, page).await?;
+            for song in found {
+                if seen.insert(song.hash.clone()) {
+                    songs.push(song);
+                }
+                if songs.len() >= target {
+                    return Ok(songs);
+                }
+            }
+            if songs.len() >= target {
+                return Ok(songs);
+            }
+        }
+    }
+    Ok(songs)
 }
 
 fn map_song(value: &Value) -> Option<KugouSong> {

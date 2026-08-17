@@ -57,7 +57,7 @@ impl AppSettings {
         self.opacity = self.opacity.clamp(10, 100);
         self.volume = self.volume.clamp(0, 100);
         self.island_size = self.island_size.clamp(85, 150);
-        self.random_count = self.random_count.clamp(1, 100);
+        self.random_count = self.random_count.clamp(1, 999);
         if self.active_tab == "stats" {
             self.active_tab = "pet".to_string();
         }

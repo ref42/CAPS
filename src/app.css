@@ -896,6 +896,7 @@ button {
 .tab:active,
 .song:active,
 .random-add:active,
+.random-clear:active,
 .queue-toolbar button:active,
 .icon-button:active {
   transform: scale(0.94);
@@ -1110,13 +1111,18 @@ button {
   display: flex;
   min-height: 0;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .search-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 76px;
   gap: 8px;
+}
+
+.netease-mode .search-row {
+  width: min(100%, 668px);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .search-field {
@@ -1292,11 +1298,13 @@ button {
 }
 
 .random-control {
-  min-height: 42px;
-  padding: 0 2px;
+  width: 100%;
+  min-height: 40px;
+  padding: 3px;
   display: grid;
-  grid-template-columns: 78px minmax(0, 1fr) 64px 66px;
-  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: center;
+  gap: 5px;
 }
 
 .random-control span {
@@ -1306,50 +1314,41 @@ button {
   white-space: nowrap;
 }
 
-.random-control input[type="range"] {
-  min-width: 0;
+.random-count-input {
   width: 100%;
-  height: 28px;
-  margin: 7px 0;
-  appearance: none;
-  background: transparent;
-  cursor: pointer;
-}
-
-.random-control input[type="range"]::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(125, 242, 202, 0.88) 0 var(--random-progress, 7%), rgba(255, 255, 255, 0.16) var(--random-progress, 7%) 100%);
-}
-
-.random-control input[type="range"]::-webkit-slider-thumb {
-  width: 16px;
-  height: 16px;
-  margin-top: -6px;
-  border: 0;
-  border-radius: 50%;
-  appearance: none;
-  background: rgba(125, 242, 202, 0.96);
-  box-shadow: 0 0 0 3px rgba(125, 242, 202, 0.12);
-}
-
-.random-control input[type="range"]::-moz-range-track {
-  height: 4px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(125, 242, 202, 0.88) 0 var(--random-progress, 7%), rgba(255, 255, 255, 0.16) var(--random-progress, 7%) 100%);
-}
-
-.random-control input[type="range"]::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(125, 242, 202, 0.96);
-  box-shadow: 0 0 0 3px rgba(125, 242, 202, 0.12);
-}
-
-.random-add {
   height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent),
+    rgba(142, 142, 147, calc(var(--soft-alpha) * 0.62));
+  color: rgba(248, 255, 252, 0.92);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 34px;
+  text-align: center;
+  outline: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.random-count-input:focus {
+  box-shadow: inset 0 0 0 1px rgba(125, 242, 202, 0.62);
+}
+
+.random-count-input::-webkit-inner-spin-button,
+.random-count-input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.random-add,
+.random-clear {
+  width: 100%;
+  height: 34px;
+  padding: 0 12px;
   border-radius: 10px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent),
@@ -1367,8 +1366,17 @@ button {
   color: rgba(255, 214, 214, 0.92);
 }
 
-.random-add:hover {
+.random-add:hover,
+.random-clear:hover {
   background: rgba(255, 255, 255, var(--hover-alpha));
+}
+
+.random-clear {
+  color: rgba(248, 255, 252, 0.68);
+}
+
+.random-clear:hover {
+  color: rgba(255, 214, 214, 0.94);
 }
 
 .queue-toolbar button:hover,
@@ -1389,14 +1397,15 @@ button {
   flex-direction: column;
   gap: 5px;
   overflow-y: auto;
-  padding-right: 2px;
+  padding-right: 5px;
 }
 
 .song-list::-webkit-scrollbar {
-  width: 4px;
+  width: 8px;
 }
 
 .song-list::-webkit-scrollbar-thumb {
+  min-height: 72px;
   border-radius: 999px;
   background: rgba(142, 142, 147, 0.45);
 }

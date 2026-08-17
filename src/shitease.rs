@@ -254,8 +254,8 @@ pub async fn search_shitease_songs(
         return Ok(Vec::new());
     }
     let client = client()?;
-    let target = limit.unwrap_or(12).clamp(1, 50);
-    let raw_limit = target.saturating_mul(3).clamp(target, 50);
+    let target = limit.unwrap_or(12).clamp(1, 99);
+    let raw_limit = target.saturating_mul(3).clamp(target, 99);
     let songs = search_direct(&client, &keywords, raw_limit).await?;
     let mut playable = filter_playable_songs(&client, songs).await?;
     playable.truncate(target as usize);
@@ -360,18 +360,38 @@ pub async fn random_shitease_queue(
     count: Option<u32>,
     _api_base_url: Option<String>,
 ) -> Result<Vec<ShiteaseSong>, String> {
-    let target = count.unwrap_or(50).clamp(1, 100);
+    let target = count.unwrap_or(50).clamp(1, 999);
     let seeds = [
-        "华语 流行",
-        "古风 器乐",
-        "独立 民谣",
-        "夜晚 轻音乐",
-        "电子 氛围",
-        "治愈 女声",
-        "摇滚 现场",
-        "爵士 piano",
-        "国风 原声",
-        "新歌 热门",
+        "热门歌曲",
+        "经典歌曲",
+        "流行音乐",
+        "华语歌曲",
+        "英文歌曲",
+        "粤语歌曲",
+        "日语歌曲",
+        "韩语歌曲",
+        "欧美流行",
+        "怀旧金曲",
+        "古风歌曲",
+        "国风音乐",
+        "古风纯音乐",
+        "民谣",
+        "摇滚",
+        "电子音乐",
+        "R&B",
+        "说唱",
+        "爵士",
+        "轻音乐",
+        "纯音乐",
+        "影视原声",
+        "动漫歌曲",
+        "游戏原声",
+        "治愈系",
+        "夜晚听歌",
+        "工作学习",
+        "运动节奏",
+        "旅行音乐",
+        "新歌热门",
     ];
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -384,7 +404,9 @@ pub async fn random_shitease_queue(
 
     shuffle(&mut seed_pool, &mut random_state);
 
-    for seed in seed_pool.iter().cycle().take(seed_pool.len() * 4) {
+    let max_rounds =
+        ((target as usize * 3).div_ceil(50) + seed_pool.len()).max(seed_pool.len() * 4);
+    for seed in seed_pool.iter().cycle().take(max_rounds) {
         if songs.len() >= target as usize * 3 {
             break;
         }

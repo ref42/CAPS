@@ -1052,6 +1052,10 @@ fn App() -> Element {
                         onrandom_append: move |count| load_random_append(count),
                         onrandom_replace: move |count| load_random_replace(count),
                         onrandom_count: move |value| random_count.set(value),
+                        onclear_results: move |_| {
+                            results.set(Vec::new());
+                            status.set(String::new());
+                        },
                         onadd: move |track| {
                             let (added, total) = {
                                 let mut next = queue.write();

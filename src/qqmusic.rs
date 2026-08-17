@@ -37,19 +37,53 @@ pub async fn search(keywords: String, limit: u32) -> Result<Vec<QqMusicSong>, St
 }
 
 pub async fn search_random(limit: u32) -> Result<Vec<QqMusicSong>, String> {
-    let target = limit.min(50) as usize;
-    let queries = ["热门歌曲", "经典歌曲", "流行音乐", "华语歌曲", "英文歌曲"];
+    let target = limit.clamp(1, 999) as usize;
+    let queries = [
+        "热门歌曲",
+        "经典歌曲",
+        "流行音乐",
+        "华语歌曲",
+        "英文歌曲",
+        "粤语歌曲",
+        "日语歌曲",
+        "韩语歌曲",
+        "欧美流行",
+        "怀旧金曲",
+        "古风歌曲",
+        "国风音乐",
+        "古风纯音乐",
+        "民谣",
+        "摇滚",
+        "电子音乐",
+        "R&B",
+        "说唱",
+        "爵士",
+        "轻音乐",
+        "纯音乐",
+        "影视原声",
+        "动漫歌曲",
+        "游戏原声",
+        "治愈系",
+        "夜晚听歌",
+        "工作学习",
+        "运动节奏",
+        "旅行音乐",
+        "新歌热门",
+    ];
+    let offset = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_secs() as usize % queries.len())
+        .unwrap_or(0);
     let mut songs = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for query in queries {
-        for page in 1..=4 {
+    for page in 1..=12 {
+        for index in 0..queries.len() {
             if songs.len() >= target {
                 return Ok(songs);
             }
-            let batch = search_page(query.to_string(), 50, page).await?;
-            if batch.is_empty() {
-                break;
-            }
+            let query = queries[(index + offset) % queries.len()];
+            let remaining = target.saturating_sub(songs.len()).clamp(1, 99);
+            let batch = search_page(query.to_string(), remaining as u32, page).await?;
             for song in batch {
                 if seen.insert(song.songmid.clone()) {
                     songs.push(song);
@@ -68,7 +102,7 @@ async fn search_page(keywords: String, limit: u32, page: u32) -> Result<Vec<QqMu
     if keywords.is_empty() {
         return Ok(Vec::new());
     }
-    let limit = limit.clamp(1, 50).to_string();
+    let limit = limit.clamp(1, 99).to_string();
     let url = format!(
         "{SEARCH_URL}?format=json&w={}&n={}&p={}&catZhida=1",
         urlencoding::encode(keywords),

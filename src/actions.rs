@@ -19,6 +19,7 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 
 const LOCAL_IMPORT_BATCH_SIZE: usize = 80;
+const ONLINE_SEARCH_LIMIT: u32 = 999;
 
 pub fn spawn_play(
     track: Track,
@@ -61,9 +62,9 @@ pub fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: S
     spawn(async move {
         status.set("Searching online...".to_string());
         let (netease, qqmusic, kugou) = tokio::join!(
-            shitease::search_shitease_songs(text.clone(), Some(18), None),
-            qqmusic::search(text.clone(), 18),
-            kugou::search(text.clone(), 18),
+            shitease::search_shitease_songs(text.clone(), Some(ONLINE_SEARCH_LIMIT), None),
+            qqmusic::search(text.clone(), ONLINE_SEARCH_LIMIT),
+            kugou::search(text.clone(), ONLINE_SEARCH_LIMIT),
         );
         let mut tracks = Vec::new();
         if let Ok(items) = netease {
@@ -144,41 +145,51 @@ pub fn spawn_random_queue(
 ) {
     spawn(async move {
         status.set(format!("Loading random {count}..."));
-        let provider_count = count.div_ceil(2);
+        let provider_count = count.clamp(1, 999);
         let netease_request = shitease::random_shitease_queue(Some(provider_count), None);
         let qqmusic_request = qqmusic::search_random(provider_count);
+        let kugou_request = kugou::search_random(provider_count);
         tokio::pin!(netease_request);
         tokio::pin!(qqmusic_request);
-        let mut netease = None;
-        let mut qqmusic = None;
-        while netease.is_none() || qqmusic.is_none() {
-            tokio::select! {
-                result = &mut netease_request, if netease.is_none() => {
-                    let items = result
-                        .map(|items| items.into_iter().map(Track::from).collect::<Vec<_>>())
-                        .unwrap_or_default();
-                    netease = Some(items);
-                }
-                result = &mut qqmusic_request, if qqmusic.is_none() => {
-                    let items = result
-                        .map(|items| items.into_iter().map(Track::from).collect::<Vec<_>>())
-                        .unwrap_or_default();
-                    qqmusic = Some(items);
-                }
-            }
-        }
-        let netease = netease.unwrap_or_default();
-        let qqmusic = qqmusic.unwrap_or_default();
-        let mut providers = vec![netease, qqmusic];
-        let mut tracks = Vec::with_capacity(count as usize);
-        for slot in 0..provider_count as usize {
-            for items in &mut providers {
-                if let Some(track) = items.get(slot).cloned() {
+        tokio::pin!(kugou_request);
+        let (netease, qqmusic, kugou) =
+            tokio::join!(netease_request, qqmusic_request, kugou_request,);
+        let providers = vec![
+            netease
+                .unwrap_or_default()
+                .into_iter()
+                .map(Track::from)
+                .collect::<Vec<_>>(),
+            qqmusic
+                .unwrap_or_default()
+                .into_iter()
+                .map(Track::from)
+                .collect::<Vec<_>>(),
+            kugou
+                .unwrap_or_default()
+                .into_iter()
+                .map(Track::from)
+                .collect::<Vec<_>>(),
+        ];
+        let requested = provider_count as usize;
+        let mut provider_slots = vec![0usize; providers.len()];
+        let mut tracks = Vec::with_capacity(requested);
+        while tracks.len() < requested {
+            let mut added_this_round = false;
+            for (provider_index, items) in providers.iter().enumerate() {
+                if let Some(track) = items.get(provider_slots[provider_index]).cloned() {
+                    provider_slots[provider_index] += 1;
                     tracks.push(track);
+                    added_this_round = true;
+                    if tracks.len() >= requested {
+                        break;
+                    }
                 }
             }
+            if !added_this_round {
+                break;
+            }
         }
-        tracks.truncate(count as usize);
         if !tracks.is_empty() {
             let loaded = tracks.len();
             match mode {

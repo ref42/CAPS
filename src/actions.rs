@@ -5,7 +5,6 @@ use crate::kugou;
 use crate::local_music;
 use crate::lyrics::LyricLine;
 use crate::mode::MusicMode;
-use crate::qishui;
 use crate::qqmusic;
 use crate::shitease;
 use crate::storage;
@@ -61,11 +60,10 @@ pub fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: S
     }
     spawn(async move {
         status.set("Searching online...".to_string());
-        let (netease, qqmusic, kugou, qishui) = tokio::join!(
+        let (netease, qqmusic, kugou) = tokio::join!(
             shitease::search_shitease_songs(text.clone(), Some(18), None),
             qqmusic::search(text.clone(), 18),
             kugou::search(text.clone(), 18),
-            qishui::search(text.clone(), 18),
         );
         let mut tracks = Vec::new();
         if let Ok(items) = netease {
@@ -75,9 +73,6 @@ pub fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: S
             tracks.extend(items.into_iter().map(Track::from));
         }
         if let Ok(items) = kugou {
-            tracks.extend(items.into_iter().map(Track::from));
-        }
-        if let Ok(items) = qishui {
             tracks.extend(items.into_iter().map(Track::from));
         }
         let count = tracks.len();
@@ -415,9 +410,6 @@ async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<St
         return download_response_to_cache(response, &path, &track.name, &mut status, "Buffering")
             .await;
     }
-    if track.source == crate::track::SOURCE_QISHUI {
-        return Err("Qishui returned metadata without a playable anonymous stream.".to_string());
-    }
     let info =
         shitease::get_shitease_song_url(track.id.clone(), Some("exhigh".to_string()), None).await?;
     let url = info
@@ -697,12 +689,6 @@ async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
         {
             return crate::lyrics::parse_lrc(&text);
         }
-        return crate::lyric_finder::find(&track.name, &track.artist, track.duration)
-            .await
-            .map(|text| crate::lyrics::parse_lrc(&text))
-            .unwrap_or_default();
-    }
-    if track.source == crate::track::SOURCE_QISHUI {
         return crate::lyric_finder::find(&track.name, &track.artist, track.duration)
             .await
             .map(|text| crate::lyrics::parse_lrc(&text))

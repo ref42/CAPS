@@ -14,7 +14,6 @@ mod local_music;
 mod lyric_finder;
 mod lyrics;
 mod mode;
-mod qishui;
 mod qqmusic;
 mod shitease;
 mod storage;

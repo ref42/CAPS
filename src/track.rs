@@ -6,7 +6,6 @@ pub const SOURCE_SHITEASE: &str = "shitease";
 pub const SOURCE_NETEASE: &str = "netease";
 pub const SOURCE_QQMUSIC: &str = "qqmusic";
 pub const SOURCE_KUGOU: &str = "kugou";
-pub const SOURCE_QISHUI: &str = "qishui";
 pub const SOURCE_LOCAL: &str = "local";
 pub const SOURCE_BILIBILI: &str = "bilibili";
 pub const SOURCE_YOUTUBE: &str = "youtube";
@@ -70,22 +69,6 @@ impl From<crate::kugou::KugouSong> for Track {
                 song.quality_hash, song.album_id, song.album_audio_id
             ),
             stream_url: String::new(),
-            name: song.name,
-            artist: clean_or(Some(song.artist), "Unknown artist"),
-            album: clean_or(Some(song.album), "Unknown album"),
-            cover: song.cover,
-            duration: (song.duration > 0).then_some(song.duration),
-        }
-    }
-}
-
-impl From<crate::qishui::QishuiSong> for Track {
-    fn from(song: crate::qishui::QishuiSong) -> Self {
-        Self {
-            source: SOURCE_QISHUI.to_string(),
-            id: song.id,
-            media_id: String::new(),
-            stream_url: song.stream_url,
             name: song.name,
             artist: clean_or(Some(song.artist), "Unknown artist"),
             album: clean_or(Some(song.album), "Unknown album"),

@@ -781,7 +781,6 @@ fn search_track_name(track: &Track) -> String {
         crate::track::SOURCE_NETEASE | crate::track::SOURCE_SHITEASE => "netease",
         crate::track::SOURCE_QQMUSIC => "qqmusic",
         crate::track::SOURCE_KUGOU => "kugou",
-        crate::track::SOURCE_QISHUI => "qishui",
         _ => return track.name.clone(),
     };
     format!("{} - {suffix}", track.name)

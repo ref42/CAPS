@@ -23,10 +23,11 @@
 
 CAPS supports these audio sources:
 
-- **Online**: search NetEase Cloud Music and QQ Music. QQ results are limited to tracks currently playable without a membership.
+- **Online**: search NetEase Cloud Music, QQ Music, and KuGou. Results are limited to tracks with a playable stream; QQ Music also excludes membership-only tracks.
 - **Bilibili / YouTube**: paste a video link to extract available audio content.
 - **Local**: choose a local audio folder and add its tracks to the queue in batches.
-- Lyrics are shown when available for NetEase and QQ Music tracks; local tracks can also load lyric files from the same folder.
+- Lyrics are shown when available for NetEase, QQ Music, and KuGou tracks; local tracks can also load lyric files from the same folder.
+- Search results show a provider suffix to distinguish identical songs from different services; queued tracks keep their original names.
 - Random Online queues aim for an equal NetEase and QQ Music split while preserving the total number requested.
 
 <p align="center">

@@ -756,6 +756,7 @@ pub fn TrackRow(
         format!("background-image: url('{}');", track.cover)
     };
     let detail = track_detail(&track);
+    let display_name = search_track_name(&track);
     let duration = track
         .duration
         .map(format_track_duration)
@@ -764,7 +765,7 @@ pub fn TrackRow(
         button { class: if active { "song active" } else { "song" }, onclick,
             span { class: "song-cover", style: "{cover_style}" }
             span { class: "song-copy",
-                strong { "{track.name}" }
+                strong { "{display_name}" }
                 small { "{detail}" }
             }
             if !duration.is_empty() {
@@ -773,6 +774,17 @@ pub fn TrackRow(
             span { class: "song-action", "{action}" }
         }
     }
+}
+
+fn search_track_name(track: &Track) -> String {
+    let suffix = match track.source.as_str() {
+        crate::track::SOURCE_NETEASE | crate::track::SOURCE_SHITEASE => "netease",
+        crate::track::SOURCE_QQMUSIC => "qqmusic",
+        crate::track::SOURCE_KUGOU => "kugou",
+        crate::track::SOURCE_QISHUI => "qishui",
+        _ => return track.name.clone(),
+    };
+    format!("{} - {suffix}", track.name)
 }
 
 #[component]

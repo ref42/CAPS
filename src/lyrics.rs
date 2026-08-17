@@ -34,7 +34,7 @@ pub fn parse_lrc(text: &str) -> Vec<LyricLine> {
 }
 
 pub fn current_lyric_line(lines: &[LyricLine], position: f64) -> Option<String> {
-    let target = position + 0.55;
+    let target = position + 0.12;
     lines
         .iter()
         .take_while(|line| line.time <= target)
@@ -57,6 +57,6 @@ mod tests {
     fn parses_provider_lyrics_and_selects_current_line() {
         let lines = parse_lrc("[ti:Song]\n[00:00.00]Intro\n[00:01.50]Verse");
         assert_eq!(lines.len(), 2);
-        assert_eq!(current_lyric_line(&lines, 1.2).as_deref(), Some("Verse"));
+        assert_eq!(current_lyric_line(&lines, 1.45).as_deref(), Some("Verse"));
     }
 }

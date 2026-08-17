@@ -1,15 +1,17 @@
 use crate::audio::{AudioCommand, AudioPlayer};
 use crate::bilibili;
 use crate::formatting::format_bytes;
+use crate::kugou;
 use crate::local_music;
 use crate::lyrics::LyricLine;
 use crate::mode::MusicMode;
+use crate::qishui;
 use crate::qqmusic;
 use crate::shitease;
 use crate::storage;
 use crate::track::{
-    SOURCE_BILIBILI, SOURCE_LOCAL, SOURCE_NETEASE, SOURCE_QQMUSIC, SOURCE_SHITEASE, SOURCE_YOUTUBE,
-    Track,
+    SOURCE_BILIBILI, SOURCE_KUGOU, SOURCE_LOCAL, SOURCE_NETEASE, SOURCE_QQMUSIC, SOURCE_SHITEASE,
+    SOURCE_YOUTUBE, Track,
 };
 use crate::youtube;
 use dioxus::prelude::*;
@@ -59,26 +61,31 @@ pub fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: S
     }
     spawn(async move {
         status.set("Searching online...".to_string());
-        let (netease, qqmusic) = tokio::join!(
+        let (netease, qqmusic, kugou, qishui) = tokio::join!(
             shitease::search_shitease_songs(text.clone(), Some(18), None),
             qqmusic::search(text.clone(), 18),
+            kugou::search(text.clone(), 18),
+            qishui::search(text.clone(), 18),
         );
         let mut tracks = Vec::new();
-        let netease_ok = netease.is_ok();
-        let qqmusic_ok = qqmusic.is_ok();
         if let Ok(items) = netease {
             tracks.extend(items.into_iter().map(Track::from));
         }
         if let Ok(items) = qqmusic {
             tracks.extend(items.into_iter().map(Track::from));
         }
+        if let Ok(items) = kugou {
+            tracks.extend(items.into_iter().map(Track::from));
+        }
+        if let Ok(items) = qishui {
+            tracks.extend(items.into_iter().map(Track::from));
+        }
         let count = tracks.len();
         results.set(tracks);
-        status.set(match (netease_ok, qqmusic_ok) {
-            (true, true) => format!("Found {count} NetEase and QQ Music tracks."),
-            (true, false) => format!("Found {count} tracks from NetEase."),
-            (false, true) => format!("Found {count} tracks from QQ Music."),
-            (false, false) => "Online music search is unavailable.".to_string(),
+        status.set(if count == 0 {
+            "Online music search is unavailable.".to_string()
+        } else {
+            format!("Found {count} playable online tracks.")
         });
     });
 }
@@ -373,6 +380,44 @@ async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<St
         return download_response_to_cache(response, &path, &track.name, &mut status, "Buffering")
             .await;
     }
+    if track.source == SOURCE_KUGOU {
+        let path = storage::song_cache_file(&track.source, &track.id)
+            .ok_or_else(|| "Song cache path is not available.".to_string())?;
+        if path.exists() && path.metadata().map(|meta| meta.len()).unwrap_or(0) > 0 {
+            return Ok(path.to_string_lossy().to_string());
+        }
+        let (quality_hash, album_id, album_audio_id) = kugou_metadata(&track);
+        let url = kugou::stream_url(&track.id, quality_hash, album_id, album_audio_id).await?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| "Song cache path is not valid.".to_string())?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|err| format!("Song cache unavailable: {err}"))?;
+        let response = reqwest::Client::builder()
+            .user_agent("CAPS/1.0")
+            .build()
+            .map_err(|err| format!("KuGou download client unavailable: {err}"))?
+            .get(url)
+            .header(
+                reqwest::header::REFERER,
+                reqwest::header::HeaderValue::from_static("https://www.kugou.com/"),
+            )
+            .send()
+            .await
+            .map_err(|err| format!("KuGou stream request failed: {err}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "KuGou stream request failed with HTTP {}.",
+                response.status()
+            ));
+        }
+        return download_response_to_cache(response, &path, &track.name, &mut status, "Buffering")
+            .await;
+    }
+    if track.source == crate::track::SOURCE_QISHUI {
+        return Err("Qishui returned metadata without a playable anonymous stream.".to_string());
+    }
     let info =
         shitease::get_shitease_song_url(track.id.clone(), Some("exhigh".to_string()), None).await?;
     let url = info
@@ -414,6 +459,15 @@ async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<St
         .await
         .map_err(|err| format!("Song cache finalize failed: {err}"))?;
     Ok(path.to_string_lossy().to_string())
+}
+
+fn kugou_metadata(track: &Track) -> (&str, &str, &str) {
+    let mut parts = track.media_id.split('|');
+    (
+        parts.next().unwrap_or_default(),
+        parts.next().unwrap_or_default(),
+        parts.next().unwrap_or_default(),
+    )
 }
 
 async fn download_response_to_cache(
@@ -476,6 +530,9 @@ pub fn spawn_prefetch_next(queue: Signal<Vec<Track>>, index: usize) {
 async fn prefetch_track(track: Track, path: std::path::PathBuf) -> Result<(), String> {
     let url = if track.source == SOURCE_QQMUSIC {
         qqmusic::stream_url_with_media(&track.id, &track.media_id).await?
+    } else if track.source == SOURCE_KUGOU {
+        let (quality_hash, album_id, album_audio_id) = kugou_metadata(&track);
+        kugou::stream_url(&track.id, quality_hash, album_id, album_audio_id).await?
     } else if track.source == SOURCE_NETEASE {
         shitease::get_shitease_song_url(track.id.clone(), Some("exhigh".to_string()), None)
             .await?
@@ -487,7 +544,10 @@ async fn prefetch_track(track: Track, path: std::path::PathBuf) -> Result<(), St
     if url.is_empty() {
         return Ok(());
     }
-    let response = reqwest::Client::new()
+    let response = reqwest::Client::builder()
+        .user_agent("CAPS/1.0")
+        .build()
+        .map_err(|err| format!("Audio download client unavailable: {err}"))?
         .get(url)
         .send()
         .await
@@ -628,6 +688,22 @@ async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
     }
     if track.source == SOURCE_QQMUSIC {
         return qqmusic::lyric(&track.id)
+            .await
+            .map(|text| crate::lyrics::parse_lrc(&text))
+            .unwrap_or_default();
+    }
+    if track.source == SOURCE_KUGOU {
+        if let Ok(text) = kugou::lyric(&track.id, &track.name, &track.artist, track.duration).await
+        {
+            return crate::lyrics::parse_lrc(&text);
+        }
+        return crate::lyric_finder::find(&track.name, &track.artist, track.duration)
+            .await
+            .map(|text| crate::lyrics::parse_lrc(&text))
+            .unwrap_or_default();
+    }
+    if track.source == crate::track::SOURCE_QISHUI {
+        return crate::lyric_finder::find(&track.name, &track.artist, track.duration)
             .await
             .map(|text| crate::lyrics::parse_lrc(&text))
             .unwrap_or_default();

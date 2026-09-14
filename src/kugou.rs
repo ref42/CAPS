@@ -375,7 +375,11 @@ fn md5_hex(value: &str) -> String {
     use md5::{Digest, Md5};
     let mut hasher = Md5::new();
     hasher.update(value.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn hex_to_decimal(value: &str) -> String {

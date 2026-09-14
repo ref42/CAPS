@@ -19,7 +19,9 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 
 const LOCAL_IMPORT_BATCH_SIZE: usize = 80;
-const ONLINE_SEARCH_LIMIT: u32 = 999;
+// Keep the first result set responsive instead of making every search wait for
+// hundreds of remote records from each provider.
+const ONLINE_SEARCH_LIMIT: u32 = 150;
 
 pub fn spawn_play(
     track: Track,

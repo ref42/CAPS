@@ -130,7 +130,8 @@ pub fn SearchPanel(
     onclear_results: EventHandler<()>,
     onadd: EventHandler<Track>,
 ) -> Element {
-    let search_from_key = query.trim().to_string();
+    let mut composing = use_signal(|| false);
+    let mut search_draft = use_signal(|| query.clone());
     let import_from_key = video_url.trim().to_string();
     let import_from_button = import_from_key.clone();
     let video_source_label = match source {
@@ -185,14 +186,23 @@ pub fn SearchPanel(
                     div { class: "search-row",
                         div { class: "search-field",
                             input {
-                                value: "{query}",
+                                // Let the browser own the live value and IME selection.
+                                // Dioxus reapplies `value` on rerenders, which can replace
+                                // an active composition with an older Pinyin snapshot.
+                                initial_value: "{query}",
                                 placeholder: "{search_placeholder}",
                                 onfocus,
                                 onblur,
-                                oninput: move |event| onquery.call(event.value()),
+                                oncompositionstart: move |_| composing.set(true),
+                                oncompositionend: move |_| composing.set(false),
+                                oninput: move |event| {
+                                    let text = event.value();
+                                    search_draft.set(text.clone());
+                                    onquery.call(text);
+                                },
                                 onkeydown: move |event| {
-                                    if event.key() == Key::Enter && !event.is_composing() {
-                                        onsearch.call(search_from_key.clone());
+                                    if event.key() == Key::Enter && !event.is_composing() && !composing() {
+                                        onsearch.call(search_draft.peek().trim().to_string());
                                     }
                                 }
                             }

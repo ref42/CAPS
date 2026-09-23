@@ -247,13 +247,13 @@ where
         let _ = tokio::fs::remove_file(&temp_path).await;
         return Err("Update download was empty.".to_string());
     }
-    if let Some(expected) = expected_size {
-        if downloaded != expected {
-            let _ = tokio::fs::remove_file(&temp_path).await;
-            return Err(format!(
-                "Update download size mismatch: got {downloaded} bytes, expected {expected} bytes."
-            ));
-        }
+    if let Some(expected) = expected_size
+        && downloaded != expected
+    {
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        return Err(format!(
+            "Update download size mismatch: got {downloaded} bytes, expected {expected} bytes."
+        ));
     }
     let _ = tokio::fs::remove_file(&final_path).await;
     tokio::fs::rename(&temp_path, &final_path)
@@ -311,7 +311,7 @@ fn release_url(release: &GitHubRelease) -> String {
     if release.html_url.trim().is_empty() {
         RELEASE_PAGE_URL.to_string()
     } else {
-        release.html_url.clone()
+        release.html_url.to_owned()
     }
 }
 

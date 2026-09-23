@@ -40,10 +40,10 @@ impl AudioPlayer {
     pub fn spawn() -> Self {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<AudioCommand>();
         let state = Arc::new(Mutex::new(AudioState::default()));
-        let state_clone = Arc::clone(&state);
+        let shared_state = state.to_owned();
 
         std::thread::spawn(move || {
-            audio_thread(cmd_rx, state_clone);
+            audio_thread(cmd_rx, shared_state);
         });
 
         Self { cmd_tx, state }
@@ -54,7 +54,10 @@ impl AudioPlayer {
     }
 
     pub fn get_state(&self) -> AudioState {
-        self.state.lock().unwrap().clone()
+        match self.state.lock() {
+            Ok(state) => state.to_owned(),
+            Err(poisoned) => poisoned.into_inner().to_owned(),
+        }
     }
 }
 
@@ -171,7 +174,10 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                 current_path.clear();
                 current_title.clear();
                 current_detail.clear();
-                *state.lock().unwrap() = AudioState::default();
+                match state.lock() {
+                    Ok(mut current) => *current = AudioState::default(),
+                    Err(poisoned) => *poisoned.into_inner() = AudioState::default(),
+                }
             }
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
@@ -188,6 +194,34 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
     }
 }
 
+/// The player only reports what the output device tells it. When the default
+/// endpoint is missing or stopped, playback silently stands still, so this
+/// test exists to tell the two apart. Ignored by default because it needs a
+/// working audio endpoint.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rodio::Source;
+
+    #[test]
+    #[ignore = "needs a working default audio output device"]
+    fn default_sink_advances_position() -> Result<(), String> {
+        let sink = rodio::DeviceSinkBuilder::open_default_sink()
+            .map_err(|err| format!("no default output device: {err}"))?;
+        let player = rodio::Player::connect_new(sink.mixer());
+        player.append(rodio::source::SineWave::new(440.0).take_duration(Duration::from_secs(2)));
+        player.play();
+        std::thread::sleep(Duration::from_millis(600));
+        let position = player.get_pos();
+        if position <= Duration::from_millis(100) {
+            return Err(format!(
+                "output device is not pulling samples: position stayed at {position:?}"
+            ));
+        }
+        Ok(())
+    }
+}
+
 fn update_state(
     state: &Arc<Mutex<AudioState>>,
     player: &Option<rodio::Player>,
@@ -196,7 +230,10 @@ fn update_state(
     title: &str,
     detail: &str,
 ) {
-    let mut s = state.lock().unwrap();
+    let mut s = match state.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     if let Some(player) = player {
         let is_empty = player.empty();
         s.is_playing = !player.is_paused() && !is_empty;

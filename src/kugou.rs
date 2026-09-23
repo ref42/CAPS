@@ -113,7 +113,7 @@ pub async fn search_random(limit: u32) -> Result<Vec<KugouSong>, String> {
             let remaining = target.saturating_sub(songs.len()).clamp(1, 99);
             let found = search_page(query.to_string(), remaining as u32, page).await?;
             for song in found {
-                if seen.insert(song.hash.clone()) {
+                if seen.insert(song.hash.to_owned()) {
                     songs.push(song);
                 }
                 if songs.len() >= target {

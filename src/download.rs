@@ -13,6 +13,7 @@ struct RangePart {
     end: u64,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn download_url_to_path_with_progress<F>(
     client: &reqwest::Client,
     url: &str,
@@ -60,6 +61,7 @@ where
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn serial_download<F>(
     client: &reqwest::Client,
     url: &str,
@@ -137,7 +139,7 @@ where
     for wave in parts.chunks(MAX_PARALLEL_RANGES) {
         let mut tasks = Vec::with_capacity(wave.len());
         for part in wave.iter().copied() {
-            let client = client.clone();
+            let client = client.to_owned();
             let url = url.to_string();
             let referer = referer.to_string();
             let label = label.to_string();

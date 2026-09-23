@@ -85,7 +85,7 @@ pub async fn search_random(limit: u32) -> Result<Vec<QqMusicSong>, String> {
             let remaining = target.saturating_sub(songs.len()).clamp(1, 99);
             let batch = search_page(query.to_string(), remaining as u32, page).await?;
             for song in batch {
-                if seen.insert(song.songmid.clone()) {
+                if seen.insert(song.songmid.to_owned()) {
                     songs.push(song);
                     if songs.len() >= target {
                         break;
@@ -194,9 +194,11 @@ fn map_song(value: &Value) -> Option<QqMusicSong> {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    let cover = (!album_mid.is_empty())
-        .then(|| format!("{COVER_URL}{album_mid}.jpg"))
-        .unwrap_or_default();
+    let cover = if !album_mid.is_empty() {
+        format!("{COVER_URL}{album_mid}.jpg")
+    } else {
+        String::new()
+    };
     Some(QqMusicSong {
         songmid,
         media_mid,

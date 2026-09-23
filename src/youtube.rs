@@ -190,10 +190,10 @@ async fn resolve_video(video_id: &str) -> Result<ResolvedVideo, String> {
         .map_err(|err| format!("YouTube page read failed: {err}"))?;
 
     let mut player_responses = Vec::new();
-    if let Some(response) = extract_json_after_marker(&webpage, "ytInitialPlayerResponse") {
-        if let Ok(value) = serde_json::from_str::<Value>(&response) {
-            player_responses.push(value);
-        }
+    if let Some(response) = extract_json_after_marker(&webpage, "ytInitialPlayerResponse")
+        && let Ok(value) = serde_json::from_str::<Value>(&response)
+    {
+        player_responses.push(value);
     }
 
     if let Some(api_key) = extract_innertube_api_key(&webpage) {
@@ -370,7 +370,7 @@ fn merge_object(target: &mut Value, extra: Value) {
         return;
     };
     for (key, value) in extra {
-        target.insert(key.clone(), value.clone());
+        target.insert(key.to_owned(), value.to_owned());
     }
 }
 
@@ -443,7 +443,7 @@ fn collect_streams(response: &Value) -> Vec<MediaStream> {
                 size: number_or_string(item, &["contentLength"]),
                 codec: codec_label(mime),
                 duration: number_or_string(item, &["approxDurationMs"])
-                    .map(|value| (value + 999) / 1000),
+                    .map(|value| value.div_ceil(1000)),
                 kind,
             });
         }
@@ -460,7 +460,7 @@ fn stream_url(item: &Value) -> Option<(String, bool)> {
         .or_else(|| item.get("cipher"))
         .and_then(Value::as_str)?;
     let parts = parse_query_like(cipher);
-    let url = parts.iter().find(|(key, _)| key == "url")?.1.clone();
+    let url = parts.iter().find(|(key, _)| key == "url")?.1.to_owned();
     let encrypted = parts
         .iter()
         .any(|(key, value)| key == "s" && !value.is_empty());
@@ -564,10 +564,10 @@ fn query_param<'a>(text: &'a str, key: &str) -> Option<&'a str> {
     let query = text.split_once('?')?.1;
     let query = query.split_once('#').map_or(query, |(query, _)| query);
     for part in query.split('&') {
-        if let Some((item_key, value)) = part.split_once('=') {
-            if item_key.eq_ignore_ascii_case(key) {
-                return Some(value);
-            }
+        if let Some((item_key, value)) = part.split_once('=')
+            && item_key.eq_ignore_ascii_case(key)
+        {
+            return Some(value);
         }
     }
     None
@@ -704,31 +704,36 @@ mod tests {
     }
 
     #[test]
-    fn extracts_balanced_json_with_strings() {
+    fn extracts_balanced_json_with_strings() -> Result<(), String> {
         let text = r#"x ytInitialPlayerResponse = {"a":"};","b":{"c":1}}; y"#;
-        let value = extract_json_after_marker(text, "ytInitialPlayerResponse").expect("json");
+        let value = extract_json_after_marker(text, "ytInitialPlayerResponse")
+            .ok_or_else(|| "no json".to_string())?;
         assert_eq!(value, r#"{"a":"};","b":{"c":1}}"#);
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore]
-    async fn live_resolves_youtube_stream() {
-        let video = resolve_video("iKbylgzysHw").await.expect("video");
-        let stream = best_stream(&video).expect("stream");
+    async fn live_resolves_youtube_stream() -> Result<(), String> {
+        let video = resolve_video("iKbylgzysHw").await?;
+        let stream = best_stream(&video)?;
         assert!(stream.bandwidth > 0);
 
-        let chunk = client()
-            .expect("client")
+        let client = client()?;
+        let chunk = client
             .get(&stream.url)
             .header(reqwest::header::REFERER, video.webpage_url.as_str())
             .header(reqwest::header::RANGE, "bytes=0-63")
             .send()
             .await
-            .expect("stream response")
+            .map_err(|err| format!("stream request: {err}"))?
             .chunk()
             .await
-            .expect("stream read")
-            .expect("stream bytes");
-        assert!(!chunk.is_empty());
+            .map_err(|err| format!("stream read: {err}"))?
+            .ok_or_else(|| "no stream bytes".to_string())?;
+        if chunk.is_empty() {
+            return Err("empty stream chunk".to_string());
+        }
+        Ok(())
     }
 }

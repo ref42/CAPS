@@ -1,280 +1,94 @@
-use crate::audio::{AudioCommand, AudioPlayer};
-use crate::bilibili;
+//! UI-independent music jobs. Progress crosses into the native UI through messages.
 use crate::formatting::format_bytes;
-use crate::kugou;
-use crate::local_music;
 use crate::lyrics::LyricLine;
-use crate::mode::MusicMode;
-use crate::qqmusic;
-use crate::shitease;
-use crate::storage;
-use crate::track::{
-    SOURCE_BILIBILI, SOURCE_KUGOU, SOURCE_LOCAL, SOURCE_NETEASE, SOURCE_QQMUSIC, SOURCE_SHITEASE,
-    SOURCE_YOUTUBE, Track,
-};
-use crate::youtube;
-use dioxus::prelude::*;
-use std::collections::HashSet;
-use std::sync::Arc;
+use crate::track::*;
+use crate::{bilibili, kugou, local_music, qqmusic, shitease, storage, youtube};
+use std::{collections::HashSet, sync::Arc};
 use tokio::io::AsyncWriteExt;
 
-const LOCAL_IMPORT_BATCH_SIZE: usize = 80;
-// Keep the first result set responsive instead of making every search wait for
-// hundreds of remote records from each provider.
-const ONLINE_SEARCH_LIMIT: u32 = 150;
-
-pub fn spawn_play(
-    track: Track,
-    player: Arc<AudioPlayer>,
-    mut current_index: Signal<Option<usize>>,
-    mut current_track: Signal<Option<Track>>,
-    mut status: Signal<String>,
-    mut lyrics: Signal<Vec<LyricLine>>,
-) {
-    spawn(async move {
-        status.set(format!("Loading {}...", track.name));
-        lyrics.set(Vec::new());
-        let path = match load_track_path(&track, status).await {
-            Ok(path) => path,
-            Err(err) => {
-                player.send(AudioCommand::Stop);
-                current_index.set(None);
-                current_track.set(None);
-                status.set(err);
-                return;
-            }
-        };
-        current_track.set(Some(track.clone()));
-        player.send(AudioCommand::LoadFile {
-            path,
-            title: track.name.clone(),
-            detail: track.artist.clone(),
-            duration: track.duration.map(|duration| duration as f64),
-        });
-        status.set(format!("Playing {}.", track.name));
-        lyrics.set(load_track_lyrics(&track).await);
-    });
+#[derive(Clone)]
+pub struct Progress(Arc<dyn Fn(String) + Send + Sync>);
+impl Progress {
+    pub fn new(callback: impl Fn(String) + Send + Sync + 'static) -> Self {
+        Self(Arc::new(callback))
+    }
+    pub fn set(&mut self, text: String) {
+        (self.0)(text);
+    }
 }
 
-pub fn spawn_search(text: String, mut results: Signal<Vec<Track>>, mut status: Signal<String>) {
+pub async fn search(text: String) -> Result<Vec<Track>, String> {
     if text.trim().is_empty() {
-        status.set("Type a song name first.".to_string());
-        return;
+        return Err("Type a song name first.".into());
     }
-    spawn(async move {
-        status.set("Searching online...".to_string());
-        let (netease, qqmusic, kugou) = tokio::join!(
-            shitease::search_shitease_songs(text.clone(), Some(ONLINE_SEARCH_LIMIT), None),
-            qqmusic::search(text.clone(), ONLINE_SEARCH_LIMIT),
-            kugou::search(text.clone(), ONLINE_SEARCH_LIMIT),
-        );
-        let mut tracks = Vec::new();
-        if let Ok(items) = netease {
-            tracks.extend(items.into_iter().map(Track::from));
-        }
-        if let Ok(items) = qqmusic {
-            tracks.extend(items.into_iter().map(Track::from));
-        }
-        if let Ok(items) = kugou {
-            tracks.extend(items.into_iter().map(Track::from));
-        }
-        let count = tracks.len();
-        results.set(tracks);
-        status.set(if count == 0 {
-            "Online music search is unavailable.".to_string()
-        } else {
-            format!("Found {count} playable online tracks.")
-        });
-    });
-}
-
-pub fn spawn_import_video_url(
-    source: VideoImportSource,
-    url: String,
-    mut queue: Signal<Vec<Track>>,
-    mut status: Signal<String>,
-) {
-    if !source.is_supported_url(&url) {
-        status.set(format!("Paste a supported {} URL first.", source.label()));
-        return;
+    let (a, b, c) = tokio::join!(
+        shitease::search_shitease_songs(text.to_owned(), Some(150), None),
+        qqmusic::search(text.to_owned(), 150),
+        kugou::search(text, 150)
+    );
+    let mut tracks = Vec::new();
+    if let Ok(items) = a {
+        tracks.extend(items.into_iter().map(Track::from));
     }
-    spawn(async move {
-        status.set(format!("Importing {} audio...", source.label()));
-        let imported = match source {
-            VideoImportSource::Bilibili => bilibili::preview_from_url(url)
-                .await
-                .map(VideoImportPreview::Bilibili),
-            VideoImportSource::Youtube => youtube::preview_from_url(url)
-                .await
-                .map(VideoImportPreview::Youtube),
-        };
-        match imported {
-            Ok(preview) => {
-                let detail = video_preview_detail(&preview);
-                let track = preview.track();
-                let name = track.name.clone();
-                let (added, total) = {
-                    let mut next = queue.write();
-                    let added = append_unique_tracks(&mut next, [track]);
-                    (added, next.len())
-                };
-                if added == 0 {
-                    status.set(format!("Already queued. {detail}"));
-                } else {
-                    status.set(format!("Imported {name}. {detail}. Queue has {total}."));
-                }
-            }
-            Err(err) => status.set(err),
-        }
-    });
+    if let Ok(items) = b {
+        tracks.extend(items.into_iter().map(Track::from));
+    }
+    if let Ok(items) = c {
+        tracks.extend(items.into_iter().map(Track::from));
+    }
+    if tracks.is_empty() {
+        Err("Online music search is unavailable.".into())
+    } else {
+        Ok(tracks)
+    }
 }
 
-pub enum RandomQueueMode {
-    Append,
-    Replace,
-}
-
-pub fn spawn_random_queue(
-    count: u32,
-    mode: RandomQueueMode,
-    mut queue: Signal<Vec<Track>>,
-    mut current_index: Signal<Option<usize>>,
-    mut current_track: Signal<Option<Track>>,
-    mut music_mode: Signal<MusicMode>,
-    player: Arc<AudioPlayer>,
-    mut status: Signal<String>,
-    mut lyrics: Signal<Vec<LyricLine>>,
-) {
-    spawn(async move {
-        status.set(format!("Loading random {count}..."));
-        let provider_count = count.clamp(1, 999);
-        let netease_request = shitease::random_shitease_queue(Some(provider_count), None);
-        let qqmusic_request = qqmusic::search_random(provider_count);
-        let kugou_request = kugou::search_random(provider_count);
-        tokio::pin!(netease_request);
-        tokio::pin!(qqmusic_request);
-        tokio::pin!(kugou_request);
-        let (netease, qqmusic, kugou) =
-            tokio::join!(netease_request, qqmusic_request, kugou_request,);
-        let providers = vec![
-            netease
-                .unwrap_or_default()
-                .into_iter()
-                .map(Track::from)
-                .collect::<Vec<_>>(),
-            qqmusic
-                .unwrap_or_default()
-                .into_iter()
-                .map(Track::from)
-                .collect::<Vec<_>>(),
-            kugou
-                .unwrap_or_default()
-                .into_iter()
-                .map(Track::from)
-                .collect::<Vec<_>>(),
-        ];
-        let requested = provider_count as usize;
-        let mut provider_slots = vec![0usize; providers.len()];
-        let mut tracks = Vec::with_capacity(requested);
-        while tracks.len() < requested {
-            let mut added_this_round = false;
-            for (provider_index, items) in providers.iter().enumerate() {
-                if let Some(track) = items.get(provider_slots[provider_index]).cloned() {
-                    provider_slots[provider_index] += 1;
-                    tracks.push(track);
-                    added_this_round = true;
-                    if tracks.len() >= requested {
-                        break;
-                    }
-                }
-            }
-            if !added_this_round {
+pub async fn random(count: u32) -> Result<Vec<Track>, String> {
+    let count = count.clamp(1, 999);
+    let (a, b, c) = tokio::join!(
+        shitease::random_shitease_queue(Some(count), None),
+        qqmusic::search_random(count),
+        kugou::search_random(count)
+    );
+    let providers: Vec<Vec<Track>> = vec![
+        a.unwrap_or_default().into_iter().map(Track::from).collect(),
+        b.unwrap_or_default().into_iter().map(Track::from).collect(),
+        c.unwrap_or_default().into_iter().map(Track::from).collect(),
+    ];
+    let mut tracks = Vec::new();
+    for index in 0..count as usize {
+        for provider in &providers {
+            if tracks.len() == count as usize {
                 break;
             }
-        }
-        if !tracks.is_empty() {
-            let loaded = tracks.len();
-            match mode {
-                RandomQueueMode::Append => {
-                    let total = {
-                        let mut next = queue.write();
-                        next.extend(tracks);
-                        next.len()
-                    };
-                    status.set(format!("Added {loaded} random tracks. Queue has {total}."));
-                }
-                RandomQueueMode::Replace => {
-                    queue.set(tracks);
-                    current_index.set(None);
-                    current_track.set(None);
-                    music_mode.set(MusicMode::Silent);
-                    lyrics.set(Vec::new());
-                    player.send(AudioCommand::Stop);
-                    status.set(format!("Replaced queue with {loaded} random tracks."));
-                }
+            if let Some(track) = provider.get(index) {
+                tracks.push(track.to_owned());
             }
-        } else {
-            status.set("Online random music is unavailable.".to_string());
         }
-    });
+    }
+    if tracks.is_empty() {
+        Err("Online random music is unavailable.".into())
+    } else {
+        Ok(tracks)
+    }
 }
 
-pub fn spawn_load_local_queue(
-    folder: String,
-    mut queue: Signal<Vec<Track>>,
-    mut status: Signal<String>,
-) {
-    if folder.trim().is_empty() {
-        status.set("Set a local music folder first.".to_string());
-        return;
+pub async fn import_video(
+    source: VideoImportSource,
+    url: String,
+) -> Result<(Track, String), String> {
+    if !source.is_supported_url(&url) {
+        return Err(format!("Paste a supported {} URL first.", source.label()));
     }
-    spawn(async move {
-        status.set("Loading local songs...".to_string());
-        let (sender, mut receiver) =
-            tokio::sync::mpsc::unbounded_channel::<Result<(Vec<Track>, usize), String>>();
-
-        tokio::task::spawn_blocking(move || {
-            let result =
-                local_music::load_all_batched(&folder, LOCAL_IMPORT_BATCH_SIZE, |batch, total| {
-                    sender.send(Ok((batch, total))).is_ok()
-                });
-            if let Err(err) = result {
-                let _ = sender.send(Err(err));
-            }
-        });
-
-        let mut loaded = 0;
-        let mut added_total = 0;
-        while let Some(event) = receiver.recv().await {
-            match event {
-                Ok((tracks, total)) => {
-                    loaded = total;
-                    let added = {
-                        let mut next = queue.write();
-                        append_unique_tracks(&mut next, tracks)
-                    };
-                    added_total += added;
-                    let total_queue = queue.read().len();
-                    status.set(format!(
-                        "Scanned {loaded} local tracks. Added {added} new, queue has {total_queue}."
-                    ));
-                }
-                Err(err) => {
-                    status.set(err);
-                    return;
-                }
-            }
+    let preview = match source {
+        VideoImportSource::Bilibili => {
+            VideoImportPreview::Bilibili(bilibili::preview_from_url(url).await?)
         }
-
-        if loaded == 0 {
-            status.set("No supported audio files found.".to_string());
-        } else {
-            let total = queue.read().len();
-            status.set(format!(
-                "Scanned {loaded} local tracks. Added {added_total} new, queue has {total}."
-            ));
+        VideoImportSource::Youtube => {
+            VideoImportPreview::Youtube(youtube::preview_from_url(url).await?)
         }
-    });
+    };
+    Ok((preview.track(), video_preview_detail(&preview)))
 }
 
 pub fn append_unique_tracks(
@@ -283,11 +97,11 @@ pub fn append_unique_tracks(
 ) -> usize {
     let mut seen = queue
         .iter()
-        .map(|track| (track.source.clone(), track.id.clone()))
+        .map(|track| (track.source.to_owned(), track.id.to_owned()))
         .collect::<HashSet<_>>();
     let mut added = 0;
     for track in tracks {
-        let key = (track.source.clone(), track.id.clone());
+        let key = (track.source.to_owned(), track.id.to_owned());
         if seen.insert(key) {
             queue.push(track);
             added += 1;
@@ -296,12 +110,12 @@ pub fn append_unique_tracks(
     added
 }
 
-async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<String, String> {
+pub async fn load_track_path(track: &Track, mut status: Progress) -> Result<String, String> {
     if track.source == SOURCE_LOCAL {
         if !std::path::Path::new(&track.id).is_file() {
             return Err("Local audio file is not available.".to_string());
         }
-        return Ok(track.id.clone());
+        return Ok(track.id.to_owned());
     }
     if track.source == SOURCE_BILIBILI {
         let path = storage::song_cache_file(&track.source, &track.id)
@@ -315,7 +129,7 @@ async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<St
         tokio::fs::create_dir_all(parent)
             .await
             .map_err(|err| format!("Song cache unavailable: {err}"))?;
-        let title = track.name.clone();
+        let title = track.name.to_owned();
         bilibili::download_audio_to_path_with_progress(&track.id, &path, |progress| {
             status.set(video_download_status(
                 &title,
@@ -338,7 +152,7 @@ async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<St
         tokio::fs::create_dir_all(parent)
             .await
             .map_err(|err| format!("Song cache unavailable: {err}"))?;
-        let title = track.name.clone();
+        let title = track.name.to_owned();
         youtube::download_audio_to_path_with_progress(&track.id, &path, |progress| {
             status.set(video_download_status(
                 &title,
@@ -394,7 +208,7 @@ async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<St
         if path.exists() && path.metadata().map(|meta| meta.len()).unwrap_or(0) > 0 {
             return Ok(path.to_string_lossy().to_string());
         }
-        let (quality_hash, album_id, album_audio_id) = kugou_metadata(&track);
+        let (quality_hash, album_id, album_audio_id) = kugou_metadata(track);
         let url = kugou::stream_url(&track.id, quality_hash, album_id, album_audio_id).await?;
         let parent = path
             .parent()
@@ -424,7 +238,8 @@ async fn load_track_path(track: &Track, mut status: Signal<String>) -> Result<St
             .await;
     }
     let info =
-        shitease::get_shitease_song_url(track.id.clone(), Some("exhigh".to_string()), None).await?;
+        shitease::get_shitease_song_url(track.id.to_owned(), Some("exhigh".to_string()), None)
+            .await?;
     let url = info
         .url
         .filter(|url| !url.is_empty())
@@ -479,7 +294,7 @@ async fn download_response_to_cache(
     mut response: reqwest::Response,
     path: &std::path::Path,
     title: &str,
-    status: &mut Signal<String>,
+    status: &mut Progress,
     label: &str,
 ) -> Result<String, String> {
     let total = response.content_length();
@@ -514,37 +329,20 @@ async fn download_response_to_cache(
     Ok(path.to_string_lossy().to_string())
 }
 
-pub fn spawn_prefetch(track: Track) {
-    spawn(async move {
-        let Some(path) = storage::song_cache_file(&track.source, &track.id) else {
-            return;
-        };
-        if path.exists() || track.stream_url.is_empty() {
-            return;
-        }
-        let _ = prefetch_track(track, path).await;
-    });
-}
-
-pub fn spawn_prefetch_next(queue: Signal<Vec<Track>>, index: usize) {
-    if let Some(track) = queue.read().get(index + 1).cloned() {
-        spawn_prefetch(track);
-    }
-}
-
-async fn prefetch_track(track: Track, path: std::path::PathBuf) -> Result<(), String> {
+#[allow(dead_code)]
+pub async fn prefetch_track(track: Track, path: std::path::PathBuf) -> Result<(), String> {
     let url = if track.source == SOURCE_QQMUSIC {
         qqmusic::stream_url_with_media(&track.id, &track.media_id).await?
     } else if track.source == SOURCE_KUGOU {
         let (quality_hash, album_id, album_audio_id) = kugou_metadata(&track);
         kugou::stream_url(&track.id, quality_hash, album_id, album_audio_id).await?
     } else if track.source == SOURCE_NETEASE {
-        shitease::get_shitease_song_url(track.id.clone(), Some("exhigh".to_string()), None)
+        shitease::get_shitease_song_url(track.id.to_owned(), Some("exhigh".to_string()), None)
             .await?
             .url
             .unwrap_or_default()
     } else {
-        track.stream_url.clone()
+        track.stream_url.to_owned()
     };
     if url.is_empty() {
         return Ok(());
@@ -559,7 +357,7 @@ async fn prefetch_track(track: Track, path: std::path::PathBuf) -> Result<(), St
         .map_err(|err| err.to_string())?
         .error_for_status()
         .map_err(|err| err.to_string())?;
-    let mut ignored_status = Signal::new(String::new());
+    let mut ignored_status = Progress::new(|_| {});
     let _ = download_response_to_cache(
         response,
         &path,
@@ -601,8 +399,8 @@ enum VideoImportPreview {
 impl VideoImportPreview {
     fn track(&self) -> Track {
         match self {
-            Self::Bilibili(preview) => preview.track.clone(),
-            Self::Youtube(preview) => preview.track.clone(),
+            Self::Bilibili(preview) => preview.track.to_owned(),
+            Self::Youtube(preview) => preview.track.to_owned(),
         }
     }
 }
@@ -677,9 +475,9 @@ fn format_duration(seconds: u64) -> String {
     }
 }
 
-async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
+pub async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
     if track.source == SOURCE_LOCAL {
-        let id = track.id.clone();
+        let id = track.id.to_owned();
         let text = tokio::task::spawn_blocking(move || local_music::read_lyrics(&id))
             .await
             .unwrap_or_default();
@@ -708,7 +506,7 @@ async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
             .unwrap_or_default();
     }
     if track.source == SOURCE_NETEASE || track.source == SOURCE_SHITEASE {
-        return shitease::get_shitease_lyric(track.id.clone(), None)
+        return shitease::get_shitease_lyric(track.id.to_owned(), None)
             .await
             .map(|response| crate::lyrics::parse_lrc(response.lyric.as_deref().unwrap_or_default()))
             .unwrap_or_default();

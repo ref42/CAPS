@@ -145,10 +145,15 @@ mod tests {
         }
 
         let mut bytes = Vec::new();
-        image
-            .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
-            .unwrap();
-        let colors = extract_colors(&bytes).expect("monochrome cover should produce colors");
+        assert!(
+            image
+                .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
+                .is_ok()
+        );
+        let Some(colors) = extract_colors(&bytes) else {
+            assert!(false, "monochrome cover should produce colors");
+            return;
+        };
 
         assert_ne!(colors.0, "rgb(125, 242, 202)");
         assert_ne!(colors.1, "rgb(52, 199, 89)");

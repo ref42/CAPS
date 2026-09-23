@@ -1,60 +1,410 @@
-use dioxus::desktop::tao::window::Window;
-use dioxus::desktop::{DesktopContext, LogicalPosition, LogicalSize};
+//! Native window geometry: where the islands are painted, where the pointer is,
+//! and how the frameless popup is dragged.
+//!
+//! The popup is a rectangle that is much larger than the visible capsule: the
+//! rest is transparent padding that the rounded edge and its animation need.
+//! Click-through is decided by `WM_NCHITTEST` (see [`mouse`]) rather than a
+//! window region, because a region is a 1-bit mask and would cut the painted
+//! antialiased edge into visible stair steps at every island size.
+use gpui_kit::*;
+use std::sync::atomic::{AtomicU32, Ordering};
 
-pub const COLLAPSED_W: f64 = 380.0;
-pub const COLLAPSED_H: f64 = 56.0;
-pub const EXPANDED_W: f64 = 460.0;
-pub const EXPANDED_H: f64 = 490.0;
-pub const MUSIC_COLLAPSED_W: f64 = EXPANDED_W;
-pub const ISLAND_BLEED: f64 = 18.0;
-pub const ADDON_COLLAPSED_W: f64 = COLLAPSED_H;
-pub const ADDON_EXPANDED_W: f64 = 86.0;
-pub const ADDON_GAP: f64 = 24.0;
+#[cfg(target_os = "windows")]
+mod mouse;
 
-pub fn set_island_window(
-    desktop: &DesktopContext,
-    expanded: bool,
-    separated: bool,
-    size_scale: f64,
-    collapsed_width: f64,
-) {
-    let size_scale = size_scale.clamp(0.85, 1.50);
-    let addon_width = if expanded {
-        ADDON_EXPANDED_W
-    } else {
-        ADDON_COLLAPSED_W
-    };
-    let extra_width = if separated {
-        ADDON_GAP + addon_width
-    } else {
-        0.0
-    };
-    let (base_width, base_height) = if expanded {
-        (
-            EXPANDED_W + extra_width + ISLAND_BLEED * 2.0,
-            EXPANDED_H + ISLAND_BLEED * 2.0,
-        )
-    } else {
-        (
-            collapsed_width.max(COLLAPSED_W) + extra_width + ISLAND_BLEED * 2.0,
-            COLLAPSED_H + ISLAND_BLEED * 2.0,
-        )
-    };
-    let width = base_width * size_scale;
-    let height = base_height * size_scale;
-    desktop.set_inner_size(LogicalSize::new(width, height));
-    desktop.set_always_on_top(true);
+#[cfg(target_os = "windows")]
+pub use mouse::install as install_mouse_handling;
+
+#[cfg(not(target_os = "windows"))]
+pub fn install_mouse_handling(_: &Window) {}
+
+pub const COLLAPSED_W: f32 = 380.;
+pub const COLLAPSED_H: f32 = 56.;
+pub const EXPANDED_W: f32 = 460.;
+pub const EXPANDED_H: f32 = 490.;
+/// Transparent margin around the painted islands.
+pub const BLEED: f32 = 18.;
+/// Vertical gap that opens between the capsule and the panel.
+pub const PANEL_GAP: f32 = 8.;
+/// How much taller the expanded capsule is than the collapsed one.
+pub const EXPAND_STEP: f32 = 30.;
+/// Corner radius of the panel, before the island scale.
+pub const PANEL_RADIUS: f32 = 22.;
+/// How far outside the painted edge the native region reaches. Windows masks a
+/// region with one bit per pixel, so the mask has to sit clear of the
+/// antialiased outline rather than through it. Every side is offset by the same
+/// amount, which keeps the clipped shape symmetric around the paint.
+pub const REGION_OUTSET: f32 = 2.;
+/// Extra region room given while the island is animating. The paint that
+/// follows a tick is one frame further along than the geometry that tick
+/// published, so the mask is kept ahead of it instead of cutting the opening
+/// panel short.
+pub const REGION_LEAD: f32 = 24.;
+
+/// Height of the capsule at a given expansion progress.
+pub fn header_height(expansion: f32) -> f32 {
+    COLLAPSED_H + EXPAND_STEP * expansion
 }
 
-pub fn place_top_center(window: &Window, width: f64) {
-    if let Some(monitor) = window
-        .current_monitor()
-        .or_else(|| window.primary_monitor())
+/// Height of the panel at a given expansion progress.
+pub fn panel_height(expansion: f32) -> f32 {
+    (EXPANDED_H - COLLAPSED_H - EXPAND_STEP - PANEL_GAP) * expansion
+}
+
+/// Vertical offset of the panel's top edge at a given expansion progress.
+pub fn panel_top(expansion: f32) -> f32 {
+    BLEED + header_height(expansion) + PANEL_GAP * expansion
+}
+
+/// Total window height needed to paint the islands, in logical points.
+pub fn window_height(expansion: f32) -> f32 {
+    header_height(expansion) + panel_height(expansion) + PANEL_GAP * expansion + 2. * BLEED
+}
+
+/// Total window width needed to paint the islands, in logical points.
+pub fn window_width(width: f32) -> f32 {
+    width + 2. * BLEED
+}
+
+/// The painted islands' device-pixel geometry, relative to the window's client
+/// area. The tick publishes it every frame; the native hit test reads it so
+/// that click-through matches what was actually painted.
+#[derive(Clone, Copy, Default)]
+pub struct Geometry {
+    /// Island scale multiplied by the display scale factor.
+    pub unit: f32,
+    pub bleed: f32,
+    pub width: f32,
+    pub header: f32,
+    pub panel: f32,
+    pub panel_top: f32,
+    pub panel_radius: f32,
+}
+
+/// `Geometry` is read on the window procedure's thread only, but the tick and
+/// the message handler are not the same call stack, so it lives in atomics
+/// rather than a lock. Every field is an independent `f32` bit pattern.
+static GEOMETRY: [AtomicU32; 7] = [
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+];
+
+pub fn publish_geometry(geometry: Geometry) {
+    for (slot, value) in GEOMETRY.iter().zip([
+        geometry.unit,
+        geometry.bleed,
+        geometry.width,
+        geometry.header,
+        geometry.panel,
+        geometry.panel_top,
+        geometry.panel_radius,
+    ]) {
+        slot.store(value.to_bits(), Ordering::Relaxed);
+    }
+}
+
+pub fn geometry() -> Geometry {
+    let mut values = [0f32; 7];
+    for (value, slot) in values.iter_mut().zip(GEOMETRY.iter()) {
+        *value = f32::from_bits(slot.load(Ordering::Relaxed));
+    }
+    Geometry {
+        unit: values[0],
+        bleed: values[1],
+        width: values[2],
+        header: values[3],
+        panel: values[4],
+        panel_top: values[5],
+        panel_radius: values[6],
+    }
+}
+
+fn in_rounded_rect(
+    x: f32,
+    y: f32,
+    left: f32,
+    top: f32,
+    width: f32,
+    height: f32,
+    radius: f32,
+) -> bool {
+    let local_x = x - left;
+    let local_y = y - top;
+    if local_x < 0. || local_y < 0. || local_x > width || local_y > height {
+        return false;
+    }
+    let radius = radius.min(width * 0.5).min(height * 0.5);
+    if radius <= 0. {
+        return true;
+    }
+    if (radius..=width - radius).contains(&local_x) || (radius..=height - radius).contains(&local_y)
     {
-        let scale = monitor.scale_factor();
-        let size = monitor.size().to_logical::<f64>(scale);
-        let position = monitor.position().to_logical::<f64>(scale);
-        let x = position.x + ((size.width - width) / 2.0).max(0.0);
-        window.set_outer_position(LogicalPosition::new(x.round(), position.y + 8.0));
+        return true;
+    }
+    let corner_x = if local_x < radius { radius } else { width - radius };
+    let corner_y = if local_y < radius {
+        radius
+    } else {
+        height - radius
+    };
+    let dx = local_x - corner_x;
+    let dy = local_y - corner_y;
+    dx * dx + dy * dy <= radius * radius
+}
+
+/// Whether the capsule itself, rather than the panel, is under a point. Used so
+/// that the documented right-click-to-quit only fires where people expect it.
+pub fn contains_header(geometry: Geometry, x: f32, y: f32) -> bool {
+    geometry.width > 0.
+        && geometry.header > 0.
+        && in_rounded_rect(
+            x,
+            y,
+            geometry.bleed,
+            geometry.bleed,
+            geometry.width,
+            geometry.header,
+            geometry.header * 0.5,
+        )
+}
+
+/// Whether a client-relative device point is over a painted island. The gap
+/// between the capsule and the panel counts as inside, so the pointer can
+/// travel between them without the island collapsing underneath it.
+pub fn contains_point(geometry: Geometry, x: f32, y: f32) -> bool {
+    if geometry.width <= 0. || geometry.header <= 0. {
+        return false;
+    }
+    let header = in_rounded_rect(
+        x,
+        y,
+        geometry.bleed,
+        geometry.bleed,
+        geometry.width,
+        geometry.header,
+        geometry.header * 0.5,
+    );
+    if header {
+        return true;
+    }
+    if geometry.panel > 0.5 {
+        let panel = in_rounded_rect(
+            x,
+            y,
+            geometry.bleed,
+            geometry.panel_top,
+            geometry.width,
+            geometry.panel,
+            geometry.panel_radius,
+        );
+        if panel {
+            return true;
+        }
+        let bridge_top = geometry.bleed + geometry.header - geometry.unit;
+        let bridge_bottom = geometry.panel_top + geometry.unit;
+        if geometry.bleed <= x
+            && x <= geometry.bleed + geometry.width
+            && bridge_top <= y
+            && y <= bridge_bottom
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether one of the visible islands sits under the cursor, in the window's
+/// own client coordinates. `None` when the platform cannot answer.
+#[cfg(target_os = "windows")]
+pub fn pointer_inside(window: &Window) -> Option<bool> {
+    let client = mouse::cursor_in_client(window)?;
+    Some(contains_point(geometry(), client.0, client.1))
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn pointer_inside(_: &Window) -> Option<bool> {
+    None
+}
+
+/// Clip the window to the painted islands. See [`mouse::apply_region`].
+/// `slack` widens the mask on every side without moving it, which is what the
+/// animation lead needs.
+pub fn apply_region(window: &Window, geometry: Geometry, slack: f32) {
+    #[cfg(target_os = "windows")]
+    mouse::apply_region(window, geometry, slack);
+    #[cfg(not(target_os = "windows"))]
+    let _ = (window, geometry, slack);
+}
+
+/// The cursor's screen position, in device pixels.
+pub fn cursor_position() -> Option<(f32, f32)> {
+    #[cfg(target_os = "windows")]
+    {
+        mouse::cursor_screen()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
+/// Where the window currently sits on the virtual desktop, in device pixels.
+pub fn window_origin(window: &Window) -> Option<(f32, f32)> {
+    #[cfg(target_os = "windows")]
+    {
+        mouse::window_rect(window).map(|(left, top, _, _)| (left, top))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = window;
+        None
+    }
+}
+
+/// Move the frameless popup to a screen position, in device pixels.
+///
+/// The move is handed to the foreground executor rather than performed inline:
+/// `SetWindowPos` dispatches `WM_MOVE` synchronously, and the window's move
+/// callback re-enters the application, which is already mutably borrowed while
+/// a view update is running. GPUI's own `Window::resize` defers the same way.
+pub fn move_window(window: &Window, cx: &App, origin: (f32, f32)) {
+    #[cfg(target_os = "windows")]
+    {
+        let Some(handle) = mouse::window_handle(window) else {
+            return;
+        };
+        mouse::move_window(cx, handle, origin);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (window, cx, origin);
+    }
+}
+
+/// Whether the primary mouse button is physically held down.
+pub fn left_button_down() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        mouse::left_button_down()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
+/// The size and position the popup should open at.
+pub fn options(cx: &App) -> WindowOptions {
+    let settings = crate::storage::load_state().settings;
+    let scale = settings.island_size as f32 / 100.;
+    let size = size(
+        px(window_width(COLLAPSED_W) * scale),
+        px(window_height(0.) * scale),
+    );
+    let display = cx.primary_display().map(|d| d.bounds());
+    let fallback = display
+        .map(|d| {
+            point(
+                d.origin.x + (d.size.width - size.width) / 2.,
+                d.origin.y + px(8.),
+            )
+        })
+        .unwrap_or(point(px(200.), px(8.)));
+    // A dragged capsule stays where the user left it, as long as enough of it is
+    // still on a display to grab again. Anything else falls back to top centre.
+    let origin = match settings.window_position {
+        Some((x, y)) if display.is_some_and(|d| on_display(d, x, y, size)) => point(px(x), px(y)),
+        _ => fallback,
+    };
+    WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(Bounds::new(origin, size))),
+        titlebar: None,
+        kind: WindowKind::PopUp,
+        focus: false,
+        is_resizable: false,
+        is_minimizable: false,
+        app_owns_titlebar_drag: true,
+        window_background: WindowBackgroundAppearance::Transparent,
+        ..Default::default()
+    }
+}
+
+/// Whether a remembered top-left keeps enough of the window on a display to be
+/// grabbable again.
+fn on_display(display: Bounds<Pixels>, x: f32, y: f32, size: Size<Pixels>) -> bool {
+    let left = display.origin.x.as_f32();
+    let top = display.origin.y.as_f32();
+    let right = left + display.size.width.as_f32();
+    let bottom = top + display.size.height.as_f32();
+    let visible_x = (x + size.width.as_f32()).min(right) - x.max(left);
+    let visible_y = (y + size.height.as_f32()).min(bottom) - y.max(top);
+    visible_x >= 64. && visible_y >= 24.
+}
+
+#[cfg(test)]
+mod tests {
+    // `use gpui_kit::*` would shadow the built-in `#[test]` attribute with the
+    // toolkit's own macro, so the geometry under test is imported by name.
+    use super::{
+        BLEED, COLLAPSED_H, EXPANDED_W, Geometry, PANEL_RADIUS, contains_header, contains_point,
+        header_height, panel_height, panel_top, window_height, window_width,
+    };
+
+    fn geometry(expansion: f32) -> Geometry {
+        let unit = 1.;
+        Geometry {
+            unit,
+            bleed: BLEED * unit,
+            width: EXPANDED_W * unit,
+            header: header_height(expansion) * unit,
+            panel: panel_height(expansion) * unit,
+            panel_top: panel_top(expansion) * unit,
+            panel_radius: PANEL_RADIUS * unit,
+        }
+    }
+
+    #[test]
+    fn transparent_margins_are_click_through() {
+        let collapsed = geometry(0.);
+        // The bleed margin around the capsule belongs to the desktop underneath.
+        assert!(!contains_point(collapsed, 4., 4.));
+        assert!(!contains_point(collapsed, BLEED + EXPANDED_W / 2., BLEED - 2.));
+        assert!(contains_point(
+            collapsed,
+            BLEED + EXPANDED_W / 2.,
+            BLEED + COLLAPSED_H / 2.
+        ));
+        // Collapsed, the area below the capsule is not part of the island.
+        assert!(!contains_point(collapsed, BLEED + 40., BLEED + COLLAPSED_H + 20.));
+    }
+
+    #[test]
+    fn open_island_keeps_the_gap_between_capsule_and_panel() {
+        let open = geometry(1.);
+        let middle = BLEED + EXPANDED_W / 2.;
+        assert!(contains_point(open, middle, BLEED + header_height(1.) - 4.));
+        assert!(contains_point(open, middle, panel_top(1.) + 4.));
+        assert!(contains_point(open, middle, panel_top(1.) + panel_height(1.) - 4.));
+        // Outside the rounded ends, but inside the bounding box.
+        assert!(!contains_point(open, BLEED + 1., BLEED + 1.));
+    }
+
+    #[test]
+    fn empty_geometry_hits_nothing() {
+        assert!(!contains_point(Geometry::default(), 5., 5.));
+        assert!(!contains_header(Geometry::default(), 5., 5.));
+    }
+
+    #[test]
+    fn window_box_wraps_the_painted_islands() {
+        let tight = window_height(0.);
+        assert_eq!(tight, COLLAPSED_H + 2. * BLEED);
+        assert!(window_width(EXPANDED_W) > EXPANDED_W);
+        assert!(window_height(1.) > window_height(0.));
     }
 }

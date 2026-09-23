@@ -60,7 +60,7 @@ fn client() -> Result<reqwest::Client, String> {
 
 fn song_id(value: &Value) -> String {
     match value {
-        Value::String(s) => s.clone(),
+        Value::String(s) => s.to_owned(),
         Value::Number(n) => n.to_string(),
         _ => String::new(),
     }
@@ -95,7 +95,7 @@ fn artists(song: &Value) -> String {
 }
 
 fn map_song(song: &Value) -> Option<ShiteaseSong> {
-    let id = song.get("id")?.clone();
+    let id = song.get("id")?.to_owned();
     let name = text(song.get("name"));
     if name.is_empty() {
         return None;
@@ -410,7 +410,7 @@ pub async fn random_shitease_queue(
         if songs.len() >= target as usize * 3 {
             break;
         }
-        let limit = target.max(30).min(50);
+        let limit = target.clamp(30, 50);
         let page = (next_random(&mut random_state) % 8) as u32;
         let offset = page * limit;
         if let Ok(mut found) = search_direct_offset(&client, seed, limit, offset).await {

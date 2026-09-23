@@ -15,11 +15,20 @@ pub struct AppSettings {
     pub random_count: u32,
     pub active_tab: String,
     pub local_music_folder: String,
-    pub companion: String,
     pub language: String,
+    /// Top-left of the window, in physical pixels, after the user dragged the
+    /// capsule. `None` means "top centre of the primary display".
+    pub window_position: Option<(f32, f32)>,
+    /// Latin/UI family override. `None` keeps the platform's own UI face.
+    pub latin_font: Option<String>,
+    /// Han family override. `None` keeps the platform's Han companion for the
+    /// UI face, which is what makes mixed lines render as one typeface.
+    pub han_font: Option<String>,
+    /// What plays after the current track ends; see `mode::PlayOrder`.
+    pub play_order: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppState {
     pub settings: AppSettings,
@@ -36,42 +45,47 @@ impl Default for AppSettings {
             random_count: 50,
             active_tab: "search".to_string(),
             local_music_folder: String::new(),
-            companion: "coco".to_string(),
             language: "en".to_string(),
+            window_position: None,
+            latin_font: None,
+            han_font: None,
+            play_order: "all".to_string(),
         }
     }
 }
 
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            settings: AppSettings::default(),
-            queue: Vec::new(),
-            current_index: None,
-        }
-    }
+/// Cleans a family name coming from the state file. An empty or blank name
+/// means "no override", so a hand-edited file cannot blank out the typeface.
+fn normalized_family(family: Option<String>) -> Option<String> {
+    family
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
 }
+
+/// Below this the island's own text falls under 4.5:1 against a light desktop,
+/// so the slider stops here instead of letting people fade the capsule into an
+/// unreadable smudge.
+pub const MIN_OPACITY: u32 = 55;
 
 impl AppSettings {
     fn normalized(mut self) -> Self {
-        self.opacity = self.opacity.clamp(10, 100);
+        self.opacity = self.opacity.clamp(MIN_OPACITY, 100);
         self.volume = self.volume.clamp(0, 100);
         self.island_size = self.island_size.clamp(85, 150);
         self.random_count = self.random_count.clamp(1, 999);
-        if self.active_tab == "stats" {
-            self.active_tab = "pet".to_string();
-        }
-        if !matches!(
-            self.active_tab.as_str(),
-            "search" | "queue" | "pet" | "settings"
-        ) {
+        if !matches!(self.active_tab.as_str(), "search" | "queue" | "settings") {
             self.active_tab = "search".to_string();
-        }
-        if !matches!(self.companion.as_str(), "coco" | "dodo") {
-            self.companion = "coco".to_string();
         }
         if !matches!(self.language.as_str(), "en" | "zh") {
             self.language = "en".to_string();
+        }
+        self.latin_font = normalized_family(self.latin_font);
+        self.han_font = normalized_family(self.han_font);
+        if !matches!(
+            self.play_order.as_str(),
+            "sequential" | "all" | "one" | "shuffle"
+        ) {
+            self.play_order = "all".to_string();
         }
         self
     }
@@ -94,12 +108,28 @@ pub fn load_state() -> AppState {
     let Some(path) = state_path() else {
         return AppState::default();
     };
-    let Ok(text) = fs::read_to_string(path) else {
+    let Ok(bytes) = fs::read(&path) else {
         return AppState::default();
     };
-    serde_json::from_str::<AppState>(&text)
-        .map(AppState::normalized)
-        .unwrap_or_default()
+    let text = String::from_utf8_lossy(strip_bom(&bytes));
+    match serde_json::from_str::<AppState>(&text) {
+        Ok(state) => state.normalized(),
+        Err(err) => {
+            log::error!("Could not read {}: {err}", path.display());
+            // Keep the unreadable file. Hand-edited state (an editor that adds a
+            // byte order mark, a half-written file) must not be silently
+            // replaced by defaults, because the next save would erase the queue.
+            let _ = fs::write(path.with_extension("invalid.json"), &bytes);
+            AppState::default()
+        }
+    }
+}
+
+/// Editors on Windows like to prefix UTF-8 with a byte order mark, which
+/// `serde_json` rejects outright. Stripping it here keeps a hand-edited
+/// `state.json` from looking like a corrupt one.
+fn strip_bom(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes)
 }
 
 pub fn save_state_parts(settings: AppSettings, queue: &[Track], current_index: Option<usize>) {
@@ -136,7 +166,7 @@ fn persisted_state(
         if current_index == Some(source_index) {
             persisted_index = Some(persisted_queue.len());
         }
-        persisted_queue.push(track.clone());
+        persisted_queue.push(track.to_owned());
     }
 
     AppState {
@@ -146,6 +176,7 @@ fn persisted_state(
     }
 }
 
+#[allow(dead_code)]
 pub fn clean_song_cache() -> Result<(), String> {
     let Some(path) = song_cache_path() else {
         return Err("Song cache path is not available.".to_string());

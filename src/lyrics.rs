@@ -39,7 +39,7 @@ pub fn current_lyric_line(lines: &[LyricLine], position: f64) -> Option<String> 
         .iter()
         .take_while(|line| line.time <= target)
         .last()
-        .map(|line| line.text.clone())
+        .map(|line| line.text.to_owned())
 }
 
 fn parse_lrc_time(text: &str) -> Option<f64> {

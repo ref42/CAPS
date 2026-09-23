@@ -66,7 +66,7 @@ fn scan_batched(
                 continue;
             }
             let id = path.to_string_lossy().to_string();
-            if !seen.insert(id.clone()) {
+            if !seen.insert(id.to_owned()) {
                 continue;
             }
             batch.push(track_from_path(&path, id));
@@ -107,22 +107,22 @@ fn track_from_path(path: &Path, id: String) -> Track {
     let metadata = read_metadata(path);
     let name = metadata
         .as_ref()
-        .and_then(|meta| meta.title.clone())
+        .and_then(|meta| meta.title.to_owned())
         .filter(|text| !text.trim().is_empty())
-        .unwrap_or_else(|| fallback.name.clone());
+        .unwrap_or_else(|| fallback.name.to_owned());
     let artist = metadata
         .as_ref()
-        .and_then(|meta| meta.artist.clone())
+        .and_then(|meta| meta.artist.to_owned())
         .filter(|text| !text.trim().is_empty())
-        .unwrap_or_else(|| fallback.artist.clone());
+        .unwrap_or_else(|| fallback.artist.to_owned());
     let album = metadata
         .as_ref()
-        .and_then(|meta| meta.album.clone())
+        .and_then(|meta| meta.album.to_owned())
         .filter(|text| !text.trim().is_empty())
         .unwrap_or(fallback.album);
     let cover = metadata
         .as_ref()
-        .and_then(|meta| meta.cover.clone())
+        .and_then(|meta| meta.cover.to_owned())
         .and_then(|cover| cache_cover(path, &cover))
         .unwrap_or_default();
     let duration = metadata.and_then(|meta| meta.duration);
@@ -192,8 +192,8 @@ fn read_metadata(path: &Path) -> Option<LocalMetadata> {
         .probe(&hint, mss, fmt_opts, meta_opts)
         .ok()?;
     let duration = format_duration_seconds(format.as_ref());
-    let revision = format.metadata().skip_to_latest()?.clone();
-    let mut metadata = metadata_from_revision(&revision).unwrap_or_else(|| LocalMetadata {
+    let revision = format.metadata().skip_to_latest()?.to_owned();
+    let mut metadata = metadata_from_revision(&revision).unwrap_or(LocalMetadata {
         title: None,
         artist: None,
         album: None,
@@ -225,7 +225,7 @@ fn duration_from_timebase(time_base: Option<TimeBase>, duration: Option<Duration
     let ticks = i64::try_from(duration?.get()).ok()?;
     let time = time_base?.calc_time(Timestamp::new(ticks))?;
     let millis = u64::try_from(time.as_millis()).ok()?;
-    let rounded = (millis + 999) / 1000;
+    let rounded = millis.div_ceil(1000);
     (rounded > 0).then_some(rounded)
 }
 

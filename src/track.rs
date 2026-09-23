@@ -95,7 +95,7 @@ fn clean_or(value: Option<String>, fallback: &str) -> String {
 
 fn value_id(value: &Value) -> String {
     match value {
-        Value::String(text) => text.clone(),
+        Value::String(text) => text.to_owned(),
         Value::Number(number) => number.to_string(),
         _ => String::new(),
     }
@@ -105,7 +105,7 @@ fn normalized_duration_seconds(value: u64) -> Option<u64> {
     if value == 0 {
         None
     } else if value > 10_000 {
-        Some((value + 999) / 1000)
+        Some(value.div_ceil(1000))
     } else {
         Some(value)
     }

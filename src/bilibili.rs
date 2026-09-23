@@ -39,7 +39,7 @@ pub async fn preview_from_url(url: String) -> Result<ImportPreview, String> {
         .map(|size| (Some(size), false))
         .unwrap_or_else(|| (estimated_stream_size(&resolved, &stream), true));
     let bandwidth = stream.bandwidth;
-    let codec = stream.codec.clone();
+    let codec = stream.codec.to_owned();
     let route_count = stream.urls.len();
 
     Ok(ImportPreview {
@@ -150,7 +150,7 @@ where
     )
     .await;
     if result.is_err() {
-        cleanup_download(&temp_path).await;
+        cleanup_download(temp_path).await;
     }
     result
 }
@@ -276,7 +276,7 @@ async fn resolve_video_ref(video_ref: &VideoRef) -> Result<ResolvedVideo, String
     let page_title = selected_page
         .filter(|item| data.pages.len() > 1 && !item.part.trim().is_empty())
         .map(|item| format!("{} p{:02} {}", data.title, item.page, item.part))
-        .unwrap_or_else(|| data.title.clone());
+        .unwrap_or_else(|| data.title.to_owned());
 
     Ok(ResolvedVideo {
         bvid: data.bvid,
@@ -409,10 +409,10 @@ fn query_param<'a>(text: &'a str, key: &str) -> Option<&'a str> {
     let query = text.split_once('?')?.1;
     let query = query.split_once('#').map_or(query, |(query, _)| query);
     for part in query.split('&') {
-        if let Some((item_key, value)) = part.split_once('=') {
-            if item_key.eq_ignore_ascii_case(key) {
-                return Some(value);
-            }
+        if let Some((item_key, value)) = part.split_once('=')
+            && item_key.eq_ignore_ascii_case(key)
+        {
+            return Some(value);
         }
     }
     None
@@ -470,28 +470,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_bilibili_url() {
+    fn parses_bilibili_url() -> Result<(), String> {
         let video = extract_video_ref("https://www.bilibili.com/video/BV1xUUiBKE1n/?p=2")
-            .expect("video ref");
+            .ok_or_else(|| "no video ref".to_string())?;
         assert_eq!(video.bvid, "BV1xUUiBKE1n");
         assert_eq!(video.page, 2);
+        Ok(())
     }
 
     #[test]
-    fn parses_track_id() {
-        let video = parse_track_id("BV1xUUiBKE1n:p3").expect("track id");
+    fn parses_track_id() -> Result<(), String> {
+        let video = parse_track_id("BV1xUUiBKE1n:p3")?;
         assert_eq!(video.bvid, "BV1xUUiBKE1n");
         assert_eq!(video.page, 3);
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore]
-    async fn live_resolves_audio_stream() {
-        let video =
-            extract_video_ref("https://www.bilibili.com/video/BV1xUUiBKE1n/").expect("video ref");
-        let resolved = resolve_video_ref(&video).await.expect("metadata");
-        let stream = best_audio_stream(&resolved).await.expect("audio stream");
-        let client = client().expect("client");
+    async fn live_resolves_audio_stream() -> Result<(), String> {
+        let video = extract_video_ref("https://www.bilibili.com/video/BV1xUUiBKE1n/")
+            .ok_or_else(|| "no video ref".to_string())?;
+        let resolved = resolve_video_ref(&video).await?;
+        let stream = best_audio_stream(&resolved).await?;
+        let client = client()?;
         let mut last_error = None;
         for url in stream.urls {
             let result = client
@@ -511,14 +513,16 @@ mod tests {
             let chunk = response
                 .chunk()
                 .await
-                .expect("audio chunk")
-                .expect("audio bytes");
-            assert!(!chunk.is_empty());
-            return;
+                .map_err(|err| format!("audio chunk: {err}"))?
+                .ok_or_else(|| "no audio bytes".to_string())?;
+            if chunk.is_empty() {
+                return Err("empty audio chunk".to_string());
+            }
+            return Ok(());
         }
-        panic!(
+        Err(format!(
             "no reachable audio URL: {}",
             last_error.unwrap_or_else(|| "none".to_string())
-        );
+        ))
     }
 }

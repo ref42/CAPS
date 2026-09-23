@@ -8,13 +8,19 @@ pub const SPECTRUM_BANDS: usize = 7;
 static SPECTRUM: Mutex<[f32; SPECTRUM_BANDS]> = Mutex::new([0.28; SPECTRUM_BANDS]);
 
 pub fn get_audio_spectrum() -> [f32; SPECTRUM_BANDS] {
-    *SPECTRUM.lock().unwrap()
+    match SPECTRUM.lock() {
+        Ok(spectrum) => *spectrum,
+        Err(poisoned) => *poisoned.into_inner(),
+    }
 }
 
 pub fn start_monitor() {
     thread::spawn(|| {
         let host = cpal::default_host();
 
+        // Keep monitoring the output device so the bars follow playback. Some
+        // WASAPI drivers report a transient underrun while the loopback stream
+        // is starting; the callback below logs that quietly.
         let device = match host.default_output_device() {
             Some(d) => d,
             None => return,
@@ -25,20 +31,23 @@ pub fn start_monitor() {
             Err(_) => return,
         };
 
-        let err_fn = |err| eprintln!("Audio capture error: {}", err);
+        // Capture backends can report a transient underrun while a device is
+        // starting or stopping. It does not affect playback, so keep it out of
+        // the user's console and leave the smoothed baseline in place.
+        let err_fn = |err| log::debug!("Audio capture error: {}", err);
         let sample_format = config.sample_format();
         let config: cpal::StreamConfig = config.into();
         let channels = config.channels;
 
         let stream = match sample_format {
             cpal::SampleFormat::F32 => device.build_input_stream(
-                config.clone(),
+                config,
                 move |data: &[f32], _: &_| process_data(data, channels),
                 err_fn,
                 None,
             ),
             cpal::SampleFormat::I16 => device.build_input_stream(
-                config.clone(),
+                config,
                 move |data: &[i16], _: &_| {
                     let f32_data: Vec<f32> =
                         data.iter().map(|&s| s as f32 / i16::MAX as f32).collect();
@@ -96,8 +105,8 @@ fn process_data(data: &[f32], channels: u16) {
     let mut bins = [0.0_f32; SPECTRUM_BANDS];
     let half_n = n / 2;
 
-    for i in 1..half_n {
-        let mag = (buffer[i].re.powi(2) + buffer[i].im.powi(2)).sqrt();
+    for (i, value) in buffer.iter().enumerate().take(half_n).skip(1) {
+        let mag = (value.re.powi(2) + value.im.powi(2)).sqrt();
 
         let bin_idx = if i < half_n / 16 {
             0

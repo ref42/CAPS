@@ -1,6 +1,6 @@
 [package]
 name = "caps"
-version = "2.0.0"
+version = "2.0.1"
 description = "CAPS"
 authors = ["ref42"]
 edition = "2024"
@@ -20,7 +20,19 @@ base64 = "0.23.1"
 sysinfo = "0.39.6"
 tokio = { version = "1.53.1", features = ["full", "rt-multi-thread"] }
 urlencoding = "2.1.3"
-reqwest = { version = "0.13.5", features = ["json", "form"] }
+# The default backend is rustls, which links rustls, rustls-webpki, ring and
+# aws-lc-rs into a program that already reaches schannel through the platform
+# layer. Windows ships schannel and keeps its own root store, so the native
+# backend does the same job for the size of a few API calls. The rest of the
+# defaults — charset, http2, system-proxy — are kept.
+reqwest = { version = "0.13.5", default-features = false, features = [
+    "json",
+    "form",
+    "native-tls",
+    "charset",
+    "http2",
+    "system-proxy",
+] }
 rfd = "0.17.2"
 image = "0.25.10"
 cpal = "0.18.2"

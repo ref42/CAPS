@@ -74,5 +74,11 @@ jobs:
             } else {
               gh release create $tag --title $tag --notes "CAPS $tag"
             }
+          } elseif (Test-Path $notes) {
+            # The release already existed — usually because it was published by
+            # hand from the tag before this run finished — so it can have no
+            # notes at all. Apply the tag's notes file instead of leaving the
+            # page blank.
+            gh release edit $tag --title $tag --notes-file $notes
           }
           gh release upload $tag "dist/CAPS-$tag-windows-x64.exe" "dist/CAPS-$tag-windows-x64.exe.sha256" --clobber

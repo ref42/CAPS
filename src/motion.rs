@@ -1,4 +1,4 @@
-//! Interruptible native equivalents of the island's CSS motion curves.
+//! Interruptible native equivalents of the capsule's CSS motion curves.
 use std::time::{Duration, Instant};
 
 pub fn should_collapse(

@@ -1,6 +1,6 @@
 //! Native GPUI layout and interaction; no DOM, CSS or embedded browser.
 //!
-//! Everything the island shows is drawn from the token block below. The palette
+//! Everything the capsule shows is drawn from the token block below. The palette
 //! is deliberately small: one dark appearance, one accent, and the album's own
 //! colours for the spectrum and the seek bar.
 use crate::{
@@ -14,33 +14,201 @@ use crate::{
 use gpui_kit::base::{
     Scrollbar, ScrollbarMode, Slider as BaseSlider, SliderIndicator, SliderThumb, SliderTrack,
 };
-use gpui_kit::component::{Sizable, input::Input, slider::Slider};
+use gpui_kit::component::{Sizable, Theme, ThemeMode, input::Input, slider::Slider};
 use gpui_kit::{prelude::FluentBuilder, *};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 // ---------------------------------------------------------------- palette ---
 //
-// One dark appearance, because the island floats over an arbitrary desktop:
-// every surface stays near opaque so its text contrast does not depend on the
-// wallpaper behind it. The ratios in the comments are measured against the
-// surface the token is drawn on.
+// Two appearances, chosen from what the capsule is floating over. The surface is
+// the user's to fade — the opacity control reaches zero — so the text cannot
+// take its contrast from that surface: it has to be the opposite of the pixels
+// behind the window. The desktop is sampled around the capsule and composited
+// with the faded surface, and the tones below are picked against *that* — white
+// over a dark desktop, near-black over a light document. Hierarchy is carried by
+// size and weight, because a half-tone is the first thing a variable background
+// swallows.
 const SURFACE: u32 = 0x0e0f12; // capsule body
 const SURFACE_RAISED: u32 = 0x16181d; // panel: one step lighter, not glass on glass
-const HAIRLINE: u32 = 0xffffff12;
-const WELL: u32 = 0xffffff0c; // inset track behind segmented controls
-const TEXT: u32 = 0xf2f5f7; // 17.4:1
-const TEXT_SECONDARY: u32 = 0xa8b0b4; // 8.5:1
-const TEXT_TERTIARY: u32 = 0x9fa8ac; // 7.8:1
-const ACCENT: u32 = 0x7df2ca; // 13.7:1, selection and playback state
-const SELECTION: u32 = 0x7df2ca1c;
-const TRACK: u32 = 0xffffff2e;
+
+/// Text and tints over a dark background.
+const ON_DARK: Palette = Palette {
+    text: 0xffffff,
+    secondary: 0xffffff,
+    tertiary: 0xffffff,
+    accent: 0x7df2ca,
+    hairline: 0xffffff12,
+    well: 0xffffff0c,
+    track: 0xffffff2e,
+};
+
+/// Text and tints over a light one.
+const ON_LIGHT: Palette = Palette {
+    text: 0x0d0f12,
+    secondary: 0x0d0f12,
+    tertiary: 0x0d0f12,
+    accent: 0x0b7a58,
+    hairline: 0x00000026,
+    well: 0x00000014,
+    track: 0x0000003d,
+};
+
+/// How much of the accent shows through a selection wash.
+const WASH_ALPHA: u32 = 0x1c;
+
+#[derive(Clone, Copy)]
+struct Palette {
+    text: u32,
+    secondary: u32,
+    tertiary: u32,
+    accent: u32,
+    hairline: u32,
+    well: u32,
+    track: u32,
+}
+
+/// Which of the two appearances is in force. Written by [`set_backdrop`] from
+/// the app's tick, read by every colour accessor below.
+static BACKDROP_IS_LIGHT: AtomicBool = AtomicBool::new(false);
+
+/// How many samples in a row have asked for the other appearance. A backdrop
+/// that is being dragged across the capsule changes its mind slowly.
+static PENDING_SWITCH: AtomicU32 = AtomicU32::new(0);
+
+fn palette() -> Palette {
+    if BACKDROP_IS_LIGHT.load(Ordering::Relaxed) {
+        ON_LIGHT
+    } else {
+        ON_DARK
+    }
+}
+
+fn text() -> u32 {
+    palette().text
+}
+
+fn text_secondary() -> u32 {
+    palette().secondary
+}
+
+fn text_tertiary() -> u32 {
+    palette().tertiary
+}
+
+fn accent() -> u32 {
+    palette().accent
+}
+
+fn hairline() -> u32 {
+    palette().hairline
+}
+
+fn well() -> u32 {
+    palette().well
+}
+
+fn track_tint() -> u32 {
+    palette().track
+}
+
+/// The accent as a translucent wash, so it follows whichever accent is in force.
+fn selection() -> u32 {
+    (accent() << 8) | WASH_ALPHA
+}
+
+/// Pick the appearance from what is behind the capsule; report whether it changed.
+///
+/// `samples` are the colours sampled around the capsule, each with the weight of
+/// the area it stands for, and `alpha` is the user's opacity, because a surface
+/// that is still mostly opaque keeps its own dark tone whatever is behind it —
+/// every sample is composited the way the eye will see it before it is judged.
+///
+/// An capsule can easily sit across two windows, one white and one dark. The
+/// larger area wins, but only by a clear margin, and only after two samples in a
+/// row agree: a backdrop straddling the middle of the capsule must settle on one
+/// appearance and keep it rather than strobing between the two.
+///
+/// Returns the appearance now in force when it changed, so the caller can bring
+/// the component theme along with it.
+pub fn set_backdrop(samples: &[([u8; 3], f32)], alpha: f32) -> Option<bool> {
+    let surface = [
+        ((SURFACE >> 16) & 0xff) as f32,
+        ((SURFACE >> 8) & 0xff) as f32,
+        (SURFACE & 0xff) as f32,
+    ];
+    let weights = [0.2126, 0.7152, 0.0722];
+    let a = alpha.clamp(0., 1.);
+    let (mut light, mut dark) = (0f32, 0f32);
+    for (backdrop, weight) in samples {
+        let mut luma = 0.;
+        for i in 0..3 {
+            let mixed = (a * surface[i] + (1. - a) * backdrop[i] as f32) / 255.;
+            let linear = if mixed <= 0.03928 {
+                mixed / 12.92
+            } else {
+                ((mixed + 0.055) / 1.055).powf(2.4)
+            };
+            luma += linear * weights[i];
+        }
+        // 0.19 is where white text and near-black text are equally readable, so
+        // it is the only honest place to split the samples in two.
+        if luma > 0.19 {
+            light += weight;
+        } else {
+            dark += weight;
+        }
+    }
+    let total = light + dark;
+    if total <= 0. {
+        return None;
+    }
+    let in_force = BACKDROP_IS_LIGHT.load(Ordering::Relaxed);
+    let winner = if light / total > 0.6 {
+        Some(true)
+    } else if dark / total > 0.6 {
+        Some(false)
+    } else {
+        None
+    };
+    let Some(wanted) = winner.filter(|wanted| *wanted != in_force) else {
+        PENDING_SWITCH.store(0, Ordering::Relaxed);
+        return None;
+    };
+    if PENDING_SWITCH.fetch_add(1, Ordering::Relaxed) + 1 < 2 {
+        return None;
+    }
+    PENDING_SWITCH.store(0, Ordering::Relaxed);
+    BACKDROP_IS_LIGHT.store(wanted, Ordering::Relaxed);
+    Some(wanted)
+}
+
+/// Bring the component theme along with the palette.
+///
+/// The widgets this module does not paint itself — the search field's
+/// placeholder, the scrollbar's thumb, a slider's fill — take their greys from
+/// `gpui-component`'s theme, so the theme has to follow the same decision the
+/// capsule's own colours do, or those few marks stay unreadable over exactly the
+/// backdrops the rest of the capsule has adapted to.
+pub fn sync_theme(light: bool, window: &mut Window, cx: &mut App) {
+    // A light backdrop needs `ThemeMode::Light`: those widgets then draw their
+    // dark greys, which is what the capsule's own text is doing.
+    let wanted = if light {
+        ThemeMode::Light
+    } else {
+        ThemeMode::Dark
+    };
+    if Theme::global(cx).is_dark() == light {
+        Theme::change(wanted, Some(window), cx);
+    }
+}
 
 // ------------------------------------------------------------------ type ---
 //
-// Logical points at 100% island size, scaled with the island. Nothing renders
+// Logical points at 100% capsule size, scaled with the capsule. Nothing renders
 // below `FLOOR`: typography.md › Ensuring legibility puts the desktop minimum
-// at 10 pt, and this island is desktop-only.
+// at 10 pt, and this capsule is desktop-only.
 const LYRIC: f32 = 17.;
 const TITLE: f32 = 15.;
 const BODY: f32 = 12.;
@@ -53,7 +221,23 @@ const LYRIC_WIDTH: f32 = 268.;
 const SEMIBOLD: FontWeight = FontWeight(600.);
 const MEDIUM: FontWeight = FontWeight(500.);
 
-/// Size of a drawn icon, before the island scale. Held level with `BODY`, so an
+/// A text size at the capsule's scale, held at the platform's minimum.
+///
+/// The capsule's size control scales everything, type included, and it goes down
+/// to 85% — which took the 10 pt labels to 8.5 pt and the 11 pt ones to 9.4 pt,
+/// both under the floor the HIG sets for desktop text. `accessibility.md ›
+/// Vision`: "Use recommended defaults for custom type sizes. Each platform has
+/// different default and minimum sizes for system-defined type styles to promote
+/// readability. If you're using custom type styles, follow the recommended
+/// defaults." `typography.md › Ensuring legibility`: "Use font sizes that most
+/// people can read easily… Follow the recommended default and minimum text sizes
+/// for each platform." At 100% and above this returns exactly `base * s`; it
+/// only ever lifts the smallest sizes back to `FLOOR`.
+fn type_size(base: f32, s: f32) -> f32 {
+    (base * s).max(FLOOR)
+}
+
+/// Size of a drawn icon, before the capsule scale. Held level with `BODY`, so an
 /// icon's ink weighs the same as the text beside it however it is drawn — then
 /// half again as large, because the marks carry the transport row on their own
 /// and read as timid at the text's own size.
@@ -77,7 +261,7 @@ pub const ARTIST_SLOT: usize = 1;
 pub const ROW_SLOT: usize = 2;
 pub const NAME_SLOT: usize = 3;
 
-/// Which part of the island the pointer is on, as far as those lines go.
+/// Which part of the capsule the pointer is on, as far as those lines go.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum HoverLine {
     /// The capsule's title and artist, which scroll together.
@@ -230,6 +414,44 @@ const SEEK_RAIL: f32 = 4.;
 const SEEK_TRACK: f32 = 14.;
 const SEEK_DOT: f32 = 10.4;
 
+/// Width of an idle reading's value cell, in points at 100% capsule size.
+///
+/// A reading is an icon, a figure and its unit, and the cell holding the last
+/// two keeps one width whatever the figures do: a cell that resized with them
+/// pushed the icon sideways and changed the gap to the next reading, which made
+/// the whole strip twitch as the numbers moved. The figure is set flush *left*
+/// inside the cell, so it sits against its icon and only ever grows rightwards —
+/// the slack a short figure leaves is trailing, where nobody sees it, instead of
+/// opening a hole between the icon and the number it belongs to.
+///
+/// Four characters covers `100%`; nine covers the longest rate, `1023 KB/s` —
+/// `format_rate` never emits a tenth, so a rate figure cannot reach the icon of
+/// the next reading even in the worst case.
+const READ_PERCENT_W: f32 = 30.;
+const READ_RATE_W: f32 = 66.;
+/// The icon inside a reading and the gap between it and the figure.
+const READ_ICON: f32 = 15.;
+const READ_TEXT_GAP: f32 = 3.;
+/// The gap between readings, and the spectrum's own column.
+///
+/// The readings and the spectrum now carry their own widths, so these two
+/// numbers, the header's 12 pt padding and `COLLAPSED_W` are all that is left
+/// for the air between them: 400 − 24 padding − 2 × (15 + 3 + 30) percent − 2 ×
+/// (15 + 3 + 66) rate − 48 spectrum leaves 64 pt, exactly four 16 pt gaps.
+/// Hovering widens the capsule to 460 and the row spreads that extra 60 pt
+/// evenly between the same five groups.
+const READ_GAP: f32 = 16.;
+const READ_SPECTRUM_W: f32 = 48.;
+
+/// Tabular figures, for a number that changes while you look at it.
+///
+/// No HIG page covers this — it is studio practice, and it is the difference
+/// between digits that keep their places and digits that shuffle in a
+/// proportional face. Fonts without the feature simply ignore it.
+fn tabular_figures() -> FontFeatures {
+    FontFeatures(Arc::new(vec![("tnum".to_string(), 1)]))
+}
+
 /// The seek bar's own band at the bottom of the capsule.
 ///
 /// The capsule opens to 86 pt, and the artwork is a 52 pt circle centred in it,
@@ -288,10 +510,10 @@ pub const HAN_FALLBACKS: [&str; 6] = [
     "DengXian",
 ];
 
-/// The island's text style: the chosen Latin family, with Han resolved through
+/// The capsule's text style: the chosen Latin family, with Han resolved through
 /// the user's Han family and then [`HAN_FALLBACKS`] rather than DirectWrite's
 /// own choice.
-fn island_font(family: SharedString, han: FontFallbacks) -> Font {
+fn capsule_font(family: SharedString, han: FontFallbacks) -> Font {
     Font {
         family,
         features: FontFeatures::default(),
@@ -316,13 +538,13 @@ fn segmented(s: f32) -> Div {
         .p(px(3. * s))
         .h(px(32. * s))
         .rounded(px(12. * s))
-        .bg(rgba(WELL))
+        .bg(rgba(well()))
 }
 
 /// A text button in a segmented control or a row of actions.
 fn button(
     id: impl Into<ElementId>,
-    text: impl Into<SharedString>,
+    label: impl Into<SharedString>,
     active: bool,
     s: f32,
 ) -> Stateful<Div> {
@@ -337,24 +559,24 @@ fn button(
         .cursor_pointer()
         .text_size(px(BODY * s))
         .font_weight(MEDIUM)
-        .text_color(if active { rgb(ACCENT) } else { rgb(TEXT_SECONDARY) })
+        .text_color(if active { rgb(accent()) } else { rgb(text_secondary()) })
         .bg(if active {
-            rgba(SELECTION)
+            rgba(selection())
         } else {
             rgba(0xffffff00)
         })
         .hover(|style| {
             style
                 .bg(if active {
-                    rgba(SELECTION)
+                    rgba(selection())
                 } else {
                     rgba(0xffffff12)
                 })
-                .text_color(rgb(TEXT))
+                .text_color(rgb(text()))
         })
         .active(|style| style.bg(rgba(0xffffff20)))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .child(text.into())
+        .child(label.into())
 }
 
 /// An icon-only control. Every one carries an accessible label, which is what
@@ -374,15 +596,15 @@ fn icon_button(
         .rounded_full()
         .cursor_pointer()
         .text_size(px(BODY * s))
-        .text_color(rgb(TEXT_SECONDARY))
+        .text_color(rgb(text_secondary()))
         .aria_label(label)
-        .hover(|style| style.bg(rgba(0xffffff14)).text_color(rgb(TEXT)))
+        .hover(|style| style.bg(rgba(0xffffff14)).text_color(rgb(text())))
         .active(|style| style.bg(rgba(0xffffff24)))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(glyph)
 }
 
-/// The island's icon set, drawn rather than typed.
+/// The capsule's icon set, drawn rather than typed.
 ///
 /// These used to be characters: `Ⅱ` for pause, `◀ ▶ ■` for the transport, `▶ ×`
 /// for the row actions. A glyph's ink sits wherever its font's metrics leave it,
@@ -408,6 +630,14 @@ enum Mark {
     Remove,
     /// Put the track into the queue.
     Add,
+    /// Processor usage, for the idle capsule's first reading.
+    Cpu,
+    /// Memory usage.
+    Memory,
+    /// Network download rate.
+    Download,
+    /// Network upload rate.
+    Upload,
 }
 
 impl Mark {
@@ -477,6 +707,92 @@ impl Mark {
                 path.move_to(unit(0.26, 0.50));
                 path.line_to(unit(0.74, 0.50));
             }
+            // A processor: a die with a solid core and two pins to each side.
+            // Pins on all four sides of a stroked square read as a gear at this
+            // size; `icons.md › Best practices` asks for a "recognizable, highly
+            // simplified design", and four pins keep the chip silhouette without
+            // the cogwheel.
+            Self::Cpu => {
+                path.add_polygon(
+                    &[
+                        unit(0.28, 0.28),
+                        unit(0.72, 0.28),
+                        unit(0.72, 0.72),
+                        unit(0.28, 0.72),
+                    ],
+                    true,
+                );
+                path.add_polygon(
+                    &[
+                        unit(0.42, 0.42),
+                        unit(0.58, 0.42),
+                        unit(0.58, 0.58),
+                        unit(0.42, 0.58),
+                    ],
+                    true,
+                );
+                for (from, to) in [
+                    ((0.13, 0.40), (0.28, 0.40)),
+                    ((0.13, 0.60), (0.28, 0.60)),
+                    ((0.72, 0.40), (0.87, 0.40)),
+                    ((0.72, 0.60), (0.87, 0.60)),
+                ] {
+                    path.move_to(unit(from.0, from.1));
+                    path.line_to(unit(to.0, to.1));
+                }
+            }
+            // A memory module: a long body with three contacts along its lower
+            // edge. The silhouette is deliberately unlike the processor's square,
+            // so the two are told apart at a glance.
+            Self::Memory => {
+                path.add_polygon(
+                    &[
+                        unit(0.12, 0.34),
+                        unit(0.88, 0.34),
+                        unit(0.88, 0.62),
+                        unit(0.12, 0.62),
+                    ],
+                    true,
+                );
+                for x in [0.30, 0.50, 0.70] {
+                    path.move_to(unit(x, 0.62));
+                    path.line_to(unit(x, 0.77));
+                }
+            }
+            // Transfer arrows, over a tray so the pair reads as movement between
+            // the machine and the network rather than as scroll arrows.
+            //
+            // The heads are open and wide — a 0.22 of the box each way, against a
+            // stroke of 0.13. A shorter head closes up: the two strokes of the V
+            // merge with each other and with the shaft, and the arrow renders as
+            // a lump on a stick instead of an arrowhead.
+            //
+            // Both are drawn above the middle: `icons.md › Best practices` notes
+            // that a download icon "has more visual weight on the bottom than on
+            // the top, which can make it look too low if it's geometrically
+            // centered." They also fill more of their box than the chip and the
+            // module do, which is the same page's advice to "adjust its
+            // dimensions to ensure that it appears visually consistent with
+            // other icons": an arrow is a narrow glyph, so at equal box size it
+            // reads smaller than a filled square beside it.
+            Self::Download => {
+                path.move_to(unit(0.50, 0.07));
+                path.line_to(unit(0.50, 0.62));
+                path.move_to(unit(0.24, 0.38));
+                path.line_to(unit(0.50, 0.64));
+                path.line_to(unit(0.76, 0.38));
+                path.move_to(unit(0.16, 0.86));
+                path.line_to(unit(0.84, 0.86));
+            }
+            Self::Upload => {
+                path.move_to(unit(0.50, 0.69));
+                path.line_to(unit(0.50, 0.14));
+                path.move_to(unit(0.24, 0.40));
+                path.line_to(unit(0.50, 0.14));
+                path.line_to(unit(0.76, 0.40));
+                path.move_to(unit(0.16, 0.88));
+                path.line_to(unit(0.84, 0.88));
+            }
         }
     }
 }
@@ -509,6 +825,10 @@ fn mark(kind: Mark, size: f32) -> impl IntoElement {
         },
     )
     .size(px(size))
+    // The painted path is laid out at `size` whatever the box does, so a mark
+    // squeezed by a tight parent keeps painting full width and spills its ink
+    // over whatever comes next. An icon is a fixed-size thing: never shrink it.
+    .flex_shrink_0()
 }
 
 /// A small square control used inside track rows.
@@ -528,14 +848,14 @@ fn row_button(
         .rounded(px(10. * s))
         .cursor_pointer()
         .text_size(px(BODY * s))
-        .text_color(if active { rgb(ACCENT) } else { rgb(TEXT_SECONDARY) })
+        .text_color(if active { rgb(accent()) } else { rgb(text_secondary()) })
         .bg(if active {
-            rgba(SELECTION)
+            rgba(selection())
         } else {
             rgba(0xffffff00)
         })
         .aria_label(label)
-        .hover(|style| style.bg(rgba(0xffffff16)).text_color(rgb(TEXT)))
+        .hover(|style| style.bg(rgba(0xffffff16)).text_color(rgb(text())))
         .active(|style| style.bg(rgba(0xffffff26)))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(glyph)
@@ -545,12 +865,12 @@ impl Render for Caps {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let now = Instant::now();
         let e = self.expand_motion.value(now);
-        let s = self.settings.island_size as f32 / 100.;
+        let s = self.settings.capsule_size as f32 / 100.;
         window.set_rem_size(px(14. * s));
         let width = self.width_motion.value(now);
         let alpha = (self.settings.opacity as f32 / 100. * 255.) as u32;
         let header = row()
-            .id("island")
+            .id("capsule")
             .relative()
             .w(px(width * s))
             .h(px(header_height(e) * s))
@@ -559,7 +879,7 @@ impl Render for Caps {
             .rounded_full()
             .bg(rgba((SURFACE << 8) | alpha))
             .border_1()
-            .border_color(rgba(HAIRLINE))
+            .border_color(rgba(hairline()))
             .overflow_hidden()
             .on_mouse_down(
                 MouseButton::Left,
@@ -585,8 +905,17 @@ impl Render for Caps {
             .child(if self.has_music() {
                 self.music_header(e, s, cx).into_any_element()
             } else {
+                // The spectrum takes a fixed column and centres in it, so it sits
+                // on the same pitch as the four readings rather than trailing
+                // them at a different spacing.
                 self.stats_header(s)
-                    .child(self.spectrum_view(s))
+                    .child(
+                        row()
+                            .w(px(READ_SPECTRUM_W * s))
+                            .flex_shrink_0()
+                            .justify_center()
+                            .child(self.spectrum_view(s)),
+                    )
                     .into_any_element()
             })
             .when(self.has_music() && e > 0.6, |d| {
@@ -597,9 +926,9 @@ impl Render for Caps {
             .relative()
             .p(px(BLEED * s))
             .gap(px(PANEL_GAP * e * s))
-            .text_color(rgb(TEXT))
+            .text_color(rgb(text()))
             .text_size(px(BODY * s))
-            .font(island_font(
+            .font(capsule_font(
                 self.latin_family(),
                 self.han_fallbacks.to_owned(),
             ))
@@ -668,7 +997,7 @@ impl Render for Caps {
                 .rounded(px(PANEL_RADIUS * s))
                 .bg(rgba((SURFACE_RAISED << 8) | alpha))
                 .border_1()
-                .border_color(rgba(HAIRLINE))
+                .border_color(rgba(hairline()))
                 .overflow_hidden()
                 .opacity(motion::ease(e))
                 .child(tabs)
@@ -682,35 +1011,89 @@ impl Render for Caps {
 impl Caps {
     /// Idle capsule: the four figures people glance at, each with the same
     /// weight so no single reading shouts louder than the others, followed by
-    /// the level indicator. All five share one spacing rhythm — `layout.md ›
-    /// Visual hierarchy`: "Align elements to make them easier to scan." People
-    /// assume that aligned items are related to each other." A tight pocket
-    /// before the bars made them read as a stray mark rather than a fifth
+    /// the level indicator.
+    ///
+    /// Each group carries its own width and the row spreads what is left evenly
+    /// between the groups, so the air either side of a group is the same whether
+    /// it holds an `8%` that needs twenty points or an `196 KB/s` that needs
+    /// sixty. Equal *columns* stop reading as even as soon as the figures differ
+    /// in length: every short figure leaves a hole the size of the longest
+    /// reading, which is what made the strip look bunched in the middle and
+    /// empty at the edges.
+    ///
+    /// `layout.md › Visual hierarchy`: "Align elements to make them easier to
+    /// scan. People assume that aligned items are related to each other." A tight
+    /// pocket before the bars made them read as a stray mark rather than a fifth
     /// reading.
     fn stats_header(&self, s: f32) -> Div {
-        row().flex_1().min_w_0().justify_between().children(
+        // Each reading is an icon and its figure on one line. Both keep a fixed
+        // width — the cell holds the longest rate `format_rate` can emit — so the
+        // slots themselves never move as the figures change; only the air between
+        // them is elastic.
+        //
+        // `icons.md › Best practices`: "Create a recognizable, highly simplified
+        // design… icons work best when they use familiar visual metaphors that
+        // are directly related to the actions they initiate or content they
+        // represent", and "match the weights of interface icons and adjacent
+        // text" — the marks are drawn at the same optical weight as the figures
+        // beside them. The icons carry the meaning visually, so each reading also
+        // carries the name and figure as its accessible label, which is what
+        // "Provide alternative text labels for custom interface icons" asks for.
+        row()
+            .flex_1()
+            .min_w_0()
+            .justify_between()
+            .gap(px(READ_GAP * s))
+            .children(
             [
-                ("CPU", format!("{:.0}%", self.stats.cpu)),
-                ("MEM", format!("{:.0}%", self.stats.memory)),
-                ("DOWN", format_rate(self.stats.download)),
-                ("UP", format_rate(self.stats.upload)),
+                (
+                    Mark::Cpu,
+                    self.tr("CPU", "处理器"),
+                    format!("{:.0}%", self.stats.cpu),
+                    READ_PERCENT_W,
+                ),
+                (
+                    Mark::Memory,
+                    self.tr("Memory", "内存"),
+                    format!("{:.0}%", self.stats.memory),
+                    READ_PERCENT_W,
+                ),
+                (
+                    Mark::Download,
+                    self.tr("Download", "下载"),
+                    format_rate(self.stats.download),
+                    READ_RATE_W,
+                ),
+                (
+                    Mark::Upload,
+                    self.tr("Upload", "上传"),
+                    format_rate(self.stats.upload),
+                    READ_RATE_W,
+                ),
             ]
             .into_iter()
-            .map(|(label, value)| {
-                column()
-                    .gap(px(1. * s))
+            .map(|(glyph, name, value, cell)| {
+                row()
+                    .id(name)
+                    .flex_shrink_0()
+                    .gap(px(READ_TEXT_GAP * s))
+                    // The mark takes the colour it inherits from here; the figure
+                    // sets its own below.
+                    .text_color(rgb(text_tertiary()))
+                    .aria_label(format!("{name} {value}"))
+                    .child(mark(glyph, READ_ICON * s))
                     .child(
                         div()
-                            .text_size(px(FLOOR * s))
-                            .font_weight(MEDIUM)
-                            .text_color(rgb(TEXT_TERTIARY))
-                            .child(label),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(BODY * s))
+                            .w(px(cell * s))
+                            .flex_shrink_0()
+                            // A figure wider than its cell (a gigabit download)
+                            // overruns the cell rather than wrapping onto a
+                            // second line, which would double the row's height.
+                            .whitespace_nowrap()
+                            .text_size(px(type_size(TITLE, s)))
                             .font_weight(SEMIBOLD)
-                            .text_color(rgb(TEXT))
+                            .text_color(rgb(text()))
+                            .font_features(tabular_figures())
                             .child(value),
                     )
             }),
@@ -718,7 +1101,7 @@ impl Caps {
     }
 
     /// FFT bars tinted with the album's colours: the one piece of ornament the
-    /// island has, and the only thing that moves while music plays.
+    /// capsule has, and the only thing that moves while music plays.
     ///
     /// It is a compact level indicator, not a chart, and three rules follow
     /// from that:
@@ -842,7 +1225,7 @@ impl Caps {
                 track.name.to_owned(),
                 LineStyle {
                     size: TITLE * s,
-                    color: TEXT,
+                    color: text(),
                     weight: SEMIBOLD,
                 },
                 title_offset,
@@ -856,8 +1239,8 @@ impl Caps {
                 ARTIST_SLOT,
                 track.artist.to_owned(),
                 LineStyle {
-                    size: LABEL * s,
-                    color: TEXT_SECONDARY,
+                    size: type_size(LABEL, s),
+                    color: text_secondary(),
                     weight: FontWeight::default(),
                 },
                 artist_offset,
@@ -903,9 +1286,9 @@ impl Caps {
                         s,
                     )
                     .text_color(rgb(if self.audio.is_playing {
-                        ACCENT
+                        accent()
                     } else {
-                        TEXT
+                        text()
                     }))
                     .on_click(
                         cx.listener(|this, _, _, _| this.player.send(AudioCommand::PlayPause)),
@@ -988,7 +1371,7 @@ impl Caps {
                                     .w_full()
                                     .h(px(SEEK_RAIL * s))
                                     .rounded_full()
-                                    .bg(rgba(TRACK))
+                                    .bg(rgba(track_tint()))
                                     .child(
                                         div()
                                             .absolute()
@@ -1039,11 +1422,11 @@ impl Caps {
                 .chars()
                 .map(|ch| if ch.is_ascii() { 9. } else { 18. })
                 .sum::<f32>();
-            // Keep long provider lyrics readable inside the fixed-width island:
+            // Keep long provider lyrics readable inside the fixed-width capsule:
             // typical lines keep the full face, unusually long ones scale down
             // before they can run into the rounded clipping edge.
             let available = LYRIC_WIDTH * s;
-            let lyric_size = (LYRIC * s * (available / (estimated * s).max(available))).max(FLOOR * s);
+            let lyric_size = (LYRIC * s * (available / (estimated * s).max(available))).max(type_size(FLOOR, s));
             let rendered_width = estimated * (lyric_size / (LYRIC * s));
             let overflow = (rendered_width - available).max(0.);
             let travel = overflow + 28. * s;
@@ -1163,7 +1546,7 @@ impl Caps {
                                     .on_click(cx.listener(|this, _, _, cx| this.import(cx))),
                             ),
                     )
-                    .child(div().text_color(rgb(TEXT_SECONDARY)).child(self.tr(
+                    .child(div().text_color(rgb(text_secondary())).child(self.tr(
                         "Paste a video link to add its audio to your queue.",
                         "粘贴视频链接，将音频添加到队列。",
                     )));
@@ -1186,7 +1569,7 @@ impl Caps {
                     )
                     .child(
                         div()
-                            .text_color(rgb(TEXT_SECONDARY))
+                            .text_color(rgb(text_secondary()))
                             .text_ellipsis()
                             .child(self.settings.local_music_folder.to_owned()),
                     );
@@ -1195,8 +1578,8 @@ impl Caps {
         panel
             .child(
                 div()
-                    .text_size(px(LABEL * s))
-                    .text_color(rgb(TEXT_TERTIARY))
+                    .text_size(px(type_size(LABEL, s)))
+                    .text_color(rgb(text_tertiary()))
                     .max_h(px(32. * s))
                     .overflow_hidden()
                     .child(self.status.to_owned()),
@@ -1218,7 +1601,7 @@ impl Caps {
             .child(
                 row()
                     .justify_between()
-                    .text_color(rgb(TEXT_SECONDARY))
+                    .text_color(rgb(text_secondary()))
                     .child(format!("{} {}", self.queue.len(), self.tr("tracks", "首歌曲")))
                     .child(
                         row()
@@ -1276,7 +1659,7 @@ impl Caps {
                 .child(
                     div()
                         .text_size(px(BODY * s))
-                        .text_color(rgb(TEXT_TERTIARY))
+                        .text_color(rgb(text_tertiary()))
                         .text_align(TextAlign::Center)
                         .child(hint),
                 )
@@ -1340,8 +1723,8 @@ impl Caps {
                             .mode(ScrollbarMode::Always)
                             .styles(|styles| {
                                 styles
-                                    .track(|style| style.bg(Hsla::from(rgba(WELL))))
-                                    .thumb(|style| style.bg(Hsla::from(rgba(TRACK))))
+                                    .track(|style| style.bg(Hsla::from(rgba(well()))))
+                                    .thumb(|style| style.bg(Hsla::from(rgba(track_tint()))))
                                     .thumb_hover(|style| style.bg(Hsla::from(rgba(0xffffff44))))
                                     .thumb_active(|style| style.bg(Hsla::from(rgba(0xffffff5c))))
                             }),
@@ -1386,7 +1769,7 @@ impl Caps {
             .rounded(px(9. * s))
             .cursor_pointer()
             .bg(if active {
-                rgba(SELECTION)
+                rgba(selection())
             } else {
                 rgba(0xffffff00)
             })
@@ -1425,7 +1808,7 @@ impl Caps {
                         name,
                         LineStyle {
                             size: BODY * s,
-                            color: if active { ACCENT } else { TEXT },
+                            color: if active { accent() } else { text() },
                             weight: SEMIBOLD,
                         },
                         name_offset,
@@ -1435,8 +1818,8 @@ impl Caps {
                         ROW_SLOT,
                         detail,
                         LineStyle {
-                            size: FLOOR * s,
-                            color: TEXT_TERTIARY,
+                            size: type_size(FLOOR, s),
+                            color: text_tertiary(),
                             weight: FontWeight::default(),
                         },
                         offset,
@@ -1449,8 +1832,8 @@ impl Caps {
                 div()
                     .w(px(DURATION_W * s))
                     .flex_shrink_0()
-                    .text_size(px(FLOOR * s))
-                    .text_color(rgb(TEXT_TERTIARY))
+                    .text_size(px(type_size(FLOOR, s)))
+                    .text_color(rgb(text_tertiary()))
                     .text_align(TextAlign::Right)
                     .child(duration),
             )
@@ -1563,7 +1946,7 @@ impl Caps {
             .px(px(8. * s))
             .rounded(px(8. * s))
             .cursor_pointer()
-            .bg(rgba(WELL))
+            .bg(rgba(well()))
             .hover(|style| style.bg(rgba(0xffffff18)))
             .active(|style| style.bg(rgba(0xffffff24)))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -1584,8 +1967,8 @@ impl Caps {
                 div()
                     .w(px(52. * s))
                     .flex_shrink_0()
-                    .text_size(px(LABEL * s))
-                    .text_color(rgb(TEXT_TERTIARY))
+                    .text_size(px(type_size(LABEL, s)))
+                    .text_color(rgb(text_tertiary()))
                     .child(label),
             )
             .child(
@@ -1593,16 +1976,9 @@ impl Caps {
                     .flex_1()
                     .min_w_0()
                     .text_size(px(BODY * s))
-                    .text_color(if missing { rgb(TEXT_TERTIARY) } else { rgb(TEXT) })
+                    .text_color(if missing { rgb(text_tertiary()) } else { rgb(text()) })
                     .text_ellipsis()
                     .child(summary),
-            )
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .text_size(px(BODY * s))
-                    .text_color(rgb(TEXT_SECONDARY))
-                    .child("✓"),
             )
     }
 
@@ -1662,7 +2038,7 @@ impl Caps {
                 .child(
                     div()
                         .text_size(px(BODY * s))
-                        .text_color(rgb(TEXT_TERTIARY))
+                        .text_color(rgb(text_tertiary()))
                         .text_align(TextAlign::Center)
                         .child(empty),
                 )
@@ -1690,8 +2066,8 @@ impl Caps {
                                 .mode(ScrollbarMode::Always)
                                 .styles(|styles| {
                                     styles
-                                        .track(|style| style.bg(Hsla::from(rgba(WELL))))
-                                        .thumb(|style| style.bg(Hsla::from(rgba(TRACK))))
+                                        .track(|style| style.bg(Hsla::from(rgba(well()))))
+                                        .thumb(|style| style.bg(Hsla::from(rgba(track_tint()))))
                                         .thumb_hover(|style| {
                                             style.bg(Hsla::from(rgba(0xffffff44)))
                                         })
@@ -1721,14 +2097,14 @@ impl Caps {
                     .child(
                         div()
                             .text_size(px(BODY * s))
-                            .text_color(rgb(TEXT_SECONDARY))
+                            .text_color(rgb(text_secondary()))
                             .child(title),
                     )
                     .child(div().flex_1())
                     .child(
                         div()
-                            .text_size(px(LABEL * s))
-                            .text_color(rgb(TEXT_TERTIARY))
+                            .text_size(px(type_size(LABEL, s)))
+                            .text_color(rgb(text_tertiary()))
                             .child(if searching {
                                 self.say(
                                     format!("{matched} of {total}"),
@@ -1775,7 +2151,7 @@ impl Caps {
         };
         // The preview is drawn in the candidate family; the name beside it stays
         // in the interface font so the two can be told apart.
-        let preview = island_font(
+        let preview = capsule_font(
             match slot {
                 FontSlot::Latin => candidate
                     .map(SharedString::from)
@@ -1809,7 +2185,7 @@ impl Caps {
                 .rounded(px(8. * s))
                 .cursor_pointer()
                 .bg(if selected {
-                    rgba(SELECTION)
+                    rgba(selection())
                 } else {
                     rgba(0xffffff00)
                 })
@@ -1823,7 +2199,7 @@ impl Caps {
                     div()
                         .w(px(14. * s))
                         .flex_shrink_0()
-                        .text_color(rgb(ACCENT))
+                        .text_color(rgb(accent()))
                         .child(if selected { "✓" } else { "" }),
                 )
                 .child(
@@ -1832,7 +2208,7 @@ impl Caps {
                         .min_w_0()
                         .text_size(px(LYRIC * s))
                         .font(preview)
-                        .text_color(rgb(TEXT))
+                        .text_color(rgb(text()))
                         .text_ellipsis()
                         .child(sample),
                 )
@@ -1840,8 +2216,8 @@ impl Caps {
                     div()
                         .w(px(170. * s))
                         .flex_shrink_0()
-                        .text_size(px(FLOOR * s))
-                        .text_color(rgb(TEXT_TERTIARY))
+                        .text_size(px(type_size(FLOOR, s)))
+                        .text_color(rgb(text_tertiary()))
                         .text_ellipsis()
                         .child(label),
                 )
@@ -1857,7 +2233,7 @@ impl Caps {
                 div()
                     .w(px(84. * s))
                     .flex_shrink_0()
-                    .text_color(rgb(TEXT_SECONDARY))
+                    .text_color(rgb(text_secondary()))
                     .child(label),
             )
             .child(control)
@@ -1865,8 +2241,8 @@ impl Caps {
 
     fn settings_panel(&self, s: f32, cx: &mut Context<Self>) -> AnyElement {
         // One level of navigation: the picker replaces the settings list rather
-        // than floating over it, because the island's window is only as large as
-        // the island and has a region clipped to its shape — a popup big enough
+        // than floating over it, because the capsule's window is only as large as
+        // the capsule and has a region clipped to its shape — a popup big enough
         // for a font list would be cut off. Settings panes navigate between
         // views for the same reason (`settings.md › Platform considerations ›
         // Desktop (macOS)`).
@@ -1891,8 +2267,8 @@ impl Caps {
                 &self.volume_slider,
             ),
             (
-                self.tr("Island size", "岛屿大小"),
-                self.settings.island_size,
+                self.tr("Capsule size", "胶囊大小"),
+                self.settings.capsule_size,
                 &self.size_slider,
             ),
         ] {
@@ -1906,8 +2282,8 @@ impl Caps {
                     .child(
                         div()
                             .w(px(38. * s))
-                            .text_size(px(LABEL * s))
-                            .text_color(rgb(TEXT_TERTIARY))
+                            .text_size(px(type_size(LABEL, s)))
+                            .text_color(rgb(text_tertiary()))
                             .child(format!("{value}%")),
                     ),
             ));
@@ -1988,8 +2364,8 @@ impl Caps {
                     div()
                         .flex_1()
                         .min_w_0()
-                        .text_size(px(LABEL * s))
-                        .text_color(rgb(TEXT_TERTIARY))
+                        .text_size(px(type_size(LABEL, s)))
+                        .text_color(rgb(text_tertiary()))
                         .text_ellipsis()
                         .child(self.update_status.to_owned()),
                 )
@@ -2018,26 +2394,55 @@ impl Caps {
                     .h(px(3. * s))
                     .w_full()
                     .rounded_full()
-                    .bg(rgba(TRACK))
+                    .bg(rgba(track_tint()))
                     .child(
                         div()
                             .h_full()
                             .w(relative(progress.clamp(0., 1.)))
-                            .bg(rgb(ACCENT)),
+                            .bg(rgb(accent())),
                     ),
             );
         }
-        // The two gestures that are not discoverable from the island itself.
+        // The two gestures that are not discoverable from the capsule itself.
         panel = panel.child(
             div()
-                .text_size(px(LABEL * s))
-                .text_color(rgb(TEXT_TERTIARY))
+                .text_size(px(type_size(LABEL, s)))
+                .text_color(rgb(text_tertiary()))
                 .child(self.tr(
                     "Hold Shift and drag the capsule to move it. Right-click the capsule to quit.",
                     "按住 Shift 拖动胶囊可移动位置。右键点击胶囊退出。",
                 )),
         );
         panel.into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // The toolkit's glob would shadow the built-in `#[test]`, so the helper under
+    // test is named explicitly.
+    use super::{BODY, FLOOR, LABEL, LYRIC, TITLE, type_size};
+
+    /// The capsule's size control scales type along with everything else and goes
+    /// down to 85%, which used to take the 10 pt labels to 8.5 pt. This is the
+    /// guard that nothing lands under the platform's minimum on the way.
+    #[test]
+    fn text_never_goes_below_the_platform_minimum() {
+        for base in [FLOOR, LABEL, BODY, TITLE, LYRIC] {
+            for size in 85..=150 {
+                let scaled = type_size(base, size as f32 / 100.);
+                assert!(scaled >= FLOOR, "{base} pt at {size}% came out {scaled} pt");
+            }
+        }
+    }
+
+    /// At full size and above the clamp must not touch anything, or the layout
+    /// would drift away from the design.
+    #[test]
+    fn at_full_size_and_above_the_scale_is_untouched() {
+        assert_eq!(type_size(BODY, 1.), BODY);
+        assert_eq!(type_size(FLOOR, 1.5), FLOOR * 1.5);
+        assert_eq!(type_size(LABEL, 1.2), LABEL * 1.2);
     }
 }
 

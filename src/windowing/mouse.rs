@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 type Hwnd = *mut c_void;
 type Hrgn = *mut c_void;
+type Hmonitor = *mut c_void;
 type SubclassProc = unsafe extern "system" fn(Hwnd, u32, usize, isize, usize, usize) -> isize;
 const SUBCLASS_ID: usize = 0x43415053;
 const WM_CLOSE: u32 = 0x0010;
@@ -43,6 +44,15 @@ struct Rect {
     bottom: i32,
 }
 
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+struct MonitorInfo {
+    size: u32,
+    monitor: Rect,
+    work: Rect,
+    flags: u32,
+}
+
 #[link(name = "comctl32")]
 unsafe extern "system" {
     fn SetWindowSubclass(hwnd: Hwnd, proc: SubclassProc, id: usize, data: usize) -> i32;
@@ -70,6 +80,8 @@ unsafe extern "system" {
         flags: u32,
     ) -> i32;
     fn GetAsyncKeyState(key: i32) -> i16;
+    fn MonitorFromPoint(point: Point, flags: u32) -> Hmonitor;
+    fn GetMonitorInfoW(monitor: Hmonitor, info: *mut MonitorInfo) -> i32;
 }
 #[link(name = "gdi32")]
 unsafe extern "system" {
@@ -86,12 +98,16 @@ unsafe extern "system" {
     fn DeleteObject(object: Hrgn) -> i32;
 }
 
+/// `MONITOR_DEFAULTTONEAREST`: answer with the closest monitor rather than
+/// failing when the point is not on one.
+const MONITOR_DEFAULTTONEAREST: u32 = 2;
+
 /// `RGN_OR`, the combine mode that unions two regions.
 const RGN_OR: i32 = 2;
 
 const VK_LBUTTON: i32 = 0x01;
 
-/// Whether the physical left button is down. The island keeps tracking a drag
+/// Whether the physical left button is down. The capsule keeps tracking a drag
 /// from the button itself, because a release outside the visible capsule never
 /// reaches the window as a mouse-up.
 pub fn left_button_down() -> bool {
@@ -161,6 +177,37 @@ pub fn window_rect(window: &Window) -> Option<(f32, f32, f32, f32)> {
     ))
 }
 
+/// `(left, top, right, bottom)` of the monitor nearest a screen point, in device
+/// pixels.
+///
+/// The *monitor*, not its work area: the capsule is a floating overlay and is
+/// allowed to sit over the taskbar. Windows answers with the closest display
+/// when the point lies on one that has since been unplugged, which is what keeps
+/// a remembered position reachable.
+pub fn monitor_rect(point: (f32, f32)) -> Option<(f32, f32, f32, f32)> {
+    let probe = Point {
+        x: point.0.round() as i32,
+        y: point.1.round() as i32,
+    };
+    let monitor = unsafe { MonitorFromPoint(probe, MONITOR_DEFAULTTONEAREST) };
+    if monitor.is_null() {
+        return None;
+    }
+    let mut info = MonitorInfo {
+        size: std::mem::size_of::<MonitorInfo>() as u32,
+        ..MonitorInfo::default()
+    };
+    if unsafe { GetMonitorInfoW(monitor, &mut info) } == 0 {
+        return None;
+    }
+    Some((
+        info.monitor.left as f32,
+        info.monitor.top as f32,
+        info.monitor.right as f32,
+        info.monitor.bottom as f32,
+    ))
+}
+
 /// Ask the foreground executor to reposition the window. See
 /// [`crate::windowing::move_window`] for why this is not done inline.
 pub fn move_window(cx: &App, hwnd: isize, origin: (f32, f32)) {
@@ -196,7 +243,7 @@ unsafe fn cursor_over_header(hwnd: Hwnd, lparam: isize, screen_coords: bool) -> 
     super::contains_header(super::geometry(), point.x as f32, point.y as f32)
 }
 
-/// Clip the window to the painted islands.
+/// Clip the window to the painted shapes.
 ///
 /// The popup is a rectangle, and both its non-client frame and the unpainted
 /// part of its surface composite as an opaque plate over the desktop. So the
@@ -310,7 +357,7 @@ unsafe extern "system" fn mouse_proc(    hwnd: Hwnd,
     // unrelated message through the subclass chain, including destruction.
     unsafe {
         match message {
-            // The popup is a rectangle; the islands inside it are not. Answering
+            // The popup is a rectangle; the shapes inside it are not. Answering
             // `HTTRANSPARENT` keeps the transparent margin out of the way of the
             // desktop while leaving the painted edge fully antialiased, which a
             // window region (a 1-bit mask) cannot do.

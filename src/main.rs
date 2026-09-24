@@ -44,7 +44,7 @@ fn main() {
             Theme::change(ThemeMode::Dark, None, cx);
             // Prefer the platform's own UI face, in the order Windows itself
             // uses. `Arial` used to win this list by accident, which is why the
-            // island rendered like a document instead of like the system.
+            // capsule rendered like a document instead of like the system.
             let available = cx.text_system().all_font_names();
             let family = [
                 "Segoe UI Variable Text",
@@ -63,7 +63,7 @@ fn main() {
             let options = windowing::options(cx);
             let opened = cx.open_window(options, |window, cx| {
                 window.set_window_title("CAPS");
-                // The popup is a rectangle whose visible islands are smaller
+                // The popup is a rectangle whose visible shapes are smaller
                 // than its bounds. Its margins must carry real per-pixel alpha,
                 // or the rounded, antialiased edges would composite against an
                 // opaque plate instead of the desktop. (`windowing` hands the

@@ -59,7 +59,7 @@ pub struct Stats {
 /// An in-progress shift-drag of the whole window.
 ///
 /// The window is moved by the tick, not by the shell's modal move loop: that
-/// loop runs inside GPUI's mouse-down dispatch, so the island's frame loop
+/// loop runs inside GPUI's mouse-down dispatch, so the capsule's frame loop
 /// stops for the duration of the drag and never restarts.
 #[derive(Clone, Copy)]
 pub struct Drag {
@@ -138,7 +138,7 @@ const LATIN_CANDIDATES: [&str; 20] = [
 
 /// Faces offered for Han text. Only faces that actually carry Han glyphs, and
 /// never a weight-named cut ("Microsoft YaHei UI Light", "MiSans Semibold"): the
-/// island asks for several weights, so a single-cut family would render all of
+/// capsule asks for several weights, so a single-cut family would render all of
 /// them in one weight.
 const HAN_CANDIDATES: [&str; 10] = [
     "Microsoft YaHei UI",
@@ -263,7 +263,7 @@ fn font_choices(installed: &[String], slot: FontSlot, current: Option<&str>) -> 
     }
     for name in installed {
         // Single-cut faces ("MiSans Semibold") are kept in the list but not
-        // promoted: the island asks for several weights, so a one-cut family is
+        // promoted: the capsule asks for several weights, so a one-cut family is
         // rarely what someone wants as a whole-script choice.
         if looks_han(name) && !is_weight_cut(name) {
             push(name, &mut ordered);
@@ -332,6 +332,9 @@ pub struct Caps {
     pub drag: Option<Drag>,
     pub reduce_motion: bool,
     pub leave_at: Option<Instant>,
+    /// When the desktop behind the capsule was last sampled. The palette follows
+    /// it, so the text stays the opposite of whatever the capsule floats over.
+    pub backdrop_at: Option<Instant>,
     pub stats: Stats,
     pub spectrum: [f32; audio_spectrum::SPECTRUM_BANDS],
     pub colors: (u32, u32),
@@ -434,7 +437,9 @@ impl Caps {
         });
         let opacity_slider = cx.new(|_| {
             SliderState::new()
-                .min(10.)
+                // Down to nothing: the capsule's text is plain white whatever the
+                // surface is doing, so a fully faded capsule is still readable.
+                .min(0.)
                 .max(100.)
                 .default_value(saved.settings.opacity as f32)
         });
@@ -448,7 +453,7 @@ impl Caps {
             SliderState::new()
                 .min(85.)
                 .max(150.)
-                .default_value(saved.settings.island_size as f32)
+                .default_value(saved.settings.capsule_size as f32)
         });
         let seek_slider = cx.new(|_| SliderState::new().min(0.).max(100.).step(0.1));
         let font_search = cx.new(|cx| {
@@ -525,12 +530,14 @@ impl Caps {
                         }
                     };
                     match kind {
-                        0 => this.settings.opacity = value.round() as u32,
+                        0 => {
+                            this.settings.opacity = value.clamp(0., 100.).round() as u32;
+                        }
                         1 => {
                             this.settings.volume = value.round() as u32;
                             this.player.send(AudioCommand::SetVolume(value / 100.));
                         }
-                        2 => this.settings.island_size = value.round() as u32,
+                        2 => this.settings.capsule_size = value.round() as u32,
                         _ => this.player.send(AudioCommand::Seek(
                             value as f64 * this.audio.duration / 100.,
                         )),
@@ -544,7 +551,7 @@ impl Caps {
         }
         cx.spawn_in(window, async move |view, cx| {
             // Drive state from a timer instead of chaining next-frame callbacks.
-            // A dropped frame request can then never wedge the island: hover
+            // A dropped frame request can then never wedge the capsule: hover
             // polling, motion, queued playback messages and the resize all keep
             // running, and painting is requested on demand.
             let mut misses = 0u32;
@@ -566,7 +573,7 @@ impl Caps {
         .detach();
         let now = Instant::now();
         let reduce_motion = cx.reduce_motion();
-        let scale = saved.settings.island_size as f32 / 100.;
+        let scale = saved.settings.capsule_size as f32 / 100.;
         // Reduced motion keeps the same states but drops the travel between
         // them, which is the substitution accessibility.md asks for.
         let (forward, reverse) = if reduce_motion { (0, 0) } else { (260, 150) };
@@ -627,6 +634,7 @@ impl Caps {
             drag: None,
             reduce_motion,
             leave_at: None,
+            backdrop_at: None,
             stats: Stats::default(),
             spectrum: [0.08; audio_spectrum::SPECTRUM_BANDS],
             colors: (0x7df2ca, 0x34c759),
@@ -791,7 +799,7 @@ impl Caps {
         self.current_track.is_some() && self.mode == MusicMode::Normal
     }
 
-    /// Whether the pointer is over the island. Returns whether that changed.
+    /// Whether the pointer is over the capsule. Returns whether that changed.
     pub fn set_hover(&mut self, hovered: bool) -> bool {
         if self.hover == hovered {
             return false;
@@ -853,6 +861,15 @@ impl Caps {
             drag.origin.0 + cursor.0 - drag.cursor.0,
             drag.origin.1 + cursor.1 - drag.cursor.1,
         );
+        // A drag follows the pointer, and the pointer can be taken to the very
+        // edge of the desktop: without this the capsule could be parked off the
+        // screen, where it could never be grabbed again. The clamp is against the
+        // display the pointer is on, so dragging across to another monitor still
+        // works.
+        let target = match crate::windowing::window_size(window) {
+            Some(size) => crate::windowing::clamp_to_monitor(target, size, cursor),
+            None => target,
+        };
         if (target.0 - drag.requested.0).abs() < 1. && (target.1 - drag.requested.1).abs() < 1. {
             return;
         }
@@ -885,6 +902,44 @@ impl Caps {
         let expansion = self.expand_motion.value(now);
         let width = self.width_motion.value(now);
         self.publish_geometry(window, expansion, width);
+        // Keep the whole window on the display it is on. A resize is applied a
+        // frame after it is asked for, so the window can briefly be smaller than
+        // the paint it holds — and a window that has just grown at the edge of
+        // the screen, because the size control moved or because the panel opened
+        // low on the screen, would otherwise hang its far side off the display.
+        // Clamping against the real rectangle rather than the requested one also
+        // accounts for the frame around the window that GPUI adds.
+        if let Some((left, top, right, bottom)) = crate::windowing::window_rect(window) {
+            let target = crate::windowing::clamp_to_monitor(
+                (left, top),
+                (right - left, bottom - top),
+                (left, top),
+            );
+            if (target.0 - left).abs() > 0.5 || (target.1 - top).abs() > 0.5 {
+                crate::windowing::move_window(window, cx, target);
+            }
+        }
+        // What the capsule is floating over decides whether its text is white or
+        // near-black. A few times a second is plenty — a desktop changes when
+        // the user changes it, not per frame — and never while the capsule is
+        // moving, so opening and folding the panel is not interrupted by a
+        // screen read.
+        let animating = self.expand_motion.animating(now) || self.width_motion.animating(now);
+        if !animating
+            && self
+                .backdrop_at
+                .is_none_or(|at| now.duration_since(at) > Duration::from_millis(500))
+        {
+            self.backdrop_at = Some(now);
+            if let Some(samples) = crate::windowing::sample_backdrop(window) {
+                if let Some(light) =
+                    crate::components::set_backdrop(&samples, self.settings.opacity as f32 / 100.)
+                {
+                    crate::components::sync_theme(light, window, cx);
+                    dirty = true;
+                }
+            }
+        }
         if let Some(inside) = crate::windowing::pointer_inside(window) {
             dirty |= self.set_hover(inside);
         }
@@ -987,7 +1042,7 @@ impl Caps {
             self.paint_due = true;
         }
         // Painting is coalesced to display rate even though state is sampled
-        // faster, so an animating island cannot outrun the compositor.
+        // faster, so an animating capsule cannot outrun the compositor.
         if self.paint_due && now.duration_since(self.last_notify) >= PAINT_INTERVAL {
             self.paint_due = false;
             self.last_notify = now;
@@ -995,10 +1050,10 @@ impl Caps {
         }
     }
 
-    /// The painted islands in the window's own device pixels. Hit testing reads
+    /// The painted capsules in the window's own device pixels. Hit testing reads
     /// exactly these numbers, so click-through always matches the last paint.
     fn painted_geometry(&self, window: &Window, expansion: f32, width: f32) -> crate::windowing::Geometry {
-        let unit = self.settings.island_size as f32 / 100. * window.scale_factor();
+        let unit = self.settings.capsule_size as f32 / 100. * window.scale_factor();
         crate::windowing::Geometry {
             unit,
             bleed: crate::windowing::BLEED * unit,
@@ -1019,7 +1074,7 @@ impl Caps {
     /// cut off while it opens.
     fn reshape(&mut self, window: &Window, now: Instant, expansion: f32, width: f32) {
         let animating = self.expand_motion.animating(now) || self.width_motion.animating(now);
-        // A little room while the island moves, added evenly on all four sides,
+        // A little room while the capsule moves, added evenly on all four sides,
         // so the mask never trails the paint it is clipping.
         let slack = if animating {
             crate::windowing::REGION_LEAD
@@ -1042,7 +1097,7 @@ impl Caps {
         crate::windowing::apply_region(window, geometry, slack);
     }
 
-    /// Resize the popup so it always has room for the painted islands. Returns
+    /// Resize the popup so it always has room for the painted capsules. Returns
     /// whether the window changed.
     fn resize_to_content(
         &mut self,
@@ -1051,7 +1106,7 @@ impl Caps {
         expansion: f32,
         width: f32,
     ) -> bool {
-        let scale = self.settings.island_size as f32 / 100.;
+        let scale = self.settings.capsule_size as f32 / 100.;
         let wanted = size(
             px(crate::windowing::window_width(width) * scale),
             px(crate::windowing::window_height(expansion) * scale),
@@ -1065,8 +1120,10 @@ impl Caps {
             window.resize(wanted);
             self.last_size = Some(key);
         }
-        // Changing the island size keeps the capsule's centre pinned, instead of
-        // sliding it across the desktop as the transparent margin grows.
+        // Changing the capsule size keeps the capsule's centre pinned, instead of
+        // sliding it across the desktop as the transparent margin grows. Keeping
+        // the window itself on the display is the tick's job, where its real
+        // rectangle is known.
         let delta = scale - self.last_scale;
         if delta != 0. {
             self.last_scale = scale;

@@ -11,7 +11,11 @@ const MAX_PERSISTED_QUEUE: usize = 500;
 pub struct AppSettings {
     pub opacity: u32,
     pub volume: u32,
-    pub island_size: u32,
+    /// Scale of the capsule and its panel, in percent. It was called
+    /// `island_size` before the app settled on "capsule"; the alias keeps state
+    /// files written by those versions readable.
+    #[serde(alias = "island_size")]
+    pub capsule_size: u32,
     pub random_count: u32,
     pub active_tab: String,
     pub local_music_folder: String,
@@ -41,7 +45,7 @@ impl Default for AppSettings {
         Self {
             opacity: 92,
             volume: 100,
-            island_size: 100,
+            capsule_size: 100,
             random_count: 50,
             active_tab: "search".to_string(),
             local_music_folder: String::new(),
@@ -62,16 +66,14 @@ fn normalized_family(family: Option<String>) -> Option<String> {
         .filter(|name| !name.is_empty())
 }
 
-/// Below this the island's own text falls under 4.5:1 against a light desktop,
-/// so the slider stops here instead of letting people fade the capsule into an
-/// unreadable smudge.
-pub const MIN_OPACITY: u32 = 55;
-
 impl AppSettings {
     fn normalized(mut self) -> Self {
-        self.opacity = self.opacity.clamp(MIN_OPACITY, 100);
+        // The surface may be faded to nothing: the palette keeps the text white,
+        // so the capsule stays readable over whatever is behind it. Only the
+        // ends of the range are enforced.
+        self.opacity = self.opacity.min(100);
         self.volume = self.volume.clamp(0, 100);
-        self.island_size = self.island_size.clamp(85, 150);
+        self.capsule_size = self.capsule_size.clamp(85, 150);
         self.random_count = self.random_count.clamp(1, 999);
         if !matches!(self.active_tab.as_str(), "search" | "queue" | "settings") {
             self.active_tab = "search".to_string();

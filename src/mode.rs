@@ -5,6 +5,22 @@ pub enum MusicMode {
     Silent,
 }
 
+impl MusicMode {
+    /// The mode a track starts in when one is picked for us rather than by hand.
+    ///
+    /// Advancing to the next song is not a reason to undo a display choice the
+    /// user made: Quiet has to survive from one track to the next, or it is a
+    /// per-song toggle rather than a mode. Silent — stopped, with no track
+    /// loaded — is the one state that starts over, because playing a track is
+    /// exactly what the user just asked for.
+    pub fn after_track_change(self) -> Self {
+        match self {
+            Self::Silent => Self::Normal,
+            quiet => quiet,
+        }
+    }
+}
+
 /// What plays once the current track ends, and what the next button means.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlayOrder {
@@ -64,7 +80,15 @@ impl PlayOrder {
 
 #[cfg(test)]
 mod tests {
-    use super::PlayOrder;
+    use super::{MusicMode, PlayOrder};
+
+    #[test]
+    fn quiet_survives_a_track_change() {
+        assert_eq!(MusicMode::Quiet.after_track_change(), MusicMode::Quiet);
+        assert_eq!(MusicMode::Normal.after_track_change(), MusicMode::Normal);
+        // Silent means stopped: the next track starts over as Normal.
+        assert_eq!(MusicMode::Silent.after_track_change(), MusicMode::Normal);
+    }
 
     #[test]
     fn every_order_round_trips_through_its_key() {

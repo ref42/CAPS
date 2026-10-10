@@ -82,6 +82,7 @@ unsafe extern "system" {
     fn GetAsyncKeyState(key: i32) -> i16;
     fn MonitorFromPoint(point: Point, flags: u32) -> Hmonitor;
     fn GetMonitorInfoW(monitor: Hmonitor, info: *mut MonitorInfo) -> i32;
+    fn GetClientRect(hwnd: Hwnd, rect: *mut Rect) -> i32;
 }
 #[link(name = "gdi32")]
 unsafe extern "system" {
@@ -175,6 +176,23 @@ pub fn window_rect(window: &Window) -> Option<(f32, f32, f32, f32)> {
         rect.right as f32,
         rect.bottom as f32,
     ))
+}
+
+/// How far the painted shape sits inside the window's own rectangle is derived
+/// from the geometry the region is built with — see
+/// [`crate::windowing::painted_insets`] — because the region itself is dilated
+/// past the paint while the island animates.
+///
+/// The window's client size, in device pixels. What the system adds around it —
+/// frame, shadow, whatever it calls it — is the difference between this and the
+/// window rectangle.
+pub fn client_size(window: &Window) -> Option<(f32, f32)> {
+    let hwnd = hwnd_of(window)?;
+    let mut rect = Rect::default();
+    if unsafe { GetClientRect(hwnd, &mut rect) } == 0 {
+        return None;
+    }
+    Some(((rect.right - rect.left) as f32, (rect.bottom - rect.top) as f32))
 }
 
 /// `(left, top, right, bottom)` of the monitor nearest a screen point, in device

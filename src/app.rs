@@ -332,6 +332,14 @@ pub struct Caps {
     pub drag: Option<Drag>,
     pub reduce_motion: bool,
     pub leave_at: Option<Instant>,
+    /// Set while the pointer is still inside after a drag: hovering opens the
+    /// panel again only once it has left and come back.
+    pub hover_locked: bool,
+    /// Where the folded capsule rests, in device pixels: the spot the user left
+    /// it in. The panel lifts the capsule out of the way when there is no room
+    /// for it — at the bottom of the screen that is most of the panel's height —
+    /// and this is what puts it back when the panel folds.
+    pub rest_origin: Option<(f32, f32)>,
     /// When the desktop behind the capsule was last sampled. The palette follows
     /// it, so the text stays the opposite of whatever the capsule floats over.
     pub backdrop_at: Option<Instant>,
@@ -634,6 +642,8 @@ impl Caps {
             drag: None,
             reduce_motion,
             leave_at: None,
+            hover_locked: false,
+            rest_origin: None,
             backdrop_at: None,
             stats: Stats::default(),
             spectrum: [0.08; audio_spectrum::SPECTRUM_BANDS],
@@ -806,9 +816,18 @@ impl Caps {
         }
         self.hover = hovered;
         if hovered {
-            self.expanded = true;
+            // Placing the capsule and looking inside it are two different
+            // intentions. While a drag is live the capsule stays folded, and it
+            // stays folded until the pointer has left once, so that parking it
+            // against an edge is not undone by the panel opening under it the
+            // moment the button comes up.
+            if self.drag.is_none() && !self.hover_locked {
+                self.expanded = true;
+            }
             self.leave_at = None;
         } else {
+            // Leaving is what makes hovering mean something again.
+            self.hover_locked = false;
             self.leave_at = Some(Instant::now());
         }
         true
@@ -828,13 +847,22 @@ impl Caps {
             requested: origin,
         });
         self.leave_at = None;
+        // Fold before moving: the clamp keeps whatever is painted on the screen,
+        // and a folded capsule is the shape that should reach the edge. The
+        // panel would otherwise stop the capsule a panel's height short of the
+        // bottom.
+        self.expanded = false;
+        self.hover_locked = true;
     }
 
     /// Stop moving the window and remember where it landed.
     pub fn end_drag(&mut self, window: &Window) {
-        if self.drag.take().is_none() {
+        let Some(drag) = self.drag.take() else {
             return;
-        }
+        };
+        // Folded, and where the drag put it: that is the capsule's resting spot,
+        // and where the panel folding will bring it back to.
+        self.rest_origin = Some((drag.requested.0, drag.requested.1));
         if let Some(origin) = crate::windowing::window_origin(window) {
             let dpi = window.scale_factor().max(0.1);
             self.settings.window_position = Some((origin.0 / dpi, origin.1 / dpi));
@@ -846,7 +874,7 @@ impl Caps {
     /// While a drag is live, follow the pointer. The new position is always
     /// derived from the position and cursor captured at mouse-down, so a slow
     /// frame or a missed move can never accumulate drift.
-    fn follow_drag(&mut self, window: &Window, cx: &App) {
+    fn follow_drag(&mut self, window: &Window, cx: &App, now: Instant) {
         let Some(mut drag) = self.drag else {
             return;
         };
@@ -863,11 +891,18 @@ impl Caps {
         );
         // A drag follows the pointer, and the pointer can be taken to the very
         // edge of the desktop: without this the capsule could be parked off the
-        // screen, where it could never be grabbed again. The clamp is against the
-        // display the pointer is on, so dragging across to another monitor still
-        // works.
+        // screen, where it could never be grabbed again. Two things matter about
+        // how it is clamped. It is against the display the pointer is on, so
+        // dragging across to another monitor still works; and it is against the
+        // *painted* shape, so the capsule can be taken right up to the edge
+        // instead of stopping a transparent margin short of it.
+        let geometry = self.painted_geometry(
+            window,
+            self.expand_motion.value(now),
+            self.width_motion.value(now),
+        );
         let target = match crate::windowing::window_size(window) {
-            Some(size) => crate::windowing::clamp_to_monitor(target, size, cursor),
+            Some(size) => crate::windowing::clamp_painted(window, geometry, target, size, cursor),
             None => target,
         };
         if (target.0 - drag.requested.0).abs() < 1. && (target.1 - drag.requested.1).abs() < 1. {
@@ -901,21 +936,51 @@ impl Caps {
         // drag has captured the mouse.
         let expansion = self.expand_motion.value(now);
         let width = self.width_motion.value(now);
-        self.publish_geometry(window, expansion, width);
-        // Keep the whole window on the display it is on. A resize is applied a
+        let geometry = self.painted_geometry(window, expansion, width);
+        crate::windowing::publish_geometry(geometry);
+        // Keep the painted shape on the display it is on. A resize is applied a
         // frame after it is asked for, so the window can briefly be smaller than
         // the paint it holds — and a window that has just grown at the edge of
         // the screen, because the size control moved or because the panel opened
         // low on the screen, would otherwise hang its far side off the display.
-        // Clamping against the real rectangle rather than the requested one also
-        // accounts for the frame around the window that GPUI adds.
+        // Measuring by the paint rather than the window rectangle is what lets
+        // the transparent margin hang off the screen, so the capsule itself can
+        // sit flush against the edge.
         if let Some((left, top, right, bottom)) = crate::windowing::window_rect(window) {
-            let target = crate::windowing::clamp_to_monitor(
+            let target = crate::windowing::clamp_painted(
+                window,
+                geometry,
                 (left, top),
                 (right - left, bottom - top),
                 (left, top),
             );
             if (target.0 - left).abs() > 0.5 || (target.1 - top).abs() > 0.5 {
+                crate::windowing::move_window(window, cx, target);
+            }
+        }
+        // The panel needs room, and at the bottom of the screen taking it means
+        // lifting the capsule most of the panel's height. Folded, the capsule
+        // goes back to where the user left it, so it can sit against an edge and
+        // still open its panel on hover.
+        if expansion <= 0.001
+            && self.drag.is_none()
+            && let Some((left, top, right, bottom)) = crate::windowing::window_rect(window)
+        {
+            let rest = match self.rest_origin {
+                Some(rest) => rest,
+                None => {
+                    self.rest_origin = Some((left, top));
+                    (left, top)
+                }
+            };
+            if (left - rest.0).abs() > 0.5 || (top - rest.1).abs() > 0.5 {
+                let target = crate::windowing::clamp_painted(
+                    window,
+                    geometry,
+                    rest,
+                    (right - left, bottom - top),
+                    rest,
+                );
                 crate::windowing::move_window(window, cx, target);
             }
         }
@@ -944,7 +1009,7 @@ impl Caps {
             dirty |= self.set_hover(inside);
         }
         if self.drag.is_some() {
-            self.follow_drag(window, cx);
+            self.follow_drag(window, cx, now);
             dirty = true;
         }
         if crate::motion::should_collapse(
@@ -967,7 +1032,13 @@ impl Caps {
             .expand_motion
             .target(if self.expanded { 1. } else { 0. }, now);
         dirty |= self.width_motion.target(
-            if self.expanded || self.has_music() {
+            // The width follows the content, not the hover. Only the playing
+            // header — cover, a lyric line, the transport controls — needs the
+            // wider capsule; the idle readings and the panel fit the narrow one.
+            // Widening on hover was what left a gap at the screen edge: the
+            // window was clamped for the wide shape, and the narrow one then
+            // rested a margin short of the display.
+            if self.has_music() {
                 crate::windowing::EXPANDED_W
             } else {
                 crate::windowing::COLLAPSED_W
@@ -1133,6 +1204,11 @@ impl Caps {
                     -(crate::windowing::BLEED + width * 0.5) * delta * dpi,
                     -crate::windowing::BLEED * delta * dpi,
                 );
+                // The resting spot moves with the window, or the tick would put
+                // the capsule back where it was before the size changed.
+                if let Some(rest) = self.rest_origin {
+                    self.rest_origin = Some((rest.0 + shift.0, rest.1 + shift.1));
+                }
                 crate::windowing::move_window(window, cx, (origin.0 + shift.0, origin.1 + shift.1));
             }
         }
@@ -1360,7 +1436,9 @@ impl Caps {
         let id = self.play_generation;
         self.current_index = Some(index);
         self.current_track = Some(track.to_owned());
-        self.mode = MusicMode::Normal;
+        // Not `Normal` outright: Quiet is a mode, and it has to outlive the
+        // track that was playing when it was chosen.
+        self.mode = self.mode.after_track_change();
         self.lyrics.clear();
         self.cover = None;
         self.cover_turn = 0.;

@@ -359,6 +359,108 @@ pub fn clamp_to_monitor(position: (f32, f32), size: (f32, f32), near: (f32, f32)
     position
 }
 
+/// The same, measured by what the window *paints* rather than by its rectangle.
+///
+/// The rectangle carries a transparent margin — `BLEED`, plus whatever frame the
+/// system adds — which holds no pixels and takes no clicks. Clamping the window
+/// itself therefore always stops the capsule a margin short of the screen edge,
+/// and pins it there while the size control grows it. `insets` is how far the
+/// paint sits inside the window on each side; the bounds are grown by it, so the
+/// margin may hang off the display while the capsule sits flush against it.
+pub fn clamp_with_insets(
+    position: (f32, f32),
+    size: (f32, f32),
+    bounds: (f32, f32, f32, f32),
+    insets: (f32, f32, f32, f32),
+) -> (f32, f32) {
+    let (left, top, right, bottom) = bounds;
+    let (paint_left, paint_top, paint_right, paint_bottom) = insets;
+    clamp_to_bounds(
+        position,
+        size,
+        (
+            left - paint_left,
+            top - paint_top,
+            right + paint_right,
+            bottom + paint_bottom,
+        ),
+    )
+}
+
+/// The window's client size, in device pixels.
+pub fn client_size(window: &Window) -> Option<(f32, f32)> {
+    #[cfg(target_os = "windows")]
+    {
+        mouse::client_size(window)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = window;
+        None
+    }
+}
+
+/// Where the painted shape sits inside the window's rectangle, in device pixels,
+/// derived from the geometry the region is built with.
+///
+/// The window region cannot be used for this. While the island animates it is
+/// dilated past the paint — by `REGION_LEAD`, to keep the mask ahead of the
+/// paint — which reads as a negative margin and would clamp the capsule a margin
+/// short of the screen edge. The layout knows the paint exactly, so it is
+/// measured from there instead: `BLEED` around the capsule and the panel, plus
+/// whatever the system puts around the window.
+pub fn painted_insets(window: &Window, geometry: Geometry) -> Option<(f32, f32, f32, f32)> {
+    let (left, top, right, bottom) = window_rect(window)?;
+    let client = client_size(window)?;
+    Some(painted_insets_in(
+        (right - left, bottom - top),
+        client,
+        geometry,
+    ))
+}
+
+/// The arithmetic of [`painted_insets`], on its own so it can be tested.
+///
+/// `BLEED` on every side, plus half the frame the system adds: the paint is the
+/// window's client area inset by that margin, whether the panel is open or not,
+/// because the panel is laid out with the same margin around it.
+fn painted_insets_in(
+    window: (f32, f32),
+    client: (f32, f32),
+    geometry: Geometry,
+) -> (f32, f32, f32, f32) {
+    // The frame the system adds, half of it on each side.
+    let frame_x = ((window.0 - client.0) / 2.).max(0.);
+    let frame_y = ((window.1 - client.1) / 2.).max(0.);
+    let margin = geometry.bleed;
+    (
+        frame_x + margin,
+        frame_y + margin,
+        frame_x + margin,
+        frame_y + margin,
+    )
+}
+
+/// Keep a window of `size` on the monitor nearest `near`, in device pixels,
+/// allowing the transparent margin around the paint to hang off the display.
+pub fn clamp_painted(
+    window: &Window,
+    geometry: Geometry,
+    position: (f32, f32),
+    size: (f32, f32),
+    near: (f32, f32),
+) -> (f32, f32) {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(insets) = painted_insets(window, geometry)
+            && let Some(bounds) = mouse::monitor_rect(near)
+        {
+            return clamp_with_insets(position, size, bounds, insets);
+        }
+    }
+    clamp_to_monitor(position, size, near)
+}
+
 /// Whether the primary mouse button is physically held down.
 pub fn left_button_down() -> bool {
     #[cfg(target_os = "windows")]
@@ -424,8 +526,9 @@ mod tests {
     // `use gpui_kit::*` would shadow the built-in `#[test]` attribute with the
     // toolkit's own macro, so the geometry under test is imported by name.
     use super::{
-        BLEED, COLLAPSED_H, EXPANDED_W, Geometry, PANEL_RADIUS, clamp_to_bounds, contains_header,
-        contains_point, header_height, panel_height, panel_top, window_height, window_width,
+        BLEED, COLLAPSED_H, EXPANDED_W, Geometry, PANEL_RADIUS, clamp_to_bounds, clamp_with_insets,
+        contains_header, contains_point, header_height, painted_insets_in, panel_height, panel_top,
+        window_height, window_width,
     };
 
     fn geometry(expansion: f32) -> Geometry {
@@ -509,5 +612,53 @@ mod tests {
         let size = (760., 146.);
         assert_eq!(clamp_to_bounds((100., 100.), size, display), (0., 100.));
         assert_eq!(clamp_to_bounds((100., 900.), size, display), (0., 334.));
+    }
+
+    #[test]
+    fn painted_insets_describe_the_margin_around_the_paint() {
+        // A capsule at 100%: 18 pt of margin, and a 16 pt frame the system adds
+        // around the client area.
+        let geometry = Geometry {
+            unit: 1.,
+            bleed: BLEED,
+            width: 400.,
+            header: 56.,
+            panel: 0.,
+            panel_top: header_height(0.),
+            panel_radius: PANEL_RADIUS,
+        };
+        let insets = painted_insets_in((420., 124.), (404., 108.), geometry);
+        // 18 pt of margin plus 8 pt of frame, the same on every side: the paint
+        // is the client area inset by the margin, panel or no panel.
+        assert_eq!(insets, (26., 26., 26., 26.));
+        // A client area that the layout had to squeeze still leaves the same
+        // margin: what matters is where the paint ends, not how much room it was
+        // given.
+        let insets = painted_insets_in((420., 116.), (404., 100.), geometry);
+        assert_eq!(insets, (26., 26., 26., 26.));
+    }
+
+    #[test]
+    fn a_capsule_can_sit_flush_with_the_screen_edge() {
+        let display = (0., 0., 1920., 1080.);
+        let size = (760., 146.);
+        // What the real window carries: transparent margin plus frame, per side.
+        let insets = (30., 30., 30., 30.);
+        // Dragged past the far corner: the paint stops exactly on the edge, and
+        // the window's margin is the part left hanging off the display.
+        let flush = clamp_with_insets((5000., 5000.), size, display, insets);
+        assert_eq!(flush, (1920. - 760. + 30., 1080. - 146. + 30.));
+        assert_eq!(flush.0 + size.0 - insets.2, 1920.);
+        assert_eq!(flush.1 + size.1 - insets.3, 1080.);
+        // Dragged past the near corner: same thing in the other direction.
+        let flush = clamp_with_insets((-5000., -5000.), size, display, insets);
+        assert_eq!(flush, (-30., -30.));
+        assert_eq!(flush.0 + insets.0, 0.);
+        assert_eq!(flush.1 + insets.1, 0.);
+        // Anywhere else is left alone.
+        assert_eq!(
+            clamp_with_insets((900., 500.), size, display, insets),
+            (900., 500.)
+        );
     }
 }

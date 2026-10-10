@@ -2175,7 +2175,7 @@ impl Caps {
                 .id(SharedString::from(format!(
                     "font-option-{}-{}",
                     slot as usize,
-                    index.map_or(usize::MAX, |index| index)
+                    index.unwrap_or(usize::MAX)
                 )))
                 .flex()
                 .items_center()

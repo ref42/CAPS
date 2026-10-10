@@ -194,34 +194,6 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
     }
 }
 
-/// The player only reports what the output device tells it. When the default
-/// endpoint is missing or stopped, playback silently stands still, so this
-/// test exists to tell the two apart. Ignored by default because it needs a
-/// working audio endpoint.
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rodio::Source;
-
-    #[test]
-    #[ignore = "needs a working default audio output device"]
-    fn default_sink_advances_position() -> Result<(), String> {
-        let sink = rodio::DeviceSinkBuilder::open_default_sink()
-            .map_err(|err| format!("no default output device: {err}"))?;
-        let player = rodio::Player::connect_new(sink.mixer());
-        player.append(rodio::source::SineWave::new(440.0).take_duration(Duration::from_secs(2)));
-        player.play();
-        std::thread::sleep(Duration::from_millis(600));
-        let position = player.get_pos();
-        if position <= Duration::from_millis(100) {
-            return Err(format!(
-                "output device is not pulling samples: position stayed at {position:?}"
-            ));
-        }
-        Ok(())
-    }
-}
-
 fn update_state(
     state: &Arc<Mutex<AudioState>>,
     player: &Option<rodio::Player>,
@@ -249,5 +221,33 @@ fn update_state(
     s.title = title.to_owned();
     if !detail.is_empty() {
         s.detail = detail.to_owned();
+    }
+}
+
+/// The player only reports what the output device tells it. When the default
+/// endpoint is missing or stopped, playback silently stands still, so this
+/// test exists to tell the two apart. Ignored by default because it needs a
+/// working audio endpoint.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rodio::Source;
+
+    #[test]
+    #[ignore = "needs a working default audio device"]
+    fn default_sink_advances_position() -> Result<(), String> {
+        let sink = rodio::DeviceSinkBuilder::open_default_sink()
+            .map_err(|err| format!("no default output device: {err}"))?;
+        let player = rodio::Player::connect_new(sink.mixer());
+        player.append(rodio::source::SineWave::new(440.0).take_duration(Duration::from_secs(2)));
+        player.play();
+        std::thread::sleep(Duration::from_millis(600));
+        let position = player.get_pos();
+        if position <= Duration::from_millis(100) {
+            return Err(format!(
+                "output device is not pulling samples: position stayed at {position:?}"
+            ));
+        }
+        Ok(())
     }
 }

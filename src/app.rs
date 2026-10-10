@@ -996,13 +996,12 @@ impl Caps {
                 .is_none_or(|at| now.duration_since(at) > Duration::from_millis(500))
         {
             self.backdrop_at = Some(now);
-            if let Some(samples) = crate::windowing::sample_backdrop(window) {
-                if let Some(light) =
+            if let Some(samples) = crate::windowing::sample_backdrop(window)
+                && let Some(light) =
                     crate::components::set_backdrop(&samples, self.settings.opacity as f32 / 100.)
-                {
-                    crate::components::sync_theme(light, window, cx);
-                    dirty = true;
-                }
+            {
+                crate::components::sync_theme(light, window, cx);
+                dirty = true;
             }
         }
         if let Some(inside) = crate::windowing::pointer_inside(window) {
@@ -1134,10 +1133,6 @@ impl Caps {
             panel_top: crate::windowing::panel_top(expansion) * unit,
             panel_radius: crate::windowing::PANEL_RADIUS * unit,
         }
-    }
-
-    fn publish_geometry(&self, window: &Window, expansion: f32, width: f32) {
-        crate::windowing::publish_geometry(self.painted_geometry(window, expansion, width));
     }
 
     /// Hand the painted shape to the system, but only when it actually moved.

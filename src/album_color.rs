@@ -150,10 +150,7 @@ mod tests {
                 .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
                 .is_ok()
         );
-        let Some(colors) = extract_colors(&bytes) else {
-            assert!(false, "monochrome cover should produce colors");
-            return;
-        };
+        let colors = extract_colors(&bytes).expect("monochrome cover should produce colors");
 
         assert_ne!(colors.0, "rgb(125, 242, 202)");
         assert_ne!(colors.1, "rgb(52, 199, 89)");

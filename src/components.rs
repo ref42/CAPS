@@ -39,6 +39,7 @@ const ON_DARK: Palette = Palette {
     secondary: 0xffffff,
     tertiary: 0xffffff,
     accent: 0x7df2ca,
+    live: 0xff453a,
     hairline: 0xffffff12,
     well: 0xffffff0c,
     track: 0xffffff2e,
@@ -50,6 +51,7 @@ const ON_LIGHT: Palette = Palette {
     secondary: 0x0d0f12,
     tertiary: 0x0d0f12,
     accent: 0x0b7a58,
+    live: 0xd70015,
     hairline: 0x00000026,
     well: 0x00000014,
     track: 0x0000003d,
@@ -64,6 +66,7 @@ struct Palette {
     secondary: u32,
     tertiary: u32,
     accent: u32,
+    live: u32,
     hairline: u32,
     well: u32,
     track: u32,
@@ -110,6 +113,11 @@ fn text_tertiary() -> u32 {
 
 fn accent() -> u32 {
     palette().accent
+}
+
+/// The one signal colour: a small red light for a track that is playing.
+fn live() -> u32 {
+    palette().live
 }
 
 fn hairline() -> u32 {
@@ -254,6 +262,15 @@ const MEDIUM: FontWeight = FontWeight(500.);
 /// only ever lifts the smallest sizes back to `FLOOR`.
 fn type_size(base: f32, s: f32) -> f32 {
     (base * s).max(FLOOR)
+}
+
+/// The live light's breath, from 0 to 1.
+///
+/// Three breaths ride each turn of the record, so the light shares the cover's
+/// clock instead of starting a timer of its own: it freezes with the record
+/// when playback pauses or reduced motion is on.
+fn breath(turn: f32) -> f32 {
+    (turn * std::f32::consts::TAU * 3.).cos() * 0.5 + 0.5
 }
 
 /// Size of a drawn icon, before the capsule scale. Held level with `BODY`, so an
@@ -1287,6 +1304,57 @@ impl Caps {
             }))
     }
 
+    /// A small red light in the capsule's leading margin, before the artwork.
+    ///
+    /// It sits in the padding rather than in the content row, so the breathing
+    /// light never takes width away from the title or lyric — the line that is
+    /// already tight. `motion.md › Best practices`: "Add motion purposefully,
+    /// supporting the experience without overshadowing it." Three slow breaths
+    /// per record turn are enough to read as alive; the play button, the
+    /// spectrum and the seek bar still carry the state on their own, and with
+    /// reduced motion the light is a still dot.
+    fn live_dot(&self, s: f32) -> Div {
+        let pulse = if self.reduce_motion {
+            1.
+        } else {
+            breath(self.cover_turn)
+        };
+        let dot = 6. * s;
+        let halo = dot + 5. * s * pulse;
+        let halo_offset = -(halo - dot) * 0.5;
+        div()
+            .absolute()
+            .left(px(-9. * s))
+            .top_0()
+            .h_full()
+            .w(px(7. * s))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                div()
+                    .relative()
+                    .size(px(dot))
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(halo_offset))
+                            .top(px(halo_offset))
+                            .size(px(halo))
+                            .rounded_full()
+                            .bg(rgba((live() << 8) | 0x66))
+                            .opacity(if self.reduce_motion { 0.2 } else { 0.45 * pulse }),
+                    )
+                    .child(
+                        div()
+                            .size(px(dot))
+                            .rounded_full()
+                            .bg(rgb(live()))
+                            .opacity(if self.reduce_motion { 1. } else { 0.5 + 0.5 * pulse }),
+                    ),
+            )
+    }
+
     fn music_header(&self, e: f32, s: f32, window: &Window, cx: &mut Context<Self>) -> Div {
         // `music_header` is only reached for a playing track. Falling back to
         // the idle capsule keeps a bad frame from taking the window down.
@@ -1461,6 +1529,9 @@ impl Caps {
             // The spectrum is the row's last flow child, so it sits at the
             // trailing edge.
             content = content.child(self.spectrum_view(s));
+        }
+        if self.audio.is_playing {
+            content = content.child(self.live_dot(s));
         }
         content
     }
@@ -2578,8 +2649,8 @@ mod tests {
     // The toolkit's glob would shadow the built-in `#[test]`, so the helper under
     // test is named explicitly.
     use super::{
-        BODY, FLOOR, LABEL, LYRIC, LYRIC_HOLD, LYRIC_SPEED, TITLE, lyric_fit, lyric_scroll_offset,
-        type_size, width_for_lyric,
+        BODY, FLOOR, LABEL, LYRIC, LYRIC_HOLD, LYRIC_SPEED, TITLE, breath, lyric_fit,
+        lyric_scroll_offset, type_size, width_for_lyric,
     };
 
     /// The capsule's size control scales type along with everything else and goes
@@ -2635,6 +2706,18 @@ mod tests {
         let chrome = 2. * 12. + 42. + 20. + 53.;
         assert!(width - chrome >= want + 5.);
         assert!(width_for_lyric(want, 0.5) > width);
+    }
+
+    /// The live light spends its whole cycle between 0 and 1, starting bright
+    /// and returning to bright after three breaths per record turn.
+    #[test]
+    fn the_live_light_breathes_between_its_limits() {
+        for step in 0..36 {
+            let value = breath(step as f32 / 36.);
+            assert!((0. ..=1.).contains(&value), "breath {value} out of range");
+        }
+        assert!((breath(0.) - 1.).abs() < 0.001);
+        assert!((breath(1. / 6.) - 0.).abs() < 0.001);
     }
 
     /// The scroll rests at the start, reaches the end, rests there and returns,

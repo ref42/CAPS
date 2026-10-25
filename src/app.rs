@@ -1090,6 +1090,12 @@ impl Caps {
         if self.lyric_changed.elapsed() < Duration::from_millis(500) {
             dirty = true;
         }
+        // A line too wide for its box keeps moving after that entrance window,
+        // including while the track is paused; without its own frames it would
+        // settle half-hidden.
+        if self.has_music() && crate::components::lyric_scrolling() {
+            dirty = true;
+        }
         if !self.slider_dragging {
             let progress = if self.audio.duration > 0. {
                 (self.audio.position / self.audio.duration * 100.) as f32

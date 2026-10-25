@@ -37,6 +37,7 @@ CAPS supports these audio sources:
 - Right-click the capsule to exit `CAPS`. Right-clicking inside the panel does not quit.
 - Select a row in the queue to play that track; the `▶` and `×` at the end of the row work too.
 - Each queue row shows the artist and album, with the track length in its own right-aligned column, so a long album name can no longer push the length out of the row. Rest the pointer on a row and either of its text lines scrolls if it does not fit, then stops when it has shown the end; the capsule's title and artist do the same. The transport controls are grouped tightly so the title and artist have as much width as possible.
+- Lyrics use the width the capsule actually gives them: a line that fits stays centred at full size, a longer one shrinks to a readable size, and a line that is still too long scrolls sideways instead of being cut off at the capsule edge.
 - The queue has its own scrollbar down the right-hand side, so a long queue can be dragged through rather than only wheeled.
 - The button beside **Clear queue** sets the play order: in order, repeat all, repeat one, or shuffle. It cycles through the four, names the one in force, and remembers the choice; it takes the accent tint while an order other than the default is on. Adding tracks always appends them to the end of the queue and leaves the list there, where they arrived.
 - Mode notes in Settings:

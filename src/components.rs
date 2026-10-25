@@ -77,6 +77,17 @@ static BACKDROP_IS_LIGHT: AtomicBool = AtomicBool::new(false);
 /// that is being dragged across the capsule changes its mind slowly.
 static PENDING_SWITCH: AtomicU32 = AtomicU32::new(0);
 
+/// Room the lyric line actually got, in points, written by its measuring canvas
+/// during paint. Zero until the first paint has measured it.
+static LYRIC_ROOM: AtomicU32 = AtomicU32::new(0);
+
+/// Whether the current lyric line is wider than its box and is scrolling.
+///
+/// The tick reads this so a paused track still gets frames while a long line
+/// travels; otherwise the line would come to rest half-hidden, which is exactly
+/// the clipping this is meant to remove.
+static LYRIC_SCROLLING: AtomicBool = AtomicBool::new(false);
+
 fn palette() -> Palette {
     if BACKDROP_IS_LIGHT.load(Ordering::Relaxed) {
         ON_LIGHT
@@ -214,9 +225,18 @@ const TITLE: f32 = 15.;
 const BODY: f32 = 12.;
 const LABEL: f32 = 11.;
 const FLOOR: f32 = 10.;
-/// The capsule has to hold the album art, a lyric line and the spectrum without
-/// growing past the width the window was sized for.
-const LYRIC_WIDTH: f32 = 268.;
+/// First-frame estimate of the room a lyric line gets, at 100% capsule size.
+///
+/// The real width is measured from the laid-out lyric box (see [`LYRIC_ROOM`])
+/// because the header is elastic: the album art, the spectrum and the padding
+/// all take their share, and a constant was both too wide in one state and too
+/// narrow in another. This number only covers the frame before that measurement
+/// exists, and is deliberately the narrowest the line can be.
+const LYRIC_WIDTH: f32 = 316.;
+/// How long a too-wide lyric rests before it starts to scroll, and how fast it
+/// travels, in points per second at 100% capsule size.
+const LYRIC_HOLD: f32 = 0.9;
+const LYRIC_SPEED: f32 = 30.;
 
 const SEMIBOLD: FontWeight = FontWeight(600.);
 const MEDIUM: FontWeight = FontWeight(500.);
@@ -306,6 +326,15 @@ pub fn line_travel(slot: usize) -> f32 {
     (line_want(slot) - line_room(slot)).max(0.)
 }
 
+/// Whether a lyric line is currently wider than its box and scrolling.
+///
+/// The tick reads this so a paused track keeps painting while a long line
+/// travels: without frames the line would stop mid-way, which is no better than
+/// the clipping it replaces.
+pub fn lyric_scrolling() -> bool {
+    LYRIC_SCROLLING.load(Ordering::Relaxed)
+}
+
 /// How far a line has scrolled after `elapsed` of hovering.
 ///
 /// The line rests at each end before moving on: one that snapped back the
@@ -324,6 +353,79 @@ pub fn marquee_phase(elapsed: Duration, travel: f32, speed: f32) -> f32 {
         (t - MARQUEE_HOLD) * speed
     } else {
         travel
+    }
+}
+
+/// How a lyric line fits its box: the type size to set it at, and how much of
+/// it is still hidden at that size.
+///
+/// A line that fits keeps the full face. One that does not is set smaller, but
+/// never below `floor`; if it is still too wide at the floor, the returned
+/// overflow is what the line has to travel for every character to be readable.
+/// Scaling to an unreadable size was the old way out, and it still clipped the
+/// longest lines, which is the case this replaces.
+fn lyric_fit(want: f32, room: f32, base: f32, floor: f32) -> (f32, f32) {
+    if want <= 0. || room <= 0. || base <= 0. {
+        return (base, 0.);
+    }
+    let size = if want <= room {
+        base
+    } else {
+        (base * room / want).max(floor.min(base))
+    };
+    let overflow = (want * (size / base) - room).max(0.);
+    (size, overflow)
+}
+
+/// The width a lyric line is actually set to at `size`.
+///
+/// The old character-count estimate called every Han glyph 18 pt wide and every
+/// ASCII one 9 pt, which was wrong for both in a proportional face. The text
+/// system already knows the answer, and the line is shaped through it on every
+/// paint anyway, so ask it rather than guess.
+fn lyric_width(window: &Window, font: &Font, text: &str, size: f32) -> f32 {
+    if text.is_empty() {
+        return 0.;
+    }
+    let run = TextRun {
+        len: text.len(),
+        font: font.to_owned(),
+        color: window.text_style().color,
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    f32::from(
+        window
+            .text_system()
+            .layout_line(text, px(size), std::slice::from_ref(&run), None)
+            .width,
+    )
+}
+
+/// How far a lyric line has scrolled after `elapsed`, in points.
+///
+/// Unlike the hover marquee this one starts on its own, so it first rests for
+/// `LYRIC_HOLD` and gives the opening words time to be read. It then travels to
+/// the end, rests there for the same time, and comes back: all of the line is
+/// shown in both directions, and the next line restarts from the beginning
+/// because the app resets the clock when the lyric changes.
+fn lyric_scroll_offset(elapsed: f32, overflow: f32, s: f32) -> f32 {
+    if overflow <= 0. || s <= 0. {
+        return 0.;
+    }
+    let speed = LYRIC_SPEED * s;
+    let slide = overflow / speed;
+    let cycle = (LYRIC_HOLD + slide) * 2.;
+    let t = elapsed.max(0.) % cycle;
+    if t < LYRIC_HOLD {
+        0.
+    } else if t < LYRIC_HOLD + slide {
+        (t - LYRIC_HOLD) * speed
+    } else if t < LYRIC_HOLD * 2. + slide {
+        overflow
+    } else {
+        overflow - (t - (LYRIC_HOLD * 2. + slide)) * speed
     }
 }
 
@@ -903,7 +1005,7 @@ impl Render for Caps {
             // the row's own spacing and scans as part of it. Playing: the music
             // header carries it, and the seek bar is laid over the capsule.
             .child(if self.has_music() {
-                self.music_header(e, s, cx).into_any_element()
+                self.music_header(e, s, window, cx).into_any_element()
             } else {
                 // The spectrum takes a fixed column and centres in it, so it sits
                 // on the same pitch as the four readings rather than trailing
@@ -1154,12 +1256,15 @@ impl Caps {
             }))
     }
 
-    fn music_header(&self, e: f32, s: f32, cx: &mut Context<Self>) -> Div {
+    fn music_header(&self, e: f32, s: f32, window: &Window, cx: &mut Context<Self>) -> Div {
         // `music_header` is only reached for a playing track. Falling back to
         // the idle capsule keeps a bad frame from taking the window down.
         let Some(track) = self.current_track.as_ref() else {
             return self.stats_header(s);
         };
+        // Only the collapsed header shows the lyric; while the panel is open the
+        // title takes that line, so a scroll must not keep the tick awake.
+        LYRIC_SCROLLING.store(false, Ordering::Relaxed);
         let diameter = (42. + 10. * e) * s;
         let mut cover = div()
             .size(px(diameter))
@@ -1232,7 +1337,7 @@ impl Caps {
                 capsule_hovered,
             ));
         } else {
-            copy = copy.child(self.lyric_view(s));
+            copy = copy.child(self.lyric_view(s, window));
         }
         if e > 0.7 {
             copy = copy.child(scroll_line(
@@ -1403,43 +1508,47 @@ impl Caps {
 
     /// One lyric line. Characters settle in with a small vertical offset; under
     /// reduced motion the line only fades.
-    fn lyric_view(&self, s: f32) -> Div {
+    ///
+    /// The line is measured against the box it actually got, not the capsule's
+    /// nominal width, and it keeps the full face if it fits. Long lines shrink
+    /// only down to the legibility floor; past that they scroll, so the whole
+    /// line is readable rather than being cut off at the rounded edge.
+    fn lyric_view(&self, s: f32, window: &Window) -> Div {
         let elapsed = self.lyric_changed.elapsed().as_secs_f32();
+        let measured = f32::from_bits(LYRIC_ROOM.load(Ordering::Relaxed));
+        let room = if measured > 0. {
+            measured
+        } else {
+            LYRIC_WIDTH * s
+        };
+        let base = LYRIC * s;
+        let floor = type_size(FLOOR, s);
+        let mut font = capsule_font(self.latin_family(), self.han_fallbacks.to_owned());
+        font.weight = SEMIBOLD;
+        let mut scrolling = false;
         let mut viewport = div()
             .relative()
             .w_full()
             .h(px(24. * s))
             .items_center()
             .justify_center()
-            .text_size(px(LYRIC * s))
+            .text_size(px(base))
             .font_weight(SEMIBOLD)
             .overflow_hidden();
         for (text, outgoing) in [(&self.outgoing_lyric, true), (&self.lyric, false)] {
             if outgoing && elapsed > 0.3 {
                 continue;
             }
-            let estimated = text
-                .chars()
-                .map(|ch| if ch.is_ascii() { 9. } else { 18. })
-                .sum::<f32>();
-            // Keep long provider lyrics readable inside the fixed-width capsule:
-            // typical lines keep the full face, unusually long ones scale down
-            // before they can run into the rounded clipping edge.
-            let available = LYRIC_WIDTH * s;
-            let lyric_size = (LYRIC * s * (available / (estimated * s).max(available))).max(type_size(FLOOR, s));
-            let rendered_width = estimated * (lyric_size / (LYRIC * s));
-            let overflow = (rendered_width - available).max(0.);
-            let travel = overflow + 28. * s;
-            let phase = if overflow > 0. {
-                (elapsed * 18. * s) % (travel * 2.)
-            } else {
-                0.
-            };
-            let offset = if phase <= travel {
-                phase.min(overflow)
-            } else {
-                (travel * 2. - phase).min(overflow)
-            };
+            // The shaped width is per character in the per-character layout, so
+            // a little slack covers the advances the shape cannot see (kerning
+            // is dropped between separate boxes) and keeps the last glyph off
+            // the clipping edge.
+            let want = lyric_width(window, &font, text, base) * 1.01 + 2. * s;
+            let (lyric_size, overflow) = lyric_fit(want, room, base, floor);
+            if overflow > 0. {
+                scrolling = true;
+            }
+            let offset = lyric_scroll_offset(elapsed, overflow, s);
             let mut letters = row()
                 .absolute()
                 .right_0()
@@ -1463,12 +1572,30 @@ impl Caps {
                         .child(ch.to_string())
                 }));
             if overflow > 0. {
+                // The row is only as wide as its glyphs and slides left; the
+                // viewport is what clips it, so the head leaves exactly as the
+                // tail arrives.
                 letters = letters.left(px(-offset)).justify_start();
             } else {
-                letters = letters.left_0().justify_center();
+                letters = letters.left_0().right_0().justify_center();
             }
             viewport = viewport.child(letters);
         }
+        // Measured during paint, so the next frame sizes the line against the
+        // real width. It has no pixels of its own.
+        viewport = viewport.child(
+            canvas(
+                |bounds, _, _| {
+                    if bounds.size.width > px(0.) {
+                        LYRIC_ROOM.store(f32::from(bounds.size.width).to_bits(), Ordering::Relaxed);
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full(),
+        );
+        LYRIC_SCROLLING.store(scrolling, Ordering::Relaxed);
         viewport
     }
 
@@ -2421,7 +2548,10 @@ impl Caps {
 mod tests {
     // The toolkit's glob would shadow the built-in `#[test]`, so the helper under
     // test is named explicitly.
-    use super::{BODY, FLOOR, LABEL, LYRIC, TITLE, type_size};
+    use super::{
+        BODY, FLOOR, LABEL, LYRIC, LYRIC_HOLD, LYRIC_SPEED, TITLE, lyric_fit, lyric_scroll_offset,
+        type_size,
+    };
 
     /// The capsule's size control scales type along with everything else and goes
     /// down to 85%, which used to take the 10 pt labels to 8.5 pt. This is the
@@ -2443,6 +2573,48 @@ mod tests {
         assert_eq!(type_size(BODY, 1.), BODY);
         assert_eq!(type_size(FLOOR, 1.5), FLOOR * 1.5);
         assert_eq!(type_size(LABEL, 1.2), LABEL * 1.2);
+    }
+
+    /// A line that fits keeps the full face; one that is merely a little long
+    /// shrinks exactly enough to fit, with no overflow left to scroll.
+    #[test]
+    fn lyrics_fit_the_measured_room_before_they_shrink() {
+        assert_eq!(lyric_fit(300., 318., LYRIC, FLOOR), (LYRIC, 0.));
+        let (size, overflow) = lyric_fit(340., 318., LYRIC, FLOOR);
+        assert!((size - LYRIC * 318. / 340.).abs() < 0.01);
+        assert!(overflow < 0.01);
+    }
+
+    /// Past the legibility floor the line stops shrinking and scrolls instead:
+    /// the overflow must be exactly what is still hidden, never zero.
+    #[test]
+    fn lyrics_too_long_at_the_floor_scroll_instead_of_clipping() {
+        let (size, overflow) = lyric_fit(600., 300., LYRIC, FLOOR);
+        assert_eq!(size, FLOOR);
+        assert!((overflow - (600. * FLOOR / LYRIC - 300.)).abs() < 0.01);
+        assert!(overflow > 0.);
+    }
+
+    /// The scroll rests at the start, reaches the end, rests there and returns,
+    /// so every character is shown and the next line starts at its opening.
+    #[test]
+    fn a_scrolling_lyric_visits_both_ends() {
+        let overflow = 120.;
+        let travel = overflow / LYRIC_SPEED;
+        assert_eq!(lyric_scroll_offset(0., overflow, 1.), 0.);
+        assert_eq!(lyric_scroll_offset(LYRIC_HOLD - 0.01, overflow, 1.), 0.);
+        assert!(
+            (lyric_scroll_offset(LYRIC_HOLD + travel * 0.5, overflow, 1.) - overflow * 0.5).abs()
+                < 0.01
+        );
+        assert_eq!(
+            lyric_scroll_offset(LYRIC_HOLD + travel, overflow, 1.),
+            overflow
+        );
+        assert_eq!(
+            lyric_scroll_offset(LYRIC_HOLD * 2. + travel, overflow, 1.),
+            overflow
+        );
     }
 }
 

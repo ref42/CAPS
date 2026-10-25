@@ -37,6 +37,10 @@ pub fn sample_backdrop(_: &Window) -> Option<Vec<([u8; 3], f32)>> {
 pub const COLLAPSED_W: f32 = 400.;
 pub const COLLAPSED_H: f32 = 56.;
 pub const EXPANDED_W: f32 = 460.;
+/// The widest the playing capsule may grow to fit a lyric line, before the
+/// line has to shrink or scroll instead. The tick lowers this further when the
+/// display is too narrow for it.
+pub const MAX_EXPANDED_W: f32 = 760.;
 pub const EXPANDED_H: f32 = 490.;
 /// Transparent margin around the painted shapes.
 pub const BLEED: f32 = 18.;

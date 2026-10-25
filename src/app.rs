@@ -325,6 +325,10 @@ pub struct Caps {
     pub expanded: bool,
     pub expand_motion: Motion,
     pub width_motion: Motion,
+    /// The width the capsule had at the last resize. Its centre is kept in
+    /// place while this moves, so growing for a lyric does not drag the island
+    /// sideways across the desktop.
+    last_width: f32,
     pub hover: bool,
     pub input_focused: bool,
     pub slider_dragging: bool,
@@ -635,6 +639,7 @@ impl Caps {
             expanded: false,
             expand_motion: Motion::with_durations(0., forward, reverse),
             width_motion: Motion::with_durations(crate::windowing::COLLAPSED_W, forward, reverse),
+            last_width: crate::windowing::COLLAPSED_W,
             hover: false,
             input_focused: false,
             slider_dragging: false,
@@ -807,6 +812,44 @@ impl Caps {
     }
     pub fn has_music(&self) -> bool {
         self.current_track.is_some() && self.mode == MusicMode::Normal
+    }
+
+    /// How wide the capsule should be for what it is showing.
+    ///
+    /// The playing capsule grows around its centre until the current lyric
+    /// line fits at its full face. It only shrinks or scrolls the line when the
+    /// display cannot give the capsule that width. While the panel is opening
+    /// the capsule returns to the panel's width: the title takes the line over
+    /// there, and the panel must not reflow as the lyric changes. The idle
+    /// capsule keeps its original width.
+    fn width_target(&self, window: &Window, cx: &App, expansion: f32) -> f32 {
+        if !self.has_music() {
+            return crate::windowing::COLLAPSED_W;
+        }
+        if expansion > 0.001 {
+            return crate::windowing::EXPANDED_W;
+        }
+        let want = crate::components::lyric_want(
+            window,
+            self.latin_family(),
+            self.han_fallbacks.to_owned(),
+            &self.lyric,
+        );
+        if want <= 0. {
+            return crate::windowing::EXPANDED_W;
+        }
+        let scale = self.settings.capsule_size as f32 / 100.;
+        let cap = window
+            .display(cx)
+            .map(|display| {
+                f32::from(display.bounds().size.width) / scale - 2. * crate::windowing::BLEED - 24.
+            })
+            .unwrap_or(crate::windowing::MAX_EXPANDED_W)
+            .clamp(
+                crate::windowing::EXPANDED_W,
+                crate::windowing::MAX_EXPANDED_W,
+            );
+        crate::components::width_for_lyric(want, expansion).clamp(crate::windowing::EXPANDED_W, cap)
     }
 
     /// Whether the pointer is over the capsule. Returns whether that changed.
@@ -1030,20 +1073,8 @@ impl Caps {
         dirty |= self
             .expand_motion
             .target(if self.expanded { 1. } else { 0. }, now);
-        dirty |= self.width_motion.target(
-            // The width follows the content, not the hover. Only the playing
-            // header — cover, a lyric line, the transport controls — needs the
-            // wider capsule; the idle readings and the panel fit the narrow one.
-            // Widening on hover was what left a gap at the screen edge: the
-            // window was clamped for the wide shape, and the narrow one then
-            // rested a margin short of the display.
-            if self.has_music() {
-                crate::windowing::EXPANDED_W
-            } else {
-                crate::windowing::COLLAPSED_W
-            },
-            now,
-        );
+        let wanted_width = self.width_target(window, cx, expansion);
+        dirty |= self.width_motion.target(wanted_width, now);
         // A motion that is mid-flight needs a frame even though its target has
         // not changed since the last tick.
         dirty |= self.expand_motion.animating(now) || self.width_motion.animating(now);
@@ -1192,21 +1223,31 @@ impl Caps {
             window.resize(wanted);
             self.last_size = Some(key);
         }
-        // Changing the capsule size keeps the capsule's centre pinned, instead of
-        // sliding it across the desktop as the transparent margin grows. Keeping
-        // the window itself on the display is the tick's job, where its real
-        // rectangle is known.
-        let delta = scale - self.last_scale;
-        if delta != 0. {
+        // Growing for a lyric or for the size control keeps the capsule's
+        // painted centre pinned, instead of sliding it across the desktop as
+        // the width or the transparent margin grows. Keeping the window itself
+        // on the display is the tick's job, where its real rectangle is known.
+        let dpi = window.scale_factor();
+        let mut shift = (0., 0.);
+        let width_delta = width - self.last_width;
+        if width_delta != 0. {
+            self.last_width = width;
+            if self.drag.is_none() {
+                shift.0 -= width_delta * scale * dpi * 0.5;
+            }
+        }
+        let scale_delta = scale - self.last_scale;
+        if scale_delta != 0. {
             self.last_scale = scale;
+            if self.drag.is_none() {
+                shift.0 -= (crate::windowing::BLEED + width * 0.5) * scale_delta * dpi;
+                shift.1 -= crate::windowing::BLEED * scale_delta * dpi;
+            }
+        }
+        if shift.0 != 0. || shift.1 != 0. {
             if let Some(origin) = crate::windowing::window_origin(window) {
-                let dpi = window.scale_factor();
-                let shift = (
-                    -(crate::windowing::BLEED + width * 0.5) * delta * dpi,
-                    -crate::windowing::BLEED * delta * dpi,
-                );
                 // The resting spot moves with the window, or the tick would put
-                // the capsule back where it was before the size changed.
+                // the capsule back where it was before the width changed.
                 if let Some(rest) = self.rest_origin {
                     self.rest_origin = Some((rest.0 + shift.0, rest.1 + shift.1));
                 }

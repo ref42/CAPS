@@ -229,10 +229,9 @@ const FLOOR: f32 = 10.;
 ///
 /// The real width is measured from the laid-out lyric box (see [`LYRIC_ROOM`])
 /// because the header is elastic: the album art, the spectrum and the padding
-/// all take their share, and a constant was both too wide in one state and too
-/// narrow in another. This number only covers the frame before that measurement
-/// exists, and is deliberately the narrowest the line can be.
-const LYRIC_WIDTH: f32 = 316.;
+/// all take their share. This number only covers the frame before that
+/// measurement exists, so it sits under the narrowest the line can be.
+const LYRIC_WIDTH: f32 = 300.;
 /// How long a too-wide lyric rests before it starts to scroll, and how fast it
 /// travels, in points per second at 100% capsule size.
 const LYRIC_HOLD: f32 = 0.9;
@@ -401,6 +400,38 @@ fn lyric_width(window: &Window, font: &Font, text: &str, size: f32) -> f32 {
             .layout_line(text, px(size), std::slice::from_ref(&run), None)
             .width,
     )
+}
+
+/// The width a lyric line wants at 100% capsule size, with a little slack.
+///
+/// The tick uses this to decide how wide the capsule has to be, and the lyric
+/// view uses it to decide whether the line still fits the room it got. Measuring
+/// the whole line at one size (rather than summing character boxes) also makes
+/// the number match what a single text element will actually paint, including
+/// kerning and shaping.
+pub fn lyric_want(window: &Window, latin: SharedString, han: FontFallbacks, text: &str) -> f32 {
+    let mut font = capsule_font(latin, han);
+    font.weight = SEMIBOLD;
+    lyric_width(window, &font, text, LYRIC) + 2.
+}
+
+/// The capsule width that gives a lyric line of `want` its full face.
+///
+/// Mirrors the non-text parts of the playing header at a given expansion:
+/// horizontal padding, the album art, the two row gaps, the spectrum and a few
+/// points of air before it. The caller clamps the result to the screen and to
+/// the capsule's maximum; what remains after that is what [`lyric_fit`] shrinks
+/// or scrolls.
+pub fn width_for_lyric(want: f32, expansion: f32) -> f32 {
+    if want <= 0. {
+        return 0.;
+    }
+    let chrome = 2. * (12. + 4. * expansion)
+        + (42. + 10. * expansion)
+        + 10.
+        + 10.
+        + 53.;
+    want + chrome + 6.
 }
 
 /// How far a lyric line has scrolled after `elapsed`, in points.
@@ -1506,13 +1537,15 @@ impl Caps {
             )
     }
 
-    /// One lyric line. Characters settle in with a small vertical offset; under
-    /// reduced motion the line only fades.
+    /// One lyric line. The whole line settles in with a small vertical offset;
+    /// under reduced motion it only fades.
     ///
-    /// The line is measured against the box it actually got, not the capsule's
-    /// nominal width, and it keeps the full face if it fits. Long lines shrink
-    /// only down to the legibility floor; past that they scroll, so the whole
-    /// line is readable rather than being cut off at the rounded edge.
+    /// It is a single text run, not one box per character: a row of boxes is
+    /// rounded character by character, which made the painted line wider than
+    /// the text that was measured for it and clipped the last glyphs. The line
+    /// is measured against the room it actually got and keeps the full face if
+    /// it fits. Long lines shrink only down to the legibility floor; past that
+    /// they scroll, so the whole line is readable rather than cut off.
     fn lyric_view(&self, s: f32, window: &Window) -> Div {
         let elapsed = self.lyric_changed.elapsed().as_secs_f32();
         let measured = f32::from_bits(LYRIC_ROOM.load(Ordering::Relaxed));
@@ -1523,8 +1556,6 @@ impl Caps {
         };
         let base = LYRIC * s;
         let floor = type_size(FLOOR, s);
-        let mut font = capsule_font(self.latin_family(), self.han_fallbacks.to_owned());
-        font.weight = SEMIBOLD;
         let mut scrolling = false;
         let mut viewport = div()
             .relative()
@@ -1536,48 +1567,46 @@ impl Caps {
             .font_weight(SEMIBOLD)
             .overflow_hidden();
         for (text, outgoing) in [(&self.outgoing_lyric, true), (&self.lyric, false)] {
-            if outgoing && elapsed > 0.3 {
+            if text.is_empty() || (outgoing && elapsed > 0.3) {
                 continue;
             }
-            // The shaped width is per character in the per-character layout, so
-            // a little slack covers the advances the shape cannot see (kerning
-            // is dropped between separate boxes) and keeps the last glyph off
-            // the clipping edge.
-            let want = lyric_width(window, &font, text, base) * 1.01 + 2. * s;
+            let want = lyric_want(
+                window,
+                self.latin_family(),
+                self.han_fallbacks.to_owned(),
+                text,
+            ) * s;
             let (lyric_size, overflow) = lyric_fit(want, room, base, floor);
             if overflow > 0. {
                 scrolling = true;
             }
             let offset = lyric_scroll_offset(elapsed, overflow, s);
+            let p = motion::ease((elapsed / if outgoing { 0.22 } else { 0.36 }).clamp(0., 1.));
+            let rise = if self.reduce_motion { 0. } else { 8. };
             let mut letters = row()
                 .absolute()
                 .right_0()
-                .top_0()
+                .top(px(if outgoing {
+                    -rise * p * s
+                } else {
+                    rise * (1. - p) * s
+                }))
                 .h(px(22. * s))
                 .text_size(px(lyric_size))
-                .children(text.chars().enumerate().map(|(i, ch)| {
-                    let delay = (i.min(24) as f32) * 0.006;
-                    let t = ((elapsed - delay) / if outgoing { 0.22 } else { 0.36 }).clamp(0., 1.);
-                    let p = motion::ease(t);
-                    let rise = if self.reduce_motion { 0. } else { 8. };
+                .opacity(if outgoing { 1. - p } else { p })
+                .child(
                     div()
-                        .relative()
-                        .top(px(if outgoing {
-                            -rise * p * s
-                        } else {
-                            rise * (1. - p) * s
-                        }))
-                        .opacity(if outgoing { 1. - p } else { p })
                         .flex_shrink_0()
-                        .child(ch.to_string())
-                }));
+                        .whitespace_nowrap()
+                        .child(text.to_owned()),
+                );
             if overflow > 0. {
                 // The row is only as wide as its glyphs and slides left; the
                 // viewport is what clips it, so the head leaves exactly as the
                 // tail arrives.
                 letters = letters.left(px(-offset)).justify_start();
             } else {
-                letters = letters.left_0().right_0().justify_center();
+                letters = letters.left_0().justify_center();
             }
             viewport = viewport.child(letters);
         }
@@ -2550,7 +2579,7 @@ mod tests {
     // test is named explicitly.
     use super::{
         BODY, FLOOR, LABEL, LYRIC, LYRIC_HOLD, LYRIC_SPEED, TITLE, lyric_fit, lyric_scroll_offset,
-        type_size,
+        type_size, width_for_lyric,
     };
 
     /// The capsule's size control scales type along with everything else and goes
@@ -2593,6 +2622,19 @@ mod tests {
         assert_eq!(size, FLOOR);
         assert!((overflow - (600. * FLOOR / LYRIC - 300.)).abs() < 0.01);
         assert!(overflow > 0.);
+    }
+
+    /// The capsule has to grow by at least the line's remaining width for the
+    /// full face to fit; the chrome and the air are what the header adds around
+    /// it. At a half-open header the padding and the art grow, so the capsule
+    /// it asks for grows too.
+    #[test]
+    fn a_dynamic_capsule_leaves_room_for_the_whole_line() {
+        let want = 420.;
+        let width = width_for_lyric(want, 0.);
+        let chrome = 2. * 12. + 42. + 20. + 53.;
+        assert!(width - chrome >= want + 5.);
+        assert!(width_for_lyric(want, 0.5) > width);
     }
 
     /// The scroll rests at the start, reaches the end, rests there and returns,

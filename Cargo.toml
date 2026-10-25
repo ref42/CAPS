@@ -11,14 +11,14 @@ default = []
 bundle = []
 
 [dependencies]
-gpui-kit = "=0.6.6"
+gpui-kit = "=0.8.0"
 raw-window-handle = "0.6.2"
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 md-5 = "0.11.0"
 base64 = "0.23.1"
 sysinfo = "0.39.6"
-tokio = { version = "1.53.2", features = ["full", "rt-multi-thread"] }
+tokio = { version = "1.54.1", features = ["full", "rt-multi-thread"] }
 urlencoding = "2.1.3"
 # The default backend is rustls, which links rustls, rustls-webpki, ring and
 # aws-lc-rs into a program that already reaches schannel through the platform
@@ -37,12 +37,12 @@ rfd = "0.17.2"
 image = "0.25.10"
 cpal = "0.18.2"
 rustfft = "6.4.1"
-rodio = { version = "0.22.2", features = ["mp3", "flac", "vorbis", "wav", "mp4"] }
+rodio = { version = "0.23.0", features = ["mp3", "flac", "vorbis", "wav", "mp4"] }
 log = "0.4.34"
 symphonia = { version = "0.6.1", features = ["mp3", "aac", "isomp4", "flac", "vorbis", "ogg", "wav", "all-meta"] }
 
 [build-dependencies]
-winresource = "0.1.31"
+winresource = "0.1.34"
 
 [profile.release]
 opt-level = "z"

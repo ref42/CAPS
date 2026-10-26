@@ -19,62 +19,73 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-white">
 </p>
 
-**CAPS** 取自 **`C`atch `A`ll `P`ossible `S`ources**，或 **capsule**。CAPS 使用 Rust 和 GPUI Kit 构建。空闲时它显示 CPU、内存和网络速度；播放时它展开成音乐岛，显示封面、歌词、频谱、进度条和基础播放控制。
+**CAPS** = **Catch All Possible Sources**，也是一颗桌面上的 capsule。空闲看系统状态，播放时看歌词、封面和频谱；鼠标悬停即可展开。
 
-CAPS 支持以下音频来源：
+<p align="center">
+  <img src="assets/screenshots/capsule.png" alt="CAPS 收起时显示专辑封面、当前歌词和频谱" width="648">
+</p>
 
-- **在线**：搜索网易云音乐、QQ 音乐、酷狗和汽水音乐。汽水接入公开搜索及可用的完整音轨；仅提供试听或需要登录的歌曲会提示不可用。
-- **平台优先搜索**：输入 `歌曲 [歌手] [平台]`，例如 `晴天 周杰伦 qq`。末尾支持 `netease`（也接受 `neteast`）、`kugou`、`qq`、`qishui` 及中文平台名；指定平台排在前面，仍显示全部平台的结果。
-- **边下载边播放**：所有在线来源共用缓冲播放，下载完成后缓存；拖动进度条会优先读取目标位置。服务器不支持分段请求时按顺序下载，跳转可能需要等待。网络较慢或媒体索引在文件尾部时，首次缓冲可能更久。停止或切歌会取消未完成下载。
-- **Local**：选择本地音频文件夹并批量加入播放列表。
-- 在线来源提供歌词（网易云音乐、QQ 音乐、酷狗及汽水音乐在有对应歌词时显示），本地歌曲也会读取同目录中的歌词文件。
-- 随机添加歌曲时，在线会从四个来源的可用结果轮流加入，并保持用户指定的总数量。
-- 搜索结果会显示来源后缀，用于区分不同平台的同名歌曲；加入播放列表后仍显示歌曲原名。
-- 搜索与播放方式、来源限制和实测数据见[音乐播放说明](docs/music-playback.md)。
+<p align="center">
+  <a href="https://github.com/ref42/CAPS/releases/latest"><strong>下载 Windows 版</strong></a> ·
+  <a href="docs/music-playback.md">音乐与搜索说明</a> ·
+  <a href="docs/bilibili-live-danmu.md">直播互动说明</a>
+</p>
 
-## 写给普通用户
+## 搜索，加入队列，开始播放
 
-- Shift+鼠标左键，按住拖动胶囊，可以将胶囊放在你喜欢的位置；位置会被记住，下次启动仍停在那里。
-- 鼠标悬停，可以展开胶囊，进行搜索、播放队列和设置操作；鼠标移出可见岛屿后会自动收起。
-- 鼠标在胶囊上右键可以退出`CAPS`（面板内部右键不会退出）。
-- 点击队列中的整行即可播放该歌曲，行尾的 ▶ 与 × 也可以使用。
-- 队列每行显示歌手与专辑，时长单独占一列并右对齐，专辑名再长也不会把时长挤出这一行。鼠标停在某一行时，行里放不下的那行文字会自动横向滚动，滚到末尾后停住；胶囊上的歌名和歌手也一样。胶囊上的播放控制排得更紧凑，把宽度尽量留给歌名和歌手。
-- 胶囊上的歌词会按需要调整胶囊长度：能放下就保持原字号，长句会让胶囊向两边展开；展开到屏幕放不下时才缩小或滚动，不会在边缘被截断。
-- 队列右侧有独立的滚动条，歌多的时候可以直接拖动，不用一直滚滚轮。
-- 「清空队列」旁边的按钮用来切换播放顺序：顺序播放、列表循环、单曲循环、随机播放。点一下换一种，按钮上写着当前顺序，选择会被记住；不是默认顺序时会用强调色标出来。添加歌曲始终追加到队列末尾，列表也会停在新歌出现的位置。
-- 播放顺序按钮旁的「导出」和「导入」用于保存、读取 `.json` 队列文件。导出按顺序保留队列中的全部歌曲；导入追加新歌曲并跳过重复项，不会打断当前播放。文件仅包含歌曲信息，不包含音频；本地歌曲仍需保存在记录的原路径。
-- 设置里的模式选择说明：
-  - 弹幕显示会及时切换到最新收到的消息，不再排队延迟播放旧消息；点歌请求单独处理。
-  - 切换直播间时，旧连接会保持到新直播间认证成功，再切换显示并处理新连接已收到的弹幕。重复应用相同设置不会重连；切换期间暂停旧直播间的点歌请求。新直播间连接建立之前的消息无法由实时连接补回。
-  - 支持 Unicode emoji，以及消息附带图片地址的 B 站表情和贴纸（含文字内嵌表情）。图片在后台加载，期间显示固定大小的占位块，避免先显示文字再变成图片；缺少图片信息或加载失败时显示原文字。动态贴纸目前显示首帧。
-  - 设置分为「常规」和「直播互动」。在直播互动中填写 B 站直播间 ID 并点「连接」，无需登录。弹幕在歌词位置短暂显示，显示完整的已接收用户名；弹幕结束后恢复当前歌词。没有歌曲时也能显示弹幕，空闲时恢复系统状态。点击「断开连接」可停止接收。
-  - 开启「观众点歌」后，观众发送 `点歌 歌曲 [歌手] [平台]`，例如 `点歌 晴天 周杰伦 qq`；歌手和平台可省略，平台别名与搜索框相同。优先从指定平台选择匹配歌曲，该平台没有返回结果时使用其他平台。歌曲加入队列，不打断正在播放、暂停或加载的歌曲；停止播放时会自动开始。相同来源和 ID 的歌曲不重复添加。搜索每 3 秒最多接收一次，同一请求 60 秒内不重复处理。
-  - 直播间、连接偏好和点歌开关会被记住；更换直播间后点「应用」。需要代理时展开「连接选项」，填写 HTTP 代理地址（如 `http://127.0.0.1:10808`），留空则直连。关闭弹幕或点歌后，未完成的请求不会再添加歌曲。若 B 站对用户名打码，CAPS 无法恢复隐藏的字符。
-  - 普通模式，如果未播放任何歌曲，则显示CPU占用，内存占用，上行速度，下行速度；点击播放列表选择歌曲后会立即开始播放，并显示可用歌词和频谱。
-  - 静默模式，只显示显示CPU占用，内存占用，上行速度，下行速度。
-  - 安静模式，隐藏歌曲的名称和歌词等信息，只显示CPU占用，内存占用，上行速度，下行速度。此时退化为桌面挂件（推荐摸鱼使用）。
-- 透明度最低可调到 55%：再低时胶囊上的文字会看不清，所以不再往下开放。
-- 设置里的「字体」可以分别指定英文和中文字体：每一行都会显示当前使用的字体，点进去会列出**本机安装的全部字体**（常见的排在前面），并带一个搜索框——输入即筛选，回车选中第一条，「雅黑」「宋体」这样的中文名也能搜到。**每个候选都用它自己的字体预览**，选哪个一眼就能看出来。默认是「系统」——英文用系统的 Segoe UI，中文用它的中文搭配字体（Microsoft YaHei UI），两者字重和基线是对齐的。
-- 界面文字跟随系统字体（Windows 上为 Segoe UI），并遵循系统的“减少动画”设置：开启后展开、收起和封面旋转会直接切换，不再有过渡动画。
+网易云、QQ 音乐、酷狗、汽水音乐一起搜，也可以加载本地音乐。在线歌曲支持边下载边播放。
 
-## 写给开发者
+<table>
+  <tr>
+    <th>跨平台搜索</th>
+    <th>播放队列</th>
+  </tr>
+  <tr>
+    <td><img src="assets/screenshots/search.png" alt="搜索 Hello Adele qq，QQ 音乐结果优先显示" width="440"></td>
+    <td><img src="assets/screenshots/queue.png" alt="正在播放的歌曲、队列、列表循环和 JSON 导入导出按钮" width="440"></td>
+  </tr>
+</table>
 
-- 欢迎给我提issue，反馈bug或者添加新功能。
-- 若是想要进行pr，最好是先在issue里提出，讨论之后再开始实现，避免浪费精力。
+- 搜索格式：`歌曲 [歌手] [平台]`，例如 `晴天 周杰伦 qq`。指定平台优先，其他平台结果仍保留。
+- 平台支持 `netease` / `kugou` / `qq` / `qishui` 及中文名；歌手、平台均可省略。
+- 点击搜索结果加入队列，点击队列歌曲播放。支持顺序、列表循环、单曲循环和随机播放。
+- 队列可导出为 JSON；导入只追加新歌曲、跳过重复项。文件保存歌曲信息，不包含音频。
 
-## 参考
-- [human-interface-guidelines/motion](https://developer.apple.com/design/human-interface-guidelines/motion)
-- [widgetkit/dynamicisland](https://developer.apple.com/documentation/widgetkit/dynamicisland)
-- [apple motion/ui ref](https://developer.apple.com/design/human-interface-guidelines/live-activities?pubDate=20250703&utm_source=openai)
-- [mdn http requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Range_requests)
-- [human-interface-guidelines/materials](https://developer.apple.com/design/human-interface-guidelines/materials)
-- [liquid-glass](https://developer.apple.com/documentation/technologyoverviews/liquid-glass)
-- [wwdc2025/219/](https://developer.apple.com/videos/play/wwdc2025/219/)
-- [css-liquid-glass/](https://freefrontend.com/css-liquid-glass/)
+## 调成喜欢的样子，也让直播间参与
 
-## 致谢
-- 所有开源项目维护者。
+<table>
+  <tr>
+    <th>常规设置</th>
+    <th>B 站直播互动</th>
+  </tr>
+  <tr>
+    <td><img src="assets/screenshots/settings.png" alt="透明度、音量、胶囊大小、模式、语言和字体设置" width="440"></td>
+    <td><img src="assets/screenshots/live-chat.png" alt="B 站直播间连接与观众点歌设置" width="440"></td>
+  </tr>
+</table>
 
-## 许可证
+调整大小、透明度和中英文字体；连接 B 站直播间后，弹幕暂时代替歌词，结束后恢复。观众发送 `点歌 晴天 周杰伦 qq` 即可点歌，歌曲排队播放，不打断当前歌曲；空闲时自动开始。
 
-MIT License. See [LICENSE](LICENSE).
+## 上手只需几步
+
+1. 从 [Releases](https://github.com/ref42/CAPS/releases/latest) 下载 Windows 可执行文件并运行。
+2. 悬停展开 → 搜索或加载本地音乐 → 加入队列 → 点击播放。
+3. **Shift + 左键拖动**调整位置；移开鼠标收起；**右键胶囊**退出。
+
+歌曲可用性取决于平台；本地队列需要原音频文件。更多来源限制、弹幕表情和点歌规则见上方说明。
+
+<details>
+<summary>开发与贡献</summary>
+
+Windows 环境需安装 Rust 和 Visual Studio C++ Build Tools。CI 使用 nightly：
+
+```powershell
+cargo +nightly run --locked
+cargo +nightly build --release --locked
+```
+
+欢迎提交 [Issue](https://github.com/ref42/CAPS/issues)；较大的改动请先讨论。感谢 GPUI Kit、Rodio、CPAL、RustFFT 及所有开源依赖的维护者。
+
+</details>
+
+[MIT License](LICENSE)

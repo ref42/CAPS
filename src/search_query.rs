@@ -57,16 +57,6 @@ impl SearchQuery {
         }
     }
 
-    pub fn platform_label(&self) -> Option<&'static str> {
-        match self.preferred? {
-            SOURCE_NETEASE => Some("NetEase"),
-            SOURCE_KUGOU => Some("KuGou"),
-            SOURCE_QQMUSIC => Some("QQ Music"),
-            SOURCE_QISHUI => Some("Qishui"),
-            _ => None,
-        }
-    }
-
     pub fn prefers(&self, track: &Track) -> bool {
         self.preferred.is_some_and(|preferred| {
             track.source == preferred

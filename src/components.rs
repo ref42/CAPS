@@ -1778,10 +1778,6 @@ impl Caps {
         );
         match self.source {
             Source::Online => {
-                panel = panel.child(div().text_color(rgb(text_secondary())).child(self.tr(
-                    "NetEase · QQ Music · KuGou · Qishui",
-                    "网易云 · QQ 音乐 · 酷狗 · 汽水音乐",
-                )));
                 panel = panel.child(
                     row()
                         .gap(px(8. * s))
@@ -1816,11 +1812,6 @@ impl Caps {
                                 })),
                         ),
                 );
-                let search_hint = crate::search_query::SearchQuery::parse(self.query.read(cx).value().as_ref())
-                    .ok().and_then(|query| query.platform_label())
-                    .map(|platform| self.say(format!("{platform} first · all platforms included"), format!("{platform} 优先 · 仍显示全部平台")))
-                    .unwrap_or_else(|| self.tr("Song [artist] [platform] · e.g. 晴天 周杰伦 qq", "歌曲 [歌手] [平台] · 例如：晴天 周杰伦 qq").into());
-                panel = panel.child(div().text_size(px(type_size(LABEL, s))).text_color(rgb(text_secondary())).child(search_hint));
                 panel = panel.child(self.track_list(false, s, cx));
             }
             Source::Local => {

@@ -41,7 +41,7 @@ jobs:
             windows-cargo-
 
       - name: Build release executable
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Package executable
         shell: pwsh

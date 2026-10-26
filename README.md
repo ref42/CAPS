@@ -22,10 +22,6 @@
 **CAPS** = **Catch All Possible Sources**，也是一颗桌面上的 capsule。空闲看系统状态，播放时看歌词、封面和频谱；鼠标悬停即可展开。
 
 <p align="center">
-  <img src="assets/screenshots/capsule.png" alt="CAPS 收起时显示专辑封面、当前歌词和频谱" width="648">
-</p>
-
-<p align="center">
   <a href="https://github.com/ref42/CAPS/releases/latest"><strong>下载 Windows 版</strong></a> ·
   <a href="docs/music-playback.md">音乐与搜索说明</a> ·
   <a href="docs/bilibili-live-danmu.md">直播互动说明</a>

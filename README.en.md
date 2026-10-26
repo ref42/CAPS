@@ -22,10 +22,6 @@
 **CAPS** means **Catch All Possible Sources**, and also **capsule**. System stats while idle; lyrics, artwork, and spectrum while playing. Hover to expand.
 
 <p align="center">
-  <img src="assets/screenshots/capsule.png" alt="Compact CAPS capsule showing album artwork, the current lyric, and spectrum" width="648">
-</p>
-
-<p align="center">
   <a href="https://github.com/ref42/CAPS/releases/latest"><strong>Download for Windows</strong></a> ·
   <a href="docs/music-playback.md">Music and search guide</a> ·
   <a href="docs/bilibili-live-danmu.md">Live chat guide</a>

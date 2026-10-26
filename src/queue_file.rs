@@ -70,6 +70,8 @@ mod tests {
             SOURCE_KUGOU,
             SOURCE_BILIBILI,
             SOURCE_YOUTUBE,
+            SOURCE_DOUYIN,
+            SOURCE_QISHUI,
         ];
         let tracks: Vec<_> = (0..600)
             .map(|i| track(sources[i % sources.len()], &i.to_string()))

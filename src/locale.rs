@@ -23,8 +23,8 @@ impl Language {
 
     pub fn video_placeholder(self) -> &'static str {
         match self {
-            Self::English => "Paste video URL",
-            Self::Chinese => "粘贴视频链接",
+            Self::English => "Paste a media link or share message",
+            Self::Chinese => "粘贴媒体链接或分享文字",
         }
     }
 

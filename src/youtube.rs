@@ -1,15 +1,11 @@
 use crate::track::{SOURCE_YOUTUBE, Track};
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use sha1::{Digest, Sha1};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 const ORIGIN: &str = "https://www.youtube.com";
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-static DOWNLOAD_ID: AtomicU64 = AtomicU64::new(1);
-
-pub fn is_supported_url(text: &str) -> bool {
-    extract_video_id(text).is_some()
-}
 
 #[derive(Clone, Debug)]
 pub struct ImportPreview {
@@ -21,17 +17,22 @@ pub struct ImportPreview {
     pub stream_kind: String,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct DownloadProgress {
-    pub downloaded: u64,
-    pub total: Option<u64>,
-}
-
-pub async fn preview_from_url(url: String) -> Result<ImportPreview, String> {
+pub async fn preview_from_url_with_cookie(
+    url: String,
+    cookie: &str,
+) -> Result<ImportPreview, String> {
     let video_id =
         extract_video_id(&url).ok_or_else(|| "Paste a supported YouTube URL first.".to_string())?;
-    let resolved = resolve_video(&video_id).await?;
+    let resolved = resolve_video(&video_id, cookie).await?;
     let stream = best_stream(&resolved)?;
+    remember_audio(
+        &video_id,
+        cookie,
+        playable_streams(&resolved)
+            .into_iter()
+            .map(|stream| stream.url)
+            .collect(),
+    )?;
     let (size_bytes, estimated_size) = stream
         .size
         .map(|size| (Some(size), false))
@@ -57,60 +58,26 @@ pub async fn preview_from_url(url: String) -> Result<ImportPreview, String> {
     })
 }
 
-pub async fn download_audio_to_path_with_progress<F>(
+pub async fn resolve_audio_with_cookie(
     track_id: &str,
-    path: &Path,
-    mut on_progress: F,
-) -> Result<(), String>
-where
-    F: FnMut(DownloadProgress),
-{
-    let video_id =
-        extract_video_id(track_id).ok_or_else(|| "Invalid YouTube track id.".to_string())?;
-    let resolved = resolve_video(&video_id).await?;
+    cookie: &str,
+) -> Result<crate::streaming::RemoteMedia, String> {
+    let id = extract_video_id(track_id).ok_or("Invalid YouTube track ID.")?;
+    if let Some(urls) = take_cached_audio(&id, cookie)? {
+        return Ok(crate::streaming::RemoteMedia {
+            client: crate::streaming::media_client(&format!("{ORIGIN}/watch?v={id}"))?,
+            urls,
+        });
+    }
+    let resolved = resolve_video(&id, cookie).await?;
     let streams = playable_streams(&resolved);
     if streams.is_empty() {
-        return Err(no_stream_error());
+        return Err(youtube_status_error(&resolved.player_responses));
     }
-    let client = client()?;
-
-    let mut last_error = None;
-    for stream in streams {
-        let expected_size = stream
-            .size
-            .or_else(|| estimated_stream_size(&resolved, &stream));
-        for _ in 0..2 {
-            let temp_path = unique_temp_path(path);
-            match download_stream_url(
-                &client,
-                &stream.url,
-                &resolved.webpage_url,
-                expected_size,
-                &temp_path,
-                &mut on_progress,
-            )
-            .await
-            {
-                Ok(()) => {
-                    if path.exists() {
-                        tokio::fs::remove_file(path)
-                            .await
-                            .map_err(|err| format!("Audio cache replace failed: {err}"))?;
-                    }
-                    tokio::fs::rename(&temp_path, path)
-                        .await
-                        .map_err(|err| format!("Audio cache finalize failed: {err}"))?;
-                    return Ok(());
-                }
-                Err(err) => {
-                    cleanup_download(&temp_path).await;
-                    last_error = Some(err);
-                }
-            }
-        }
-    }
-
-    Err(last_error.unwrap_or_else(no_stream_error))
+    Ok(crate::streaming::RemoteMedia {
+        client: crate::streaming::media_client(&resolved.webpage_url)?,
+        urls: streams.into_iter().map(|stream| stream.url).collect(),
+    })
 }
 
 #[derive(Clone, Debug)]
@@ -122,6 +89,74 @@ struct ResolvedVideo {
     duration: u64,
     webpage_url: String,
     player_responses: Vec<Value>,
+}
+
+// Import already resolved a playable stream. Reuse it once for immediate
+// playback instead of triggering another independent YouTube challenge.
+// Signed URLs never enter Track/state/export. Limit both age and entry count.
+#[derive(Default)]
+struct PreviewAudioCache(Vec<PreviewAudio>);
+
+struct PreviewAudio {
+    video_id: String,
+    session: [u8; 20],
+    created: Instant,
+    urls: Vec<String>,
+}
+
+impl PreviewAudioCache {
+    fn take(&mut self, id: &str, session: &[u8; 20], now: Instant) -> Option<Vec<String>> {
+        self.0.retain(|entry| {
+            now.saturating_duration_since(entry.created) < Duration::from_secs(120)
+        });
+        let index = self
+            .0
+            .iter()
+            .position(|entry| entry.video_id == id && &entry.session == session)?;
+        Some(self.0.remove(index).urls)
+    }
+
+    fn insert(&mut self, entry: PreviewAudio) {
+        self.0.retain(|old| {
+            entry.created.saturating_duration_since(old.created) < Duration::from_secs(120)
+                && !(old.video_id == entry.video_id && old.session == entry.session)
+        });
+        if self.0.len() >= 8 {
+            self.0.remove(0);
+        }
+        self.0.push(entry);
+    }
+}
+
+fn preview_cache() -> &'static Mutex<PreviewAudioCache> {
+    static CACHE: OnceLock<Mutex<PreviewAudioCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(PreviewAudioCache::default()))
+}
+
+fn session_key(cookie: &str) -> Result<[u8; 20], String> {
+    // This is only a cache partition, never an authentication credential.
+    Ok(Sha1::digest(normalize_cookie(cookie)?.as_bytes()).into())
+}
+
+fn remember_audio(id: &str, cookie: &str, urls: Vec<String>) -> Result<(), String> {
+    let session = session_key(cookie)?;
+    if let Ok(mut cache) = preview_cache().lock() {
+        cache.insert(PreviewAudio {
+            video_id: id.into(),
+            session,
+            created: Instant::now(),
+            urls,
+        });
+    }
+    Ok(())
+}
+
+fn take_cached_audio(id: &str, cookie: &str) -> Result<Option<Vec<String>>, String> {
+    let session = session_key(cookie)?;
+    Ok(preview_cache()
+        .lock()
+        .ok()
+        .and_then(|mut cache| cache.take(id, &session, Instant::now())))
 }
 
 #[derive(Clone, Debug)]
@@ -158,33 +193,104 @@ struct InnertubeClient {
     extra: fn() -> Value,
 }
 
-fn client() -> Result<reqwest::Client, String> {
+pub fn normalize_cookie(input: &str) -> Result<String, String> {
+    let error =
+        "Invalid YouTube cookie. Paste only the Cookie request header (name=value; name=value).";
+    // Validate before trimming so CR/LF cannot be silently accepted.
+    if input
+        .bytes()
+        .any(|byte| byte.is_ascii_control() || !byte.is_ascii())
+    {
+        return Err(error.into());
+    }
+    let mut cookie = input.trim();
+    if cookie
+        .get(..7)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("cookie:"))
+    {
+        cookie = cookie[7..].trim();
+    }
+    if cookie.is_empty() {
+        return Ok(String::new());
+    }
+    for pair in cookie.split(';') {
+        let (name, value) = pair.trim().split_once('=').ok_or(error)?;
+        if name.is_empty()
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
+            || value
+                .bytes()
+                .any(|byte| byte <= b' ' || byte == b',' || byte == b'\\')
+        {
+            return Err(error.into());
+        }
+    }
+    Ok(cookie.into())
+}
+
+fn session_headers(cookie: &str) -> Result<reqwest::header::HeaderMap, String> {
+    use reqwest::header::{COOKIE, HeaderMap, HeaderValue, ORIGIN as ORIGIN_HEADER, REFERER};
+    let cookie = normalize_cookie(cookie)?;
+    let mut headers = HeaderMap::new();
+    headers.insert(REFERER, HeaderValue::from_static(ORIGIN));
+    headers.insert(ORIGIN_HEADER, HeaderValue::from_static(ORIGIN));
+    if !cookie.is_empty() {
+        let mut value =
+            HeaderValue::from_str(&cookie).map_err(|_| "Invalid YouTube cookie header.")?;
+        value.set_sensitive(true);
+        headers.insert(COOKIE, value);
+    }
+    Ok(headers)
+}
+
+fn session_authorization(cookie: &str, timestamp: u64) -> Option<reqwest::header::HeaderValue> {
+    let pairs: Vec<_> = cookie
+        .split(';')
+        .filter_map(|pair| pair.trim().split_once('='))
+        .collect();
+    let sapisid = ["SAPISID", "__Secure-3PAPISID"].iter().find_map(|name| {
+        pairs
+            .iter()
+            .find(|(key, value)| key == name && !value.is_empty())
+            .map(|(_, value)| *value)
+    })?;
+    let digest = Sha1::digest(format!("{timestamp} {sapisid} {ORIGIN}").as_bytes());
+    let digest: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    let mut header =
+        reqwest::header::HeaderValue::from_str(&format!("SAPISIDHASH {timestamp}_{digest}"))
+            .ok()?;
+    header.set_sensitive(true);
+    Some(header)
+}
+
+fn client(cookie: &str) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(UA)
-        .default_headers({
-            let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert(
-                reqwest::header::REFERER,
-                reqwest::header::HeaderValue::from_static(ORIGIN),
-            );
-            headers.insert(
-                reqwest::header::ORIGIN,
-                reqwest::header::HeaderValue::from_static(ORIGIN),
-            );
-            headers
-        })
+        .timeout(std::time::Duration::from_secs(20))
+        // This client is private to the fixed YouTube endpoints. A redirected
+        // login/consent page must not receive the manually supplied credentials.
+        .redirect(reqwest::redirect::Policy::none())
+        .default_headers(session_headers(cookie)?)
         .build()
         .map_err(|err| err.to_string())
 }
 
-async fn resolve_video(video_id: &str) -> Result<ResolvedVideo, String> {
-    let webpage_url = format!("{ORIGIN}/watch?v={video_id}&bpctr=9999999999&has_verified=1");
-    let client = client()?;
-    let webpage = client
+async fn resolve_video(video_id: &str, cookie: &str) -> Result<ResolvedVideo, String> {
+    let cookie = normalize_cookie(cookie)?;
+    let webpage_url = format!("{ORIGIN}/watch?v={video_id}");
+    let session_client = client(&cookie)?;
+    let page_response = session_client
         .get(&webpage_url)
         .send()
         .await
         .map_err(|err| format!("YouTube page unavailable: {err}"))?
+        .error_for_status()
+        .map_err(|err| format!("YouTube page unavailable: {err}"))?;
+    if page_response.status().is_redirection() {
+        return Err("YouTube redirected to verification or consent. Complete it on YouTube and apply a fresh session in Settings.".into());
+    }
+    let webpage = page_response
         .text()
         .await
         .map_err(|err| format!("YouTube page read failed: {err}"))?;
@@ -197,15 +303,36 @@ async fn resolve_video(video_id: &str) -> Result<ResolvedVideo, String> {
     }
 
     if let Some(api_key) = extract_innertube_api_key(&webpage) {
-        for spec in innertube_clients() {
-            if let Ok(response) = call_innertube_player(&client, &api_key, video_id, spec).await {
-                player_responses.push(response);
-            }
+        let anonymous_client = client("")?;
+        let mut clients = innertube_clients();
+        // Browser cookies authenticate the WEB API; mobile clients use their
+        // own authentication protocol and remain anonymous fallbacks.
+        if !cookie.is_empty() {
+            clients.rotate_right(1);
+        }
+        for spec in clients {
             if player_responses
                 .iter()
                 .any(|response| !collect_streams(response).is_empty())
             {
                 break;
+            }
+            let web = spec.name == "WEB";
+            let request_client = if web {
+                &session_client
+            } else {
+                &anonymous_client
+            };
+            if let Ok(response) = call_innertube_player(
+                request_client,
+                &api_key,
+                video_id,
+                spec,
+                if web { &cookie } else { "" },
+            )
+            .await
+            {
+                player_responses.push(response);
             }
         }
     }
@@ -213,7 +340,7 @@ async fn resolve_video(video_id: &str) -> Result<ResolvedVideo, String> {
     let details = player_responses
         .iter()
         .find_map(|response| response.get("videoDetails"))
-        .ok_or_else(|| "YouTube metadata is missing.".to_string())?;
+        .ok_or_else(|| youtube_status_error(&player_responses))?;
     let title = clean_or(
         details.get("title").and_then(Value::as_str),
         "YouTube audio",
@@ -249,6 +376,7 @@ async fn call_innertube_player(
     api_key: &str,
     video_id: &str,
     spec: InnertubeClient,
+    cookie: &str,
 ) -> Result<Value, String> {
     let mut client_context = json!({
         "clientName": spec.name,
@@ -259,9 +387,7 @@ async fn call_innertube_player(
     });
     merge_object(&mut client_context, (spec.extra)());
     let body = json!({
-        "context": {
-            "client": client_context,
-        },
+        "context": {"client": client_context},
         "videoId": video_id,
         "contentCheckOk": true,
         "racyCheckOk": true,
@@ -275,15 +401,28 @@ async fn call_innertube_player(
         "{ORIGIN}/youtubei/v1/player?key={}&prettyPrint=false",
         urlencoding::encode(api_key)
     );
-    client
+    let mut request = client
         .post(url)
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .header("x-youtube-client-name", spec.header_name)
         .header("x-youtube-client-version", spec.version)
         .header(reqwest::header::USER_AGENT, spec.user_agent)
-        .json(&body)
+        .json(&body);
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    if let Some(authorization) = session_authorization(cookie, timestamp) {
+        request = request
+            .header(reqwest::header::AUTHORIZATION, authorization)
+            .header("x-goog-authuser", "0")
+            .header("x-origin", ORIGIN);
+    }
+    request
         .send()
         .await
+        .map_err(|err| format!("YouTube player API unavailable: {err}"))?
+        .error_for_status()
         .map_err(|err| format!("YouTube player API unavailable: {err}"))?
         .json()
         .await
@@ -378,7 +517,7 @@ fn best_stream(video: &ResolvedVideo) -> Result<MediaStream, String> {
     playable_streams(video)
         .into_iter()
         .next()
-        .ok_or_else(no_stream_error)
+        .ok_or_else(|| youtube_status_error(&video.player_responses))
 }
 
 fn playable_streams(video: &ResolvedVideo) -> Vec<MediaStream> {
@@ -399,6 +538,38 @@ fn playable_streams(video: &ResolvedVideo) -> Vec<MediaStream> {
 
 fn no_stream_error() -> String {
     "No direct YouTube audio stream found. This video may require YouTube JS signature, n-challenge, or PO-token support.".to_string()
+}
+
+fn youtube_status_error(responses: &[Value]) -> String {
+    // A usable public session can coexist with rejected fallback clients.
+    // Do not claim sign-in is necessary when the remaining problem is decoding
+    // YouTube's signed/adaptive-only transport.
+    if responses
+        .iter()
+        .any(|response| response["playabilityStatus"]["status"] == "OK")
+    {
+        return no_stream_error();
+    }
+    let status = responses.iter().find_map(|response| {
+        let playability = response.get("playabilityStatus")?;
+        let state = playability.get("status").and_then(Value::as_str)?;
+        let reason = playability
+            .get("reason")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        Some((state, reason))
+    });
+    match status {
+        Some(("LOGIN_REQUIRED", reason)) if !reason.is_empty() => format!(
+            "YouTube requires verification or sign-in for this request: {reason}. Apply or refresh a manually copied session cookie in Settings > General > YouTube, then retry."
+        ),
+        Some((_, reason)) if !reason.is_empty() => {
+            format!("YouTube cannot play this video: {reason}")
+        }
+        _ => {
+            "YouTube metadata is missing. The video page did not provide playable metadata.".into()
+        }
+    }
 }
 
 fn collect_streams(response: &Value) -> Vec<MediaStream> {
@@ -491,45 +662,6 @@ fn estimated_stream_size(video: &ResolvedVideo, stream: &MediaStream) -> Option<
         return None;
     }
     Some(duration.saturating_mul(stream.bandwidth) / 8)
-}
-
-async fn download_stream_url<F>(
-    client: &reqwest::Client,
-    url: &str,
-    referer: &str,
-    expected_size: Option<u64>,
-    temp_path: &Path,
-    on_progress: &mut F,
-) -> Result<(), String>
-where
-    F: FnMut(DownloadProgress),
-{
-    crate::download::download_url_to_path_with_progress(
-        client,
-        url,
-        referer,
-        expected_size,
-        temp_path,
-        "YouTube stream",
-        "YouTube returned an empty stream.",
-        |downloaded, total| {
-            on_progress(DownloadProgress { downloaded, total });
-        },
-    )
-    .await
-}
-
-fn unique_temp_path(path: &Path) -> PathBuf {
-    let id = DOWNLOAD_ID.fetch_add(1, Ordering::Relaxed);
-    let millis = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0);
-    let file_name = path
-        .file_name()
-        .map(|name| name.to_string_lossy())
-        .unwrap_or_else(|| "audio".into());
-    path.with_file_name(format!("{file_name}.{millis:x}.{id:x}.download"))
 }
 
 fn extract_video_id(text: &str) -> Option<String> {
@@ -679,16 +811,18 @@ fn clean_or(value: Option<&str>, fallback: &str) -> String {
         .to_string()
 }
 
-async fn cleanup_download(path: &Path) {
-    let _ = tokio::fs::remove_file(path).await;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn parses_youtube_urls() {
+        for url in [
+            "https://youtu.be/sy3nQLseSmc?list=RDsy3nQLseSmc",
+            "https://www.youtube.com/watch?v=sy3nQLseSmc&list=RDsy3nQLseSmc&start_radio=1",
+        ] {
+            assert_eq!(extract_video_id(url).as_deref(), Some("sy3nQLseSmc"));
+        }
         assert_eq!(
             extract_video_id("https://www.youtube.com/watch?v=iKbylgzysHw").as_deref(),
             Some("iKbylgzysHw")
@@ -712,14 +846,141 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn explains_youtube_verification_errors() {
+        let responses = vec![json!({
+            "playabilityStatus": {
+                "status": "LOGIN_REQUIRED",
+                "reason": "Sign in to confirm you’re not a bot"
+            }
+        })];
+        let error = youtube_status_error(&responses);
+        assert!(error.contains("verification or sign-in"));
+        assert!(error.contains("not a bot"));
+        let mut mixed = responses;
+        mixed.push(json!({"playabilityStatus":{"status":"OK"}}));
+        assert_eq!(youtube_status_error(&mixed), no_stream_error());
+    }
+
+    #[test]
+    fn accepts_a_manual_cookie_header_without_exposing_it() {
+        let headers = session_headers("Cookie: SID=example; HSID=another-secret").unwrap();
+        assert_eq!(
+            headers[reqwest::header::COOKIE],
+            "SID=example; HSID=another-secret"
+        );
+        assert!(headers[reqwest::header::COOKIE].is_sensitive());
+        assert!(!format!("{headers:?}").contains("another-secret"));
+        assert!(
+            !session_headers("")
+                .unwrap()
+                .contains_key(reqwest::header::COOKIE)
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_cookie_without_echoing_credentials() {
+        for input in [
+            "SID=secret\r\nInjected: x",
+            "SID=secret\n",
+            "Set-Cookie: SID=secret",
+            "SID=secret; invalid",
+            "secret",
+        ] {
+            let error = normalize_cookie(input).unwrap_err();
+            assert!(!error.contains("secret"));
+        }
+        assert_eq!(
+            normalize_cookie(" cookie: SID=a=b; PREF=hl=en ").unwrap(),
+            "SID=a=b; PREF=hl=en"
+        );
+    }
+
+    #[tokio::test]
+    async fn sends_session_header_but_does_not_follow_redirects() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+                let mut buffer = [0; 1024];
+                let n = socket.read(&mut buffer).await.unwrap();
+                assert_ne!(n, 0);
+                request.extend_from_slice(&buffer[..n]);
+            }
+            assert!(
+                String::from_utf8(request)
+                    .unwrap()
+                    .to_lowercase()
+                    .contains("cookie: sid=test-session")
+            );
+            socket.write_all(format!("HTTP/1.1 302 Found\r\nLocation: http://{address}/other\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+        });
+        let response = client("SID=test-session")
+            .unwrap()
+            .get(format!("http://{address}/"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::FOUND);
+        server.await.unwrap();
+    }
+
+    #[test]
+    fn signs_web_session_with_timestamp_and_origin() {
+        let header = session_authorization("SID=irrelevant; SAPISID=test-sapisid", 123).unwrap();
+        assert_eq!(
+            header,
+            "SAPISIDHASH 123_26915822e4c31253bfd791dae5f386f3ffea4b4d"
+        );
+        assert!(header.is_sensitive());
+        assert_eq!(
+            Some(header),
+            session_authorization("__Secure-3PAPISID=test-sapisid", 123)
+        );
+        assert!(session_authorization("SID=irrelevant", 123).is_none());
+    }
+
+    #[test]
+    fn preview_stream_is_reused_once_without_crossing_sessions_or_expiry() {
+        let now = Instant::now();
+        let mut cache = PreviewAudioCache::default();
+        let entry = || PreviewAudio {
+            video_id: "x2OfvEnMviU".into(),
+            session: [1; 20],
+            created: now,
+            urls: vec!["https://example.test/audio".into()],
+        };
+        cache.insert(entry());
+        assert!(cache.take("x2OfvEnMviU", &[2; 20], now).is_none());
+        assert!(cache.take("YJDt1rSFCms", &[1; 20], now).is_none());
+        assert!(cache.take("x2OfvEnMviU", &[1; 20], now).is_some());
+        assert!(cache.take("x2OfvEnMviU", &[1; 20], now).is_none());
+        cache.insert(entry());
+        assert!(
+            cache
+                .take("x2OfvEnMviU", &[1; 20], now + Duration::from_secs(120))
+                .is_none()
+        );
+        for i in 0..12 {
+            cache.insert(PreviewAudio {
+                video_id: i.to_string(),
+                ..entry()
+            });
+        }
+        assert_eq!(cache.0.len(), 8);
+    }
+
     #[tokio::test]
     #[ignore]
     async fn live_resolves_youtube_stream() -> Result<(), String> {
-        let video = resolve_video("iKbylgzysHw").await?;
+        let video = resolve_video("iKbylgzysHw", "").await?;
         let stream = best_stream(&video)?;
         assert!(stream.bandwidth > 0);
 
-        let client = client()?;
+        let client = client("")?;
         let chunk = client
             .get(&stream.url)
             .header(reqwest::header::REFERER, video.webpage_url.as_str())

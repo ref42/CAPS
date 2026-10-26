@@ -6,9 +6,16 @@ use std::{
 use rodio::Source;
 
 #[derive(Debug)]
+pub enum LoadedAudio {
+    File(String),
+    Stream(crate::streaming::BufferedSource),
+}
+
+#[derive(Debug)]
 pub enum AudioCommand {
-    LoadFile {
-        path: String,
+    Load {
+        generation: u64,
+        audio: LoadedAudio,
         title: String,
         detail: String,
         duration: Option<f64>,
@@ -21,6 +28,8 @@ pub enum AudioCommand {
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct AudioState {
+    /// Identifies the play request, so a late previous state cannot stop/skip a new track.
+    pub generation: u64,
     pub is_playing: bool,
     pub is_finished: bool,
     pub position: f64,
@@ -28,6 +37,10 @@ pub struct AudioState {
     pub path: String,
     pub title: String,
     pub detail: String,
+    pub buffering: bool,
+    pub error: Option<String>,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
 }
 
 #[derive(Clone)]
@@ -74,32 +87,46 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
     let mut current_title = String::new();
     let mut current_detail = String::new();
     let mut volume = 1.0_f32;
+    let mut stream: Option<crate::streaming::Control> = None;
 
     loop {
         match rx.recv_timeout(Duration::from_millis(100)) {
-            Ok(AudioCommand::LoadFile {
-                path,
+            Ok(AudioCommand::Load {
+                generation,
+                audio,
                 title,
                 detail,
                 duration,
             }) => {
-                let file = match std::fs::File::open(&path) {
-                    Ok(file) => file,
-                    Err(e) => {
-                        log::error!("audio: open stream file: {e}");
-                        continue;
+                if let Some(previous) = stream.take() {
+                    previous.cancel();
+                }
+                let (source, path): (Box<dyn Source + Send>, String) = match audio {
+                    LoadedAudio::Stream(source) => {
+                        stream = Some(source.control());
+                        (Box::new(source), String::new())
                     }
-                };
-                let byte_len = file.metadata().map(|meta| meta.len()).unwrap_or(0);
-                let source = match rodio::Decoder::builder()
-                    .with_data(file)
-                    .with_byte_len(byte_len)
-                    .build()
-                {
-                    Ok(source) => source,
-                    Err(e) => {
-                        log::error!("audio: decode stream: {e}");
-                        continue;
+                    LoadedAudio::File(path) => {
+                        let file = match std::fs::File::open(&path) {
+                            Ok(file) => file,
+                            Err(e) => {
+                                log::error!("audio: open stream file: {e}");
+                                continue;
+                            }
+                        };
+                        let byte_len = file.metadata().map(|meta| meta.len()).unwrap_or(0);
+                        let source = match rodio::Decoder::builder()
+                            .with_data(file)
+                            .with_byte_len(byte_len)
+                            .build()
+                        {
+                            Ok(source) => source,
+                            Err(e) => {
+                                log::error!("audio: decode stream: {e}");
+                                continue;
+                            }
+                        };
+                        (Box::new(source), path)
                     }
                 };
                 duration_secs = source
@@ -116,6 +143,10 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                 new_player.append(source);
                 new_player.play();
                 player = Some(new_player);
+                {
+                    let mut current = state.lock().unwrap_or_else(|e| e.into_inner());
+                    *current = AudioState { generation, ..AudioState::default() };
+                }
                 update_state(
                     &state,
                     &player,
@@ -123,6 +154,7 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                     &current_path,
                     &current_title,
                     &current_detail,
+                    stream.as_ref(),
                 );
             }
             Ok(AudioCommand::PlayPause) => {
@@ -140,6 +172,7 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                     &current_path,
                     &current_title,
                     &current_detail,
+                    stream.as_ref(),
                 );
             }
             Ok(AudioCommand::SetVolume(value)) => {
@@ -155,7 +188,11 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                     } else {
                         position.max(0.0)
                     };
-                    let _ = player.try_seek(Duration::from_secs_f64(target));
+                    if let Some(stream) = &stream {
+                        stream.seek(Duration::from_secs_f64(target));
+                    } else {
+                        let _ = player.try_seek(Duration::from_secs_f64(target));
+                    }
                 }
                 update_state(
                     &state,
@@ -164,9 +201,13 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                     &current_path,
                     &current_title,
                     &current_detail,
+                    stream.as_ref(),
                 );
             }
             Ok(AudioCommand::Stop) => {
+                if let Some(stream) = stream.take() {
+                    stream.cancel();
+                }
                 if let Some(player) = player.take() {
                     player.stop();
                 }
@@ -179,7 +220,12 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                     Err(poisoned) => *poisoned.into_inner() = AudioState::default(),
                 }
             }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                if let Some(stream) = stream.take() {
+                    stream.cancel();
+                }
+                break;
+            }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                 update_state(
                     &state,
@@ -188,6 +234,7 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                     &current_path,
                     &current_title,
                     &current_detail,
+                    stream.as_ref(),
                 );
             }
         }
@@ -201,6 +248,7 @@ fn update_state(
     path: &str,
     title: &str,
     detail: &str,
+    stream: Option<&crate::streaming::Control>,
 ) {
     let mut s = match state.lock() {
         Ok(guard) => guard,
@@ -215,6 +263,19 @@ fn update_state(
         s.is_playing = false;
         s.is_finished = false;
         s.position = 0.0;
+    }
+    s.buffering = false;
+    s.error = None;
+    s.downloaded_bytes = 0;
+    s.total_bytes = 0;
+    if let Some(stream) = stream {
+        s.position = stream.position();
+        s.buffering = stream.buffering();
+        s.error = stream.error();
+        (s.downloaded_bytes, s.total_bytes) = stream.downloaded();
+        if s.error.is_some() {
+            s.is_finished = false;
+        }
     }
     s.duration = duration;
     s.path = path.to_owned();

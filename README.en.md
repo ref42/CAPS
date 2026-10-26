@@ -23,12 +23,14 @@
 
 CAPS supports these audio sources:
 
-- **Online**: search NetEase Cloud Music, QQ Music, and KuGou.
-- **Bilibili / YouTube**: paste a video link to extract available audio content.
+- **Online music**: search NetEase, QQ Music, KuGou, and Qishui Music.
+- **Media**: paste a Bilibili, YouTube, or Douyin link (or its full share message); CAPS detects the source automatically. Douyin uses direct Rust HTTP requests and does not launch a browser; pages requiring JavaScript, verification, or the app may be unavailable. Every online source buffers briefly and plays while downloading, then caches the completed file. Slow connections show buffering.
 - **Local**: choose a local audio folder and add its tracks to the queue in batches.
-- Lyrics are shown when available for NetEase, QQ Music, and KuGou tracks; local tracks can also load lyric files from the same folder.
+- Qishui uses publicly available full tracks; protected tracks and previews are rejected. Availability depends on the service.
+- Lyrics are shown when available for NetEase, QQ Music, KuGou, and Qishui tracks; local tracks can also load lyric files from the same folder.
 - Search results show a provider suffix to distinguish identical songs from different services; queued tracks keep their original names.
-- Random Online queues draw from NetEase, QQ Music, and KuGou in a round-robin split while preserving the total number requested.
+- Random Online queues draw from NetEase, QQ Music, KuGou, and Qishui in a round-robin split while preserving the total number requested.
+- Servers without byte ranges still download progressively; seeking ahead may wait for the requested bytes. Media indexes at the end can also delay startup. See [playback details and validation](docs/media-playback.md).
 
 ## For Users
 

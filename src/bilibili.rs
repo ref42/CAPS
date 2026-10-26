@@ -1,17 +1,10 @@
 use crate::track::{SOURCE_BILIBILI, Track};
 use serde::Deserialize;
 use serde_json::Value;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 const ORIGIN: &str = "https://www.bilibili.com";
 const API_ORIGIN: &str = "https://api.bilibili.com";
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-static DOWNLOAD_ID: AtomicU64 = AtomicU64::new(1);
-
-pub fn is_supported_url(text: &str) -> bool {
-    extract_video_ref(text).is_some()
-}
 
 #[derive(Clone, Debug)]
 pub struct ImportPreview {
@@ -21,12 +14,6 @@ pub struct ImportPreview {
     pub bandwidth: u64,
     pub codec: String,
     pub route_count: usize,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct DownloadProgress {
-    pub downloaded: u64,
-    pub total: Option<u64>,
 }
 
 pub async fn preview_from_url(url: String) -> Result<ImportPreview, String> {
@@ -62,97 +49,13 @@ pub async fn preview_from_url(url: String) -> Result<ImportPreview, String> {
     })
 }
 
-pub async fn download_audio_to_path_with_progress<F>(
-    track_id: &str,
-    path: &Path,
-    mut on_progress: F,
-) -> Result<(), String>
-where
-    F: FnMut(DownloadProgress),
-{
-    let video_ref = parse_track_id(track_id)?;
-    let resolved = resolve_video_ref(&video_ref).await?;
+pub async fn resolve_audio(track_id: &str) -> Result<crate::streaming::RemoteMedia, String> {
+    let resolved = resolve_video_ref(&parse_track_id(track_id)?).await?;
     let stream = best_audio_stream(&resolved).await?;
-    let expected_size = stream
-        .size
-        .or_else(|| estimated_stream_size(&resolved, &stream));
-    let client = client()?;
-
-    let mut last_error = None;
-    for url in &stream.urls {
-        let temp_path = unique_temp_path(path);
-        match download_audio_url(
-            &client,
-            url,
-            &resolved.webpage_url,
-            expected_size,
-            &temp_path,
-            &mut on_progress,
-        )
-        .await
-        {
-            Ok(()) => {
-                if path.exists() {
-                    tokio::fs::remove_file(path)
-                        .await
-                        .map_err(|err| format!("Audio cache replace failed: {err}"))?;
-                }
-                tokio::fs::rename(&temp_path, path)
-                    .await
-                    .map_err(|err| format!("Audio cache finalize failed: {err}"))?;
-                return Ok(());
-            }
-            Err(err) => {
-                cleanup_download(&temp_path).await;
-                last_error = Some(err);
-            }
-        }
-    }
-
-    Err(last_error.unwrap_or_else(|| "No Bilibili audio URL found.".to_string()))
-}
-
-fn unique_temp_path(path: &Path) -> PathBuf {
-    let id = DOWNLOAD_ID.fetch_add(1, Ordering::Relaxed);
-    let millis = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0);
-    let file_name = path
-        .file_name()
-        .map(|name| name.to_string_lossy())
-        .unwrap_or_else(|| "audio".into());
-    path.with_file_name(format!("{file_name}.{millis:x}.{id:x}.download"))
-}
-
-async fn download_audio_url<F>(
-    client: &reqwest::Client,
-    url: &str,
-    referer: &str,
-    expected_size: Option<u64>,
-    temp_path: &Path,
-    on_progress: &mut F,
-) -> Result<(), String>
-where
-    F: FnMut(DownloadProgress),
-{
-    let result = crate::download::download_url_to_path_with_progress(
-        client,
-        url,
-        referer,
-        expected_size,
-        temp_path,
-        "Bilibili audio",
-        "Bilibili returned an empty audio stream.",
-        |downloaded, total| {
-            on_progress(DownloadProgress { downloaded, total });
-        },
-    )
-    .await;
-    if result.is_err() {
-        cleanup_download(temp_path).await;
-    }
-    result
+    Ok(crate::streaming::RemoteMedia {
+        client: crate::streaming::media_client(&resolved.webpage_url)?,
+        urls: stream.urls,
+    })
 }
 
 #[derive(Clone, Debug)]
@@ -225,6 +128,7 @@ struct ViewPage {
 fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(UA)
+        .timeout(std::time::Duration::from_secs(20))
         .default_headers({
             let mut headers = reqwest::header::HeaderMap::new();
             headers.insert(
@@ -459,10 +363,6 @@ fn clean_or(value: &str, fallback: &str) -> String {
 fn api_error<T>(prefix: &str, response: &ApiResponse<T>) -> String {
     let message = clean_or(&response.message, "request failed");
     format!("{prefix}: {} ({})", message, response.code)
-}
-
-async fn cleanup_download(path: &Path) {
-    let _ = tokio::fs::remove_file(path).await;
 }
 
 #[cfg(test)]

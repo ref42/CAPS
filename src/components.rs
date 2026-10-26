@@ -1749,8 +1749,7 @@ impl Caps {
             segmented(s).children(
                 [
                     ("online", Source::Online, self.tr("Online", "在线")),
-                    ("bilibili", Source::Bilibili, "Bilibili"),
-                    ("youtube", Source::Youtube, "YouTube"),
+                    ("media", Source::Media, self.tr("Media", "媒体")),
                     ("local", Source::Local, self.tr("Local", "本地")),
                 ]
                 .into_iter()
@@ -1769,6 +1768,10 @@ impl Caps {
         );
         match self.source {
             Source::Online => {
+                panel = panel.child(div().text_color(rgb(text_secondary())).child(self.tr(
+                    "NetEase · QQ Music · KuGou · Qishui",
+                    "网易云 · QQ 音乐 · 酷狗 · 汽水音乐",
+                )));
                 panel = panel.child(
                     row()
                         .gap(px(8. * s))
@@ -1805,7 +1808,7 @@ impl Caps {
                 );
                 panel = panel.child(self.track_list(false, s, cx));
             }
-            Source::Bilibili | Source::Youtube => {
+            Source::Media => {
                 panel = panel
                     .child(
                         row()
@@ -1818,9 +1821,14 @@ impl Caps {
                             ),
                     )
                     .child(div().text_color(rgb(text_secondary())).child(self.tr(
-                        "Paste a video link to add its audio to your queue.",
-                        "粘贴视频链接，将音频添加到队列。",
-                    )));
+                        "Supports Bilibili, YouTube, and Douyin. Paste a link or share message to import its audio.",
+                        "支持 Bilibili、YouTube 和抖音。粘贴链接或分享文字，自动识别并导入音轨。",
+                    )))
+                    .child(div().text_color(rgb(text_secondary())).child(
+                        crate::media_import::detect(self.video.read(cx).value().as_ref())
+                            .map(|(provider, _)| self.say(format!("Detected: {}", provider.label()), format!("已识别：{}", provider.label())))
+                            .unwrap_or_default()
+                    ));
             }
             Source::Local => {
                 panel = panel
@@ -2735,6 +2743,31 @@ impl Caps {
                             }))
                     }),
                 ),
+        ));
+        panel = panel.child(Self::setting_row(
+            self.tr("YouTube", "YouTube"),
+            s,
+            column()
+                .flex_1()
+                .min_w_0()
+                .gap(px(6. * s))
+                .child(div().font_weight(MEDIUM).child(self.tr("Session cookie (optional)", "会话 Cookie（可选）")))
+                .child(Input::new(&self.youtube_cookie))
+                .child(row().gap(px(8. * s))
+                    .child(button("apply-youtube-session", self.tr("Apply", "应用"), false, s)
+                        .on_click(cx.listener(|this, _, _, cx| this.apply_youtube_session(cx))))
+                    .child(button("clear-youtube-session", self.tr("Clear", "清除"), false, s)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.youtube_cookie.update(cx, |input, cx| input.set_value("", window, cx));
+                            this.apply_youtube_session(cx);
+                        }))))
+                .child(div()
+                    .text_size(px(type_size(LABEL, s)))
+                    .text_color(rgb(text_tertiary()))
+                    .child(self.tr(
+                        "Paste a YouTube Cookie header, then Apply. Kept until exit; never saved or exported. CAPS never reads browser profiles. Clear affects new requests.",
+                        "手动粘贴 YouTube Cookie 请求头后应用。仅本次运行有效，不保存、不导出，不读取浏览器配置。清除后对新请求生效。",
+                    )))
         ));
         // Two font choices, one per script. This is an override of something
         // the app already detects — `settings.md › Best practices`: "Avoid using

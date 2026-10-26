@@ -821,6 +821,7 @@ dependencies = [
  "rustfft",
  "serde",
  "serde_json",
+ "sha1",
  "symphonia 0.6.1",
  "sysinfo 0.39.6",
  "tokio",

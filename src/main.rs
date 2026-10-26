@@ -22,6 +22,7 @@ mod mode;
 mod motion;
 mod qqmusic;
 mod queue_file;
+mod request_queue;
 mod shitease;
 mod storage;
 mod track;

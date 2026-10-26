@@ -297,19 +297,6 @@ pub fn song_request(text: &str) -> Option<String> {
     Some(query)
 }
 
-/// Preserve the current (including paused/loading) track. Only an idle player starts.
-pub fn queue_request(queue: &mut Vec<Track>, track: Track, occupied: bool) -> (usize, bool, bool) {
-    if let Some(index) = queue
-        .iter()
-        .position(|queued| queued.source == track.source && queued.id == track.id)
-    {
-        return (index, false, !occupied);
-    }
-    let index = queue.len();
-    queue.push(track);
-    (index, true, !occupied)
-}
-
 fn normalized(text: &str) -> String {
     text.chars()
         .filter(|c| c.is_alphanumeric())
@@ -703,39 +690,6 @@ mod tests {
         assert_eq!(selected.source, "shitease");
     }
 
-    #[test]
-    fn requests_start_only_when_idle_and_do_not_duplicate_tracks() {
-        let track = |id: &str| Track {
-            source: "netease".into(),
-            id: id.into(),
-            media_id: String::new(),
-            stream_url: String::new(),
-            name: id.into(),
-            artist: String::new(),
-            album: String::new(),
-            cover: String::new(),
-            duration: None,
-        };
-        let mut queue = vec![];
-        assert_eq!(
-            queue_request(&mut queue, track("first"), false),
-            (0, true, true)
-        );
-        // Once the first is loading, playing, or paused, later requests wait.
-        assert_eq!(
-            queue_request(&mut queue, track("second"), true),
-            (1, true, false)
-        );
-        assert_eq!(
-            queue_request(&mut queue, track("first"), true),
-            (0, false, false)
-        );
-        assert_eq!(queue.len(), 2);
-        assert_eq!(
-            queue_request(&mut queue, track("second"), false),
-            (1, false, true)
-        );
-    }
     #[test]
     fn display_returns_to_lyrics_after_the_last_message_and_keeps_full_name() {
         let now = Instant::now();

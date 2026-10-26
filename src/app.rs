@@ -305,6 +305,7 @@ pub struct Caps {
     pub results: Vec<Track>,
     pub current_index: Option<usize>,
     pub current_track: Option<Track>,
+    chat_requests: crate::request_queue::Requests,
     pub player: Arc<AudioPlayer>,
     pub audio: AudioState,
     pub mode: MusicMode,
@@ -640,6 +641,7 @@ impl Caps {
             queue: saved.queue,
             results: Vec::new(),
             current_index: saved.current_index,
+            chat_requests: crate::request_queue::Requests::default(),
             current_track: None,
             player,
             audio: AudioState::default(),
@@ -1111,8 +1113,7 @@ impl Caps {
         self.audio = self.player.get_state();
         let audio_current = self.audio.generation == self.play_generation;
         if let Some(error) = self.audio.error.clone() && audio_current && self.current_track.is_some() && !self.loading {
-            self.stop();
-            self.status = error;
+            self.playback_failed(error);
             dirty = true;
         } else if audio_current && self.current_track.is_some() && !self.loading && self.audio.buffering {
             self.status = self.tr("Buffering audio…", "正在缓冲音频…").into();
@@ -1123,7 +1124,9 @@ impl Caps {
             }
             dirty = true;
         }
-        if audio_current && self.audio.is_finished && !self.loading && self.current_track.is_some() {
+        if audio_current && self.audio.is_finished && !self.loading && self.current_track.is_some()
+            && !self.advance_chat_requests()
+        {
             match self.play_order {
                 // Repeat-one reloads the track: a streamed URL is not worth
                 // rewinding, and a local file is cheap to open again.
@@ -1390,8 +1393,7 @@ impl Caps {
                         self.current_track = Some(track);
                     }
                     Err(err) => {
-                        self.stop();
-                        self.status = err;
+                        self.playback_failed(err);
                     }
                 }
             }
@@ -1456,6 +1458,7 @@ impl Caps {
         } else {
             self.settings.danmu_enabled = false;
             self.danmu_session = crate::live_mode::Rooms::default();
+            self.chat_requests.cancel_waiting();
             self.danmu_active_room = None;
             self.emote_cache.reset(cx);
             self.danmu_display = crate::live_mode::Display::default();
@@ -1485,6 +1488,7 @@ impl Caps {
         if !self.danmu_session.connect(room.unwrap(), (!proxy.is_empty()).then_some(proxy.clone())) {
             return;
         }
+        self.chat_requests.cancel_waiting();
         if self.settings.danmu_proxy != proxy { self.emote_cache.reset(cx); }
         self.danmu_request_status.clear();
         self.settings.danmu_room = room_text;
@@ -1502,6 +1506,7 @@ impl Caps {
     pub fn toggle_danmu_requests(&mut self) {
         self.settings.danmu_requests = !self.settings.danmu_requests;
         self.danmu_session.cancel_requests();
+        self.chat_requests.cancel_waiting();
         self.danmu_request_status.clear();
         self.persist();
     }
@@ -1543,17 +1548,18 @@ impl Caps {
                     self.danmu_request_status = match result {
                         Ok(track) => {
                             let name = track.name.clone();
-                            let (index, added, start) = crate::live_mode::queue_request(
-                                &mut self.queue, track, self.current_track.is_some() || self.loading,
+                            let (index, added, start) = self.chat_requests.accept(
+                                &mut self.queue, track, self.current_track.as_ref(),
                             );
                             if added { self.queue_scroll.scroll_to_bottom(); self.persist(); }
                             if start {
-                                self.play(index);
+                                let name = self.queue[index].name.clone();
+                                self.play_inner(index);
                                 self.say(format!("Loading requested song: {name}…"), format!("正在加载点播歌曲：{name}…"))
                             } else if added {
-                                self.say(format!("Queued: {name}"), format!("已加入队列：{name}"))
+                                self.say(format!("Chat request queued: {name}"), format!("已加入点歌队列：{name}"))
                             } else {
-                                self.say(format!("Already queued: {name}"), format!("已在队列中：{name}"))
+                                self.say(format!("Chat request active or waiting: {name}"), format!("点歌播放中或已排队：{name}"))
                             }
                         }
                         Err(err) => self.say(format!("{query}: {err}"), format!("点歌失败（{query}）：{err}")),
@@ -1666,6 +1672,35 @@ impl Caps {
         });
     }
     pub fn play(&mut self, index: usize) {
+        if let Some(track) = self.queue.get(index) {
+            self.chat_requests.manual_play(track);
+        }
+        self.play_inner(index);
+    }
+
+    fn advance_chat_requests(&mut self) -> bool {
+        if let Some(index) = self.chat_requests.advance(&self.queue) {
+            self.play_inner(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn playback_failed(&mut self, error: String) {
+        // A failed request must not strand later accepted requests.
+        if !self.advance_chat_requests() {
+            self.stop();
+            self.status = error;
+        } else {
+            self.danmu_request_status = self.say(
+                format!("Playback failed: {error}. Continuing the queue."),
+                format!("播放失败：{error}。继续下一首。"),
+            );
+        }
+    }
+
+    fn play_inner(&mut self, index: usize) {
         let Some(track) = self.queue.get(index).cloned() else {
             return;
         };
@@ -1740,6 +1775,7 @@ impl Caps {
         });
     }
     pub fn stop(&mut self) {
+        self.chat_requests = crate::request_queue::Requests::default();
         if let Some(job) = self.playback_job.take() { job.abort(); }
         if let Some(old) = self.spinning_cover.take() {
             self.retired_covers.push(old);
@@ -1755,6 +1791,9 @@ impl Caps {
         self.persist();
     }
     pub fn step(&mut self, direction: isize) {
+        if direction > 0 && self.advance_chat_requests() {
+            return;
+        }
         if self.queue.is_empty() {
             self.stop();
             return;
@@ -1821,9 +1860,12 @@ impl Caps {
         if index >= self.queue.len() {
             return;
         }
+        self.chat_requests.remove(&self.queue[index]);
         self.queue.remove(index);
         match self.current_index {
-            Some(i) if i == index => self.stop(),
+            Some(i) if i == index => {
+                if !self.advance_chat_requests() { self.stop(); }
+            }
             Some(i) if i > index => self.current_index = Some(i - 1),
             _ => {}
         }

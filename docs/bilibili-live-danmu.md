@@ -41,6 +41,8 @@ room or proxy; invalid input leaves an existing connection intact.
 点歌使用与搜索框相同的 `点歌 歌曲 [歌手] [平台]` 格式，例如 `点歌 晴天 周杰伦 qq`。
 歌手和平台均可省略；支持网易云、QQ、酷狗、汽水及搜索框中的平台别名。
 优先在指定平台中匹配歌名和歌手；该平台没有返回结果时使用其他平台。
+点歌搜索成功后立即打断普通歌曲（包括暂停或加载中的普通歌曲）。当前正在播放、暂停或加载点歌时，后续点歌按到达顺序等待，不互相打断；点歌优先于随机和单曲循环。点歌结束后，被打断的普通歌曲从头播放。
+停止播放会清除等待点歌的优先级；关闭点歌、断开连接或切换直播间会取消等待点歌的优先级，不打断当前音频。已添加的歌曲仍保留在普通队列。
 
 With **Song requests** on, `点歌 song [artist] [platform]` enqueues an online search.
 Artist and platform are optional. The same platform aliases as the search box
@@ -48,9 +50,17 @@ work, for example `点歌 Hello Adele qq`. The platform suffix is removed before
 matching the title and artist. The preferred platform ranks first, with other
 providers used when it returns no results. Within that group, exact title/artist
 matches rank first; otherwise the provider's first result is used. The selected track is
-appended without interrupting a playing, paused, or loading track. Only an idle
-player starts the request automatically. An existing queue entry with the same
-source and song ID is reused. Waiting tracks follow the queue's play order.
+added to the queue and immediately interrupts regular music, including paused or
+loading regular tracks. While a chat-requested track is playing, paused, or loading,
+further requests wait in arrival order without interrupting it. Waiting requests
+take priority over shuffle and repeat-one, including when using Next. Existing
+entries are reused by source and song ID; active or waiting requests are not duplicated.
+Failed requests advance to the next waiting request. After requests finish, the
+interrupted regular song restarts from the beginning.
+
+Stopping playback clears waiting request priority. Disabling requests, disconnecting,
+or switching rooms cancels waiting priority without interrupting current audio.
+Already-added tracks remain in the normal queue. Request priority is session-only.
 
 Song searches run sequentially with eight waiting slots and a 20-second timeout.
 One request is accepted every three seconds; repeated queries are suppressed

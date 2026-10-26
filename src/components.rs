@@ -2569,8 +2569,8 @@ impl Caps {
                     "点歌 歌曲 [歌手] [平台]",
                 )))
                 .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
-                    "Joins the queue. Starts automatically only when the player is stopped.",
-                    "按顺序加入队列，不打断当前歌曲；停止播放时自动开始。",
+                    "Interrupts regular music. Chat requests play in arrival order.",
+                    "立即切换普通歌曲；观众点歌按先后顺序播放。",
                 ))))
             .when(!self.danmu_request_status.is_empty(), |d| d.child(div()
                 .text_size(px(type_size(LABEL, s)))

@@ -60,7 +60,7 @@ Search NetEase, QQ Music, KuGou, and Qishui together, or load local music. Onlin
   </tr>
 </table>
 
-Adjust size, opacity, and Latin/Chinese fonts. Connect a Bilibili room to show chat briefly in place of lyrics. Viewers can send `点歌 Hello Adele qq` to queue a song without interrupting playback; requests start automatically when idle.
+Adjust size, opacity, and Latin/Chinese fonts. Connect a Bilibili room to show chat briefly in place of lyrics. Viewers can send `点歌 Hello Adele qq` to interrupt regular music and start the requested song immediately. Further requests wait in arrival order while a chat song is playing.
 
 ## Get started
 

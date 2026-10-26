@@ -1551,7 +1551,16 @@ impl Caps {
                             let (index, added, start) = self.chat_requests.accept(
                                 &mut self.queue, track, self.current_track.as_ref(),
                             );
-                            if added { self.queue_scroll.scroll_to_bottom(); self.persist(); }
+                            if added {
+                                // Moving an existing request to the tail shifts other rows.
+                                if let Some(current) = &self.current_track {
+                                    self.current_index = self.queue.iter().position(|track|
+                                        track.source == current.source && track.id == current.id);
+                                }
+                                self.shuffle_history.clear();
+                                self.queue_scroll.scroll_to_bottom();
+                                self.persist();
+                            }
                             if start {
                                 let name = self.queue[index].name.clone();
                                 self.play_inner(index);

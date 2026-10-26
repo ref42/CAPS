@@ -41,6 +41,7 @@ room or proxy; invalid input leaves an existing connection intact.
 点歌使用与搜索框相同的 `点歌 歌曲 [歌手] [平台]` 格式，例如 `点歌 晴天 周杰伦 qq`。
 歌手和平台均可省略；支持网易云、QQ、酷狗、汽水及搜索框中的平台别名。
 优先在指定平台中匹配歌名和歌手；该平台没有返回结果时使用其他平台。
+歌曲已在普通播放列表中时，将原条目移到列表末尾并接受点歌，不重复添加音轨；只有正在播放或等待播放的点歌会跳过重复请求。已播放完的歌曲可以再次点播。
 点歌搜索成功后立即打断普通歌曲（包括暂停或加载中的普通歌曲）。当前正在播放、暂停或加载点歌时，后续点歌按到达顺序等待，不互相打断；点歌优先于随机和单曲循环。点歌结束后，被打断的普通歌曲从头播放。
 停止播放会清除等待点歌的优先级；关闭点歌、断开连接或切换直播间会取消等待点歌的优先级，不打断当前音频。已添加的歌曲仍保留在普通队列。
 
@@ -54,7 +55,9 @@ added to the queue and immediately interrupts regular music, including paused or
 loading regular tracks. While a chat-requested track is playing, paused, or loading,
 further requests wait in arrival order without interrupting it. Waiting requests
 take priority over shuffle and repeat-one, including when using Next. Existing
-entries are reused by source and song ID; active or waiting requests are not duplicated.
+entries are moved to the queue's end by source and song ID, without adding duplicate
+tracks. Only active or waiting chat requests are deduplicated; finished songs can
+be requested again.
 Failed requests advance to the next waiting request. After requests finish, the
 interrupted regular song restarts from the beginning.
 

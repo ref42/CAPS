@@ -25,6 +25,7 @@ pub struct Requests {
 
 impl Requests {
     /// Start immediately over ordinary playback; protect an active chat song.
+    /// Returns (playback index, playlist changed, start now).
     pub fn accept(
         &mut self,
         queue: &mut Vec<Track>,
@@ -32,8 +33,16 @@ impl Requests {
         playing: Option<&Track>,
     ) -> (usize, bool, bool) {
         let key = Key::of(&track);
+        let duplicate = self.current.as_ref() == Some(&key) || self.pending.contains(&key);
+        // Ordinary playlist membership is not a pending chat request. Put each
+        // newly accepted request at the tail without duplicating its track.
         let (index, added) = match key.index(queue) {
-            Some(index) => (index, false),
+            Some(index) if duplicate => (index, false),
+            Some(index) => {
+                let existing = queue.remove(index);
+                queue.push(existing);
+                (queue.len() - 1, true)
+            }
             None => {
                 queue.push(track);
                 (queue.len() - 1, true)
@@ -144,22 +153,72 @@ mod tests {
         let mut queue = vec![track("regular"), track("first"), track("second")];
         assert_eq!(
             requests.accept(&mut queue, track("first"), Some(&track("regular"))),
-            (1, false, true)
+            (2, true, true)
         );
         assert_eq!(
             requests.accept(&mut queue, track("first"), Some(&track("first"))),
-            (1, false, false)
+            (2, false, false)
         );
         assert_eq!(
             requests.accept(&mut queue, track("second"), Some(&track("first"))),
-            (2, false, false)
+            (2, true, false)
         );
         assert_eq!(
             requests.accept(&mut queue, track("second"), Some(&track("first"))),
             (2, false, false)
         );
         assert_eq!(queue.len(), 3);
+        assert_eq!(
+            queue.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            ["regular", "first", "second"]
+        );
         assert_eq!(requests.advance(&queue), Some(2));
+        assert_eq!(requests.advance(&queue), Some(0));
+    }
+
+    #[test]
+    fn finished_request_can_be_requested_again_and_moves_behind_regular_tracks() {
+        let mut requests = Requests::default();
+        let mut queue = vec![track("old"), track("regular"), track("other")];
+        assert_eq!(
+            requests.accept(&mut queue, track("old"), Some(&track("regular"))),
+            (2, true, true)
+        );
+        assert_eq!(
+            queue.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            ["regular", "other", "old"]
+        );
+        assert_eq!(requests.advance(&queue), Some(0));
+        queue.push(track("later"));
+        assert_eq!(
+            requests.accept(&mut queue, track("old"), Some(&track("regular"))),
+            (3, true, true)
+        );
+        assert_eq!(queue.last().unwrap().id, "old");
+        assert_eq!(queue.len(), 4);
+    }
+
+    #[test]
+    fn moving_existing_song_preserves_active_and_pending_request_order() {
+        let mut requests = Requests::default();
+        let mut queue = vec![track("old"), track("regular")];
+        requests.accept(&mut queue, track("first"), Some(&track("regular")));
+        requests.accept(&mut queue, track("second"), Some(&track("first")));
+        assert_eq!(
+            requests.accept(&mut queue, track("old"), Some(&track("first"))),
+            (3, true, false)
+        );
+        assert_eq!(
+            queue.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            ["regular", "first", "second", "old"]
+        );
+        // Repeating an already waiting request does not move it or change FIFO.
+        assert_eq!(
+            requests.accept(&mut queue, track("second"), Some(&track("first"))),
+            (2, false, false)
+        );
+        assert_eq!(requests.advance(&queue), Some(2));
+        assert_eq!(requests.advance(&queue), Some(3));
         assert_eq!(requests.advance(&queue), Some(0));
     }
 

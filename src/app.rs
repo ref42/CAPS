@@ -26,7 +26,6 @@ use std::{
 #[derive(Clone, Copy, PartialEq)]
 pub enum Source {
     Online,
-    Media,
     Local,
 }
 
@@ -34,7 +33,6 @@ pub enum Message {
     Status(u64, String),
     Search(u64, Result<Vec<Track>, String>),
     Queue(Result<Vec<Track>, String>, bool),
-    Imported(Result<(Track, String), String>),
     Folder(Option<String>),
     QueueImported(Option<Result<Vec<Track>, String>>),
     QueueExported(Option<Result<usize, String>>),
@@ -318,13 +316,9 @@ pub struct Caps {
     pub status: String,
     pub source: Source,
     pub query: Entity<InputState>,
-    pub video: Entity<InputState>,
     pub count: Entity<InputState>,
     pub danmu_room: Entity<InputState>,
     pub danmu_proxy: Entity<InputState>,
-    pub youtube_cookie: Entity<InputState>,
-    /// Manually applied session, held only until exit and never serialized.
-    pub active_youtube_cookie: String,
     pub danmu_status: String,
     pub danmu_request_status: String,
     pub danmu_showing: bool,
@@ -462,8 +456,6 @@ impl Caps {
         let language = crate::locale::Language::from_code(&saved.settings.language);
         let query =
             cx.new(|cx| InputState::new(window, cx).placeholder(language.search_placeholder()));
-        let video =
-            cx.new(|cx| InputState::new(window, cx).placeholder(language.video_placeholder()));
         let count = cx.new(|cx| {
             InputState::new(window, cx).default_value(saved.settings.random_count.to_string())
         });
@@ -471,11 +463,6 @@ impl Caps {
             .placeholder("1747113738").default_value(saved.settings.danmu_room.clone()));
         let danmu_proxy = cx.new(|cx| InputState::new(window, cx)
             .placeholder("http://127.0.0.1:10808").default_value(saved.settings.danmu_proxy.clone()));
-        let youtube_cookie = cx.new(|cx| {
-            let mut input = InputState::new(window, cx).placeholder("Cookie: SID=...; ...");
-            input.set_masked(true, window, cx);
-            input
-        });
         let opacity_slider = cx.new(|_| {
             SliderState::new()
                 // Down to nothing: the capsule's text is plain white whatever the
@@ -507,7 +494,7 @@ impl Caps {
         let player = Arc::new(AudioPlayer::spawn());
         player.send(AudioCommand::SetVolume(saved.settings.volume as f32 / 100.));
         let mut subscriptions = Vec::new();
-        for input in [&query, &video, &count, &font_search, &danmu_room, &danmu_proxy, &youtube_cookie] {
+        for input in [&query, &count, &font_search, &danmu_room, &danmu_proxy] {
             subscriptions.push(cx.subscribe_in(input, window, |this, _, event, _, cx| {
                 match event {
                     InputEvent::Focus => {
@@ -526,11 +513,6 @@ impl Caps {
         subscriptions.push(cx.subscribe_in(&query, window, |this, _, event, _, cx| {
             if matches!(event, InputEvent::PressEnter { .. }) {
                 this.search(cx);
-            }
-        }));
-        subscriptions.push(cx.subscribe_in(&video, window, |this, _, event, _, cx| {
-            if matches!(event, InputEvent::PressEnter { .. }) {
-                this.import(cx);
             }
         }));
         for input in [&danmu_room, &danmu_proxy] {
@@ -667,12 +649,9 @@ impl Caps {
             status: language.welcome().into(),
             source: Source::Online,
             query,
-            video,
             count,
             danmu_room,
             danmu_proxy,
-            youtube_cookie,
-            active_youtube_cookie: String::new(),
             danmu_status: String::new(),
             danmu_request_status: String::new(),
             danmu_showing: false,
@@ -848,9 +827,6 @@ impl Caps {
         let language = crate::locale::Language::from_code(code);
         self.query.update(cx, |input, cx| {
             input.set_placeholder(language.search_placeholder(), window, cx);
-        });
-        self.video.update(cx, |input, cx| {
-            input.set_placeholder(language.video_placeholder(), window, cx);
         });
         gpui_kit::component::set_locale(code);
         self.status = language.welcome().into();
@@ -1371,20 +1347,6 @@ impl Caps {
                 }
                 Err(err) => self.status = err,
             },
-            Message::Imported(result) => match result {
-                Ok((track, detail)) => {
-                    let added = actions::append_unique_tracks(&mut self.queue, [track]);
-                    if added > 0 {
-                        self.queue_scroll.scroll_to_bottom();
-                    }
-                    self.status = self.say(
-                        format!("Added {added}. {detail}"),
-                        format!("已添加 {added} 首。{detail}"),
-                    );
-                    self.persist();
-                }
-                Err(err) => self.status = err,
-            },
             Message::QueueImported(result) => {
                 self.dialog_open = false;
                 if let Some(result) = result {
@@ -1633,39 +1595,6 @@ impl Caps {
             let _ = tx.send(Message::Queue(actions::random(count).await, replace));
         });
     }
-    pub fn apply_youtube_session(&mut self, cx: &mut Context<Self>) {
-        let input = self.youtube_cookie.read(cx).value().to_string();
-        match crate::youtube::normalize_cookie(&input) {
-            Ok(cookie) => {
-                self.active_youtube_cookie = cookie;
-                self.status = if self.active_youtube_cookie.is_empty() {
-                    self.tr("YouTube session cleared.", "YouTube 会话已清除。")
-                } else {
-                    self.tr("YouTube session applied until exit. Retry your link.", "YouTube 会话已应用，退出后清除。请重试链接。")
-                }.into();
-            }
-            Err(error) => self.status = error,
-        }
-        cx.notify();
-    }
-
-    pub fn import(&mut self, cx: &mut Context<Self>) {
-        if self.source != Source::Media { return; }
-        let url = self.video.read(cx).value().trim().to_string();
-        let source = match crate::media_import::detect(&url) {
-            Ok((source, _)) => source,
-            Err(error) => { self.status = error; cx.notify(); return; }
-        };
-        let tx = self.tx.to_owned();
-        let cookie = self.active_youtube_cookie.clone();
-        self.status = self.say(
-            format!("Importing {}…", source.label()),
-            format!("正在导入 {}…", source.label()),
-        );
-        tokio::spawn(async move {
-            let _ = tx.send(Message::Imported(actions::import_video(url, cookie).await));
-        });
-    }
     pub fn export_queue(&mut self) {
         if self.dialog_open {
             return;
@@ -1763,12 +1692,11 @@ impl Caps {
         let tx = self.tx.to_owned();
         let progress_tx = tx.to_owned();
         let audio_track = track.to_owned();
-        let cookie = self.active_youtube_cookie.clone();
         let playback_job = tokio::spawn(async move {
             let progress = actions::Progress::new(move |text| {
                 let _ = progress_tx.send(Message::Status(id, text));
             });
-            let result = actions::load_track_audio(&audio_track, progress, &cookie).await;
+            let result = actions::load_track_audio(&audio_track, progress).await;
             let _ = tx.send(Message::Loaded(id, audio_track, result));
         });
         self.playback_job = Some(playback_job);

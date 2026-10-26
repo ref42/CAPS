@@ -61,16 +61,17 @@ mod tests {
     }
 
     #[test]
-    fn full_queue_round_trip_preserves_order_and_all_sources() {
+    fn full_queue_round_trip_preserves_order_and_legacy_metadata() {
         let sources = [
             SOURCE_LOCAL,
             SOURCE_NETEASE,
             SOURCE_SHITEASE,
             SOURCE_QQMUSIC,
             SOURCE_KUGOU,
-            SOURCE_BILIBILI,
-            SOURCE_YOUTUBE,
-            SOURCE_DOUYIN,
+            // Older queue files stay readable after video import is removed.
+            "bilibili",
+            "youtube",
+            "douyin",
             SOURCE_QISHUI,
         ];
         let tracks: Vec<_> = (0..600)

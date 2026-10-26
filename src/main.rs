@@ -5,12 +5,9 @@ mod app;
 mod artwork;
 mod audio;
 mod audio_spectrum;
-mod bilibili;
 mod bilibili_live;
 mod components;
-mod download;
-mod douyin;
-mod media_import;
+mod search_query;
 mod qishui;
 mod streaming;
 mod formatting;
@@ -30,7 +27,6 @@ mod storage;
 mod track;
 mod updater;
 mod windowing;
-mod youtube;
 
 use gpui_kit::{
     component::{Root, Theme, ThemeMode},
@@ -50,6 +46,7 @@ fn main() {
             gpui_kit::init(cx);
             gpui_kit::component::set_locale(&storage::load_state().settings.language);
             Theme::change(ThemeMode::Dark, None, cx);
+            components::input_theme(false, cx);
             // Prefer the platform's own UI face, in the order Windows itself
             // uses. `Arial` used to win this list by accident, which is why the
             // capsule rendered like a document instead of like the system.

@@ -221,6 +221,17 @@ pub fn sync_theme(light: bool, window: &mut Window, cx: &mut App) {
     if Theme::global(cx).is_dark() == light {
         Theme::change(wanted, Some(window), cx);
     }
+    input_theme(light, cx);
+}
+
+/// Text selection is an opaque editing highlight, separate from row washes.
+/// Keep the native selection/caret geometry and use a thin focus border.
+pub fn input_theme(light: bool, cx: &mut App) {
+    let theme = cx.global_mut::<Theme>();
+    theme.colors.selection = rgb(if light { 0x9ec8ee } else { 0x2b6d9e }).into();
+    theme.colors.ring = rgb(if light { 0x0b7a58 } else { 0x7df2ca }).into();
+    theme.colors.caret = theme.colors.ring;
+    theme.focus_ring = false;
 }
 
 // ------------------------------------------------------------------ type ---
@@ -1749,7 +1760,6 @@ impl Caps {
             segmented(s).children(
                 [
                     ("online", Source::Online, self.tr("Online", "在线")),
-                    ("media", Source::Media, self.tr("Media", "媒体")),
                     ("local", Source::Local, self.tr("Local", "本地")),
                 ]
                 .into_iter()
@@ -1806,29 +1816,12 @@ impl Caps {
                                 })),
                         ),
                 );
+                let search_hint = crate::search_query::SearchQuery::parse(self.query.read(cx).value().as_ref())
+                    .ok().and_then(|query| query.platform_label())
+                    .map(|platform| self.say(format!("{platform} first · all platforms included"), format!("{platform} 优先 · 仍显示全部平台")))
+                    .unwrap_or_else(|| self.tr("Song [artist] [platform] · e.g. 晴天 周杰伦 qq", "歌曲 [歌手] [平台] · 例如：晴天 周杰伦 qq").into());
+                panel = panel.child(div().text_size(px(type_size(LABEL, s))).text_color(rgb(text_secondary())).child(search_hint));
                 panel = panel.child(self.track_list(false, s, cx));
-            }
-            Source::Media => {
-                panel = panel
-                    .child(
-                        row()
-                            .gap(px(8. * s))
-                            .child(div().flex_1().child(Input::new(&self.video).small()))
-                            .child(
-                                button("import", self.tr("Import", "导入"), true, s)
-                                    .h(px(28. * s))
-                                    .on_click(cx.listener(|this, _, _, cx| this.import(cx))),
-                            ),
-                    )
-                    .child(div().text_color(rgb(text_secondary())).child(self.tr(
-                        "Supports Bilibili, YouTube, and Douyin. Paste a link or share message to import its audio.",
-                        "支持 Bilibili、YouTube 和抖音。粘贴链接或分享文字，自动识别并导入音轨。",
-                    )))
-                    .child(div().text_color(rgb(text_secondary())).child(
-                        crate::media_import::detect(self.video.read(cx).value().as_ref())
-                            .map(|(provider, _)| self.say(format!("Detected: {}", provider.label()), format!("已识别：{}", provider.label())))
-                            .unwrap_or_default()
-                    ));
             }
             Source::Local => {
                 panel = panel
@@ -2743,31 +2736,6 @@ impl Caps {
                             }))
                     }),
                 ),
-        ));
-        panel = panel.child(Self::setting_row(
-            self.tr("YouTube", "YouTube"),
-            s,
-            column()
-                .flex_1()
-                .min_w_0()
-                .gap(px(6. * s))
-                .child(div().font_weight(MEDIUM).child(self.tr("Session cookie (optional)", "会话 Cookie（可选）")))
-                .child(Input::new(&self.youtube_cookie))
-                .child(row().gap(px(8. * s))
-                    .child(button("apply-youtube-session", self.tr("Apply", "应用"), false, s)
-                        .on_click(cx.listener(|this, _, _, cx| this.apply_youtube_session(cx))))
-                    .child(button("clear-youtube-session", self.tr("Clear", "清除"), false, s)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.youtube_cookie.update(cx, |input, cx| input.set_value("", window, cx));
-                            this.apply_youtube_session(cx);
-                        }))))
-                .child(div()
-                    .text_size(px(type_size(LABEL, s)))
-                    .text_color(rgb(text_tertiary()))
-                    .child(self.tr(
-                        "Paste a YouTube Cookie header, then Apply. Kept until exit; never saved or exported. CAPS never reads browser profiles. Clear affects new requests.",
-                        "手动粘贴 YouTube Cookie 请求头后应用。仅本次运行有效，不保存、不导出，不读取浏览器配置。清除后对新请求生效。",
-                    )))
         ));
         // Two font choices, one per script. This is an override of something
         // the app already detects — `settings.md › Best practices`: "Avoid using

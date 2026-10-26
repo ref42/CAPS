@@ -1,12 +1,6 @@
-//! Live provider check: cargo run --example media_playback -- qishui "晴天"
-//! Search providers accept a query; video providers accept their URL or stable ID.
+//! Live provider check: cargo run --example music_playback -- qishui "晴天"
+//! Search providers accept a song/artist query.
 #![allow(dead_code)]
-#[path = "../src/bilibili.rs"]
-mod bilibili;
-#[path = "../src/douyin.rs"]
-mod douyin;
-#[path = "../src/download.rs"]
-mod download;
 #[path = "../src/kugou.rs"]
 mod kugou;
 #[path = "../src/qishui.rs"]
@@ -19,8 +13,6 @@ mod shitease;
 mod streaming;
 #[path = "../src/track.rs"]
 mod track;
-#[path = "../src/youtube.rs"]
-mod youtube;
 
 use rodio::Source;
 use std::time::{Duration, Instant};
@@ -86,17 +78,6 @@ async fn main() -> Result<(), String> {
                 ],
             }
         }
-        "bilibili" => bilibili::resolve_audio(&query).await?,
-        "youtube" => {
-            let cookie = std::env::var("CAPS_YOUTUBE_COOKIE").unwrap_or_default();
-            let preview = youtube::preview_from_url_with_cookie(query, &cookie).await?;
-            println!(
-                "{} / {} / {:?}s",
-                preview.track.name, preview.track.artist, preview.track.duration
-            );
-            youtube::resolve_audio_with_cookie(&preview.track.id, &cookie).await?
-        }
-        "douyin" => douyin::remote(&douyin::preview(&query).await?)?,
         _ => return Err("Unknown provider".into()),
     };
     let resolved = started.elapsed();

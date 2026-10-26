@@ -7,9 +7,6 @@ pub const SOURCE_NETEASE: &str = "netease";
 pub const SOURCE_QQMUSIC: &str = "qqmusic";
 pub const SOURCE_KUGOU: &str = "kugou";
 pub const SOURCE_LOCAL: &str = "local";
-pub const SOURCE_BILIBILI: &str = "bilibili";
-pub const SOURCE_YOUTUBE: &str = "youtube";
-pub const SOURCE_DOUYIN: &str = "douyin";
 pub const SOURCE_QISHUI: &str = "qishui";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

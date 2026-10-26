@@ -16,15 +16,8 @@ impl Language {
 
     pub fn search_placeholder(self) -> &'static str {
         match self {
-            Self::English => "Song, artist, album",
-            Self::Chinese => "歌曲、歌手、专辑",
-        }
-    }
-
-    pub fn video_placeholder(self) -> &'static str {
-        match self {
-            Self::English => "Paste a media link or share message",
-            Self::Chinese => "粘贴媒体链接或分享文字",
+            Self::English => "Song [artist] [platform]",
+            Self::Chinese => "歌曲 [歌手] [平台]",
         }
     }
 

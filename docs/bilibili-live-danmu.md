@@ -38,10 +38,16 @@ blank means a direct connection. Room ID, proxy, display choice, and the
 song-request toggle persist across restarts. Press Apply after editing the
 room or proxy; invalid input leaves an existing connection intact.
 
-With **Song requests** on, `点歌 歌名` and `点歌 歌名 歌手` enqueue an online search.
-The artist is optional; all words after the prefix form one search query so
-multiword titles and artist names work. Exact title/artist matches rank first;
-otherwise the provider's first returned result is used. The selected track is
+点歌使用与搜索框相同的 `点歌 歌曲 [歌手] [平台]` 格式，例如 `点歌 晴天 周杰伦 qq`。
+歌手和平台均可省略；支持网易云、QQ、酷狗、汽水及搜索框中的平台别名。
+优先在指定平台中匹配歌名和歌手；该平台没有返回结果时使用其他平台。
+
+With **Song requests** on, `点歌 song [artist] [platform]` enqueues an online search.
+Artist and platform are optional. The same platform aliases as the search box
+work, for example `点歌 Hello Adele qq`. The platform suffix is removed before
+matching the title and artist. The preferred platform ranks first, with other
+providers used when it returns no results. Within that group, exact title/artist
+matches rank first; otherwise the provider's first result is used. The selected track is
 appended without interrupting a playing, paused, or loading track. Only an idle
 player starts the request automatically. An existing queue entry with the same
 source and song ID is reused. Waiting tracks follow the queue's play order.

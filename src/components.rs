@@ -2574,8 +2574,8 @@ impl Caps {
                             cx.notify();
                         }))))
                 .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
-                    "点歌 song [artist]",
-                    "点歌 歌名 [歌手可选]",
+                    "点歌 song [artist] [platform]",
+                    "点歌 歌曲 [歌手] [平台]",
                 )))
                 .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
                     "Joins the queue. Starts automatically only when the player is stopped.",

@@ -317,11 +317,12 @@ fn normalized(text: &str) -> String {
         .collect()
 }
 
-/// Prefer a title/artist match; otherwise retain the provider's first result.
+/// Honor platform priority, then prefer a title/artist match within that group.
 fn choose_track(query: &str, tracks: Vec<Track>) -> Option<Track> {
-    let query = normalized(query);
+    let parsed = crate::search_query::SearchQuery::parse(query).ok()?;
+    let query = normalized(&parsed.text);
     let mut best = None;
-    let mut score = 0;
+    let mut score = (false, 0);
     for track in tracks {
         let title = normalized(&track.name);
         let artist = normalized(&track.artist);
@@ -341,6 +342,7 @@ fn choose_track(query: &str, tracks: Vec<Track>) -> Option<Track> {
         } else {
             1
         };
+        let rank = (parsed.prefers(&track), rank);
         if best.is_none() || rank > score {
             score = rank;
             best = Some(track);
@@ -656,6 +658,51 @@ mod tests {
         );
         assert!(choose_track("晴天", vec![]).is_none());
     }
+    #[test]
+    fn song_requests_honor_platform_then_artist_and_fall_back_to_other_sources() {
+        let track = |source: &str, name: &str, artist: &str| Track {
+            source: source.into(),
+            id: format!("{source}:{name}:{artist}"),
+            media_id: String::new(),
+            stream_url: String::new(),
+            name: name.into(),
+            artist: artist.into(),
+            album: String::new(),
+            cover: String::new(),
+            duration: None,
+        };
+        for platform in ["qq", "QQ音乐", "platform:qq", "@qq"] {
+            let query = song_request(&format!("点歌 晴天 周杰伦 {platform}")).unwrap();
+            let selected = choose_track(&query, vec![
+                track("netease", "晴天", "周杰伦"),
+                track("qqmusic", "晴天", "翻唱"),
+                track("qqmusic", "晴天", "周杰伦"),
+            ]).unwrap();
+            assert_eq!(selected.source, "qqmusic");
+            assert_eq!(selected.artist, "周杰伦");
+        }
+        let selected = choose_track("晴天 周杰伦 qq", vec![
+            track("netease", "晴天", "周杰伦"),
+            track("qqmusic", "晴天", "翻唱"),
+        ]).unwrap();
+        assert_eq!(selected.source, "qqmusic");
+        let selected = choose_track("晴天 qq", vec![
+            track("qqmusic", "晴天 qq", "翻唱"),
+            track("qqmusic", "晴天", "周杰伦"),
+        ]).unwrap();
+        assert_eq!(selected.name, "晴天");
+        let selected = choose_track("晴天 周杰伦 qq", vec![
+            track("kugou", "晴天", "翻唱"),
+            track("netease", "晴天", "周杰伦"),
+        ]).unwrap();
+        assert_eq!(selected.artist, "周杰伦");
+        let selected = choose_track("晴天 neteast", vec![
+            track("qqmusic", "晴天", "周杰伦"),
+            track("shitease", "晴天", "周杰伦"),
+        ]).unwrap();
+        assert_eq!(selected.source, "shitease");
+    }
+
     #[test]
     fn requests_start_only_when_idle_and_do_not_duplicate_tracks() {
         let track = |id: &str| Track {

@@ -67,14 +67,18 @@ impl SearchQuery {
         }
     }
 
+    pub fn prefers(&self, track: &Track) -> bool {
+        self.preferred.is_some_and(|preferred| {
+            track.source == preferred
+                || (preferred == SOURCE_NETEASE && track.source == SOURCE_SHITEASE)
+        })
+    }
+
     pub fn rank(&self, tracks: &mut [Track]) {
-        if let Some(preferred) = self.preferred {
+        if self.preferred.is_some() {
             // Stable sorting preserves each provider's relevance ordering and
             // keeps all other sources in their original relative order.
-            tracks.sort_by_key(|track| {
-                !(track.source == preferred
-                    || (preferred == SOURCE_NETEASE && track.source == SOURCE_SHITEASE))
-            });
+            tracks.sort_by_key(|track| !self.prefers(track));
         }
     }
 }

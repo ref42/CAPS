@@ -9,6 +9,24 @@ struct QueueFile {
     tracks: Vec<Track>,
 }
 
+/// A stable export snapshot: live queue edits cannot change the chosen songs.
+pub struct ExportSelection {
+    pub tracks: Vec<Track>,
+    pub selected: Vec<bool>,
+}
+
+impl ExportSelection {
+    pub fn new(tracks: &[Track]) -> Self {
+        Self { tracks: tracks.to_vec(), selected: vec![true; tracks.len()] }
+    }
+
+    pub fn chosen(&self) -> Vec<Track> {
+        self.tracks.iter().zip(&self.selected)
+            .filter(|(_, selected)| **selected)
+            .map(|(track, _)| track.clone()).collect()
+    }
+}
+
 pub fn export(path: &Path, tracks: Vec<Track>) -> Result<(), String> {
     let bytes = encode(tracks)?;
     fs::write(path, bytes).map_err(|err| format!("Could not export queue: {err}"))
@@ -58,6 +76,23 @@ mod tests {
             cover: "cover.jpg".into(),
             duration: Some(123),
         }
+    }
+
+    #[test]
+    fn export_selection_keeps_snapshot_order_while_live_queue_changes() {
+        let mut queue = vec![track(SOURCE_QQMUSIC, "a"), track(SOURCE_NETEASE, "b"), track(SOURCE_LOCAL, "c")];
+        let mut selection = ExportSelection::new(&queue);
+        assert_eq!(selection.chosen(), queue);
+        selection.selected[1] = false;
+        let expected = vec![queue[0].clone(), queue[2].clone()];
+        queue.reverse();
+        queue.remove(0);
+        queue.push(track(SOURCE_KUGOU, "new"));
+        assert_eq!(decode(&encode(selection.chosen()).unwrap()).unwrap(), expected);
+        selection.selected.fill(false);
+        assert!(selection.chosen().is_empty());
+        selection.selected.fill(true);
+        assert_eq!(selection.chosen().len(), 3);
     }
 
     #[test]

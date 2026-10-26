@@ -45,7 +45,7 @@ Search NetEase, QQ Music, KuGou, and Qishui together, or load local music. Onlin
 - Search with `song [artist] [platform]`, such as `Hello Adele qq`. The preferred platform comes first; other results remain.
 - Platforms: `netease` / `kugou` / `qq` / `qishui`, or their Chinese names. Artist and platform are optional.
 - Select a search result to queue it; select a queued track to play. Choose in order, repeat all, repeat one, or shuffle.
-- Export queues as JSON. Import appends new tracks and skips duplicates. Files contain song metadata, not audio.
+- Click **Export**, choose songs with **Select all** / **Deselect all** available, then save as JSON. Import appends new tracks and skips duplicates; files contain metadata, not audio.
 
 ## Make it yours, bring in your live chat
 

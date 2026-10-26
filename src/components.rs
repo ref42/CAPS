@@ -1851,6 +1851,9 @@ impl Caps {
     }
 
     fn queue_panel(&self, s: f32, cx: &mut Context<Self>) -> AnyElement {
+        if self.export_selection.is_some() {
+            return self.export_panel(s, cx);
+        }
         let order = self.play_order;
         let (order_en, order_zh) = order.label();
         // Tinted once the order is something other than the one CAPS starts in,
@@ -1912,6 +1915,70 @@ impl Caps {
                     .overflow_hidden()
                     .child(self.status.to_owned()),
             )
+            .into_any_element()
+    }
+
+    fn export_panel(&self, s: f32, cx: &mut Context<Self>) -> AnyElement {
+        let selection = self.export_selection.as_ref().expect("export selection open");
+        let count = selection.selected.iter().filter(|selected| **selected).count();
+        let total = selection.tracks.len();
+        let view = cx.entity().downgrade();
+        let list = uniform_list("export-songs", total, move |range, _, cx| {
+            view.update(cx, |this, cx| {
+                range.filter_map(|index| {
+                    let selection = this.export_selection.as_ref()?;
+                    let track = selection.tracks.get(index)?;
+                    let selected = selection.selected[index];
+                    Some(column().w_full().min_w_0().h(px(54. * s)).justify_center().gap(px(3. * s))
+                        .px(px(8. * s)).rounded(px(7. * s))
+                        .bg(if selected { rgba(crate::components::selection()) } else { rgba(0xffffff00) })
+                        .child(gpui_kit::component::checkbox::Checkbox::new(("export-song", index))
+                            .w_full().checked(selected)
+                            .accessibility_label(track.name.clone())
+                            .child(div().text_ellipsis().child(track.name.clone()))
+                            .on_click(cx.listener(move |this, checked: &bool, _, cx| {
+                                if !this.dialog_open && let Some(selection) = &mut this.export_selection {
+                                    selection.selected[index] = *checked;
+                                    cx.notify();
+                                }
+                            })))
+                        .child(div().pl(px(24. * s)).text_size(px(LABEL * s))
+                            .text_color(rgb(text_secondary())).text_ellipsis()
+                            .child(format!("{} · {}", track.artist, track.source))))
+                }).collect::<Vec<_>>()
+            }).unwrap_or_default()
+        }).flex_1().min_h_0().pr(px(9. * s)).track_scroll(&self.export_scroll);
+        column().flex_1().min_h_0().gap(px(8. * s))
+            .child(row().justify_between()
+                .child(div().font_weight(SEMIBOLD).child(self.tr("Choose songs to export", "选择导出歌曲")))
+                .child(button("cancel-export", self.tr("Cancel", "取消"), false, s)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if !this.dialog_open { this.export_selection = None; cx.notify(); }
+                    }))))
+            .child(row().gap(px(8. * s))
+                .child(button("export-all", self.tr("Select all", "全选"), false, s)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if !this.dialog_open && let Some(selection) = &mut this.export_selection {
+                            selection.selected.fill(true); cx.notify();
+                        }
+                    })))
+                .child(button("export-none", self.tr("Deselect all", "全不选"), false, s)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if !this.dialog_open && let Some(selection) = &mut this.export_selection {
+                            selection.selected.fill(false); cx.notify();
+                        }
+                    })))
+                .child(div().flex_1())
+                .child(self.say(format!("{count} / {total} selected"), format!("已选 {count} / {total}"))))
+            .child(column().id("export-list-view").relative().flex_1().min_h_0()
+                .child(list)
+                .child(div().absolute().right_0().top_0().bottom_0()
+                    .child(Scrollbar::vertical(&self.export_scroll).mode(ScrollbarMode::Always))))
+            .child(button("save-export", self.tr("Export selected…", "导出所选…"), true, s)
+                .when(count == 0 || self.dialog_open, |button| button.opacity(0.4))
+                .on_click(cx.listener(|this, _, _, cx| { this.save_selected_queue(); cx.notify(); })))
+            .child(div().text_size(px(LABEL * s)).text_color(rgb(text_tertiary()))
+                .max_h(px(32. * s)).overflow_hidden().child(self.status.clone()))
             .into_any_element()
     }
 

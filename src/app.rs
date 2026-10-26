@@ -385,6 +385,8 @@ pub struct Caps {
     /// visible where it happened — at the end of the list — and the results
     /// list keeps its own position.
     pub queue_scroll: UniformListScrollHandle,
+    pub export_selection: Option<crate::queue_file::ExportSelection>,
+    pub export_scroll: UniformListScrollHandle,
     /// The line the pointer is on, and when it got there. A line of text that
     /// does not fit scrolls while the pointer rests on it.
     pub hover_line: Option<HoverLine>,
@@ -704,6 +706,8 @@ impl Caps {
             update_progress: None,
             list_scroll: UniformListScrollHandle::new(),
             queue_scroll: UniformListScrollHandle::new(),
+            export_selection: None,
+            export_scroll: UniformListScrollHandle::new(),
             hover_line: None,
             marquee_start: Instant::now(),
             lyrics: Vec::new(),
@@ -1360,10 +1364,13 @@ impl Caps {
                 self.dialog_open = false;
                 if let Some(result) = result {
                     self.status = match result {
-                        Ok(count) => self.say(
+                        Ok(count) => {
+                            self.export_selection = None;
+                            self.say(
                             format!("Exported {count} tracks to JSON."),
                             format!("已导出 {count} 首歌曲到 JSON。"),
-                        ),
+                            )
+                        },
                         Err(err) => err,
                     };
                 }
@@ -1611,11 +1618,27 @@ impl Caps {
         });
     }
     pub fn export_queue(&mut self) {
+        if self.dialog_open { return; }
+        if self.queue.is_empty() {
+            self.status = self.tr("Add songs before exporting.", "请先添加要导出的歌曲。").into();
+            return;
+        }
+        self.export_selection = Some(crate::queue_file::ExportSelection::new(&self.queue));
+        self.export_scroll = UniformListScrollHandle::new();
+        self.status = self.tr("Choose songs to export.", "选择要导出的歌曲。").into();
+    }
+
+    pub fn save_selected_queue(&mut self) {
         if self.dialog_open {
             return;
         }
+        let Some(selection) = &self.export_selection else { return; };
+        let tracks = selection.chosen();
+        if tracks.is_empty() {
+            self.status = self.tr("Select at least one song.", "请至少选择一首歌曲。").into();
+            return;
+        }
         self.dialog_open = true;
-        let tracks = self.queue.clone();
         let title = self.tr("Export queue", "导出队列");
         let tx = self.tx.clone();
         tokio::task::spawn_blocking(move || {

@@ -41,6 +41,11 @@ rodio = { version = "0.23.0", features = ["mp3", "flac", "vorbis", "wav", "mp4"]
 log = "0.4.34"
 symphonia = { version = "0.6.1", features = ["mp3", "aac", "isomp4", "flac", "vorbis", "ogg", "wav", "all-meta"] }
 
+brotli = "9.1.0"
+flate2 = "1.1.10"
+futures-util = { version = "0.3.34", features = ["sink"] }
+tokio-tungstenite = { version = "0.30.0", features = ["native-tls"] }
+
 [build-dependencies]
 winresource = "0.1.34"
 

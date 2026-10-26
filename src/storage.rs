@@ -30,6 +30,10 @@ pub struct AppSettings {
     pub han_font: Option<String>,
     /// What plays after the current track ends; see `mode::PlayOrder`.
     pub play_order: String,
+    pub danmu_enabled: bool,
+    pub danmu_room: String,
+    pub danmu_proxy: String,
+    pub danmu_requests: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -54,6 +58,10 @@ impl Default for AppSettings {
             latin_font: None,
             han_font: None,
             play_order: "all".to_string(),
+            danmu_enabled: false,
+            danmu_room: String::new(),
+            danmu_proxy: String::new(),
+            danmu_requests: true,
         }
     }
 }
@@ -214,4 +222,29 @@ fn state_path() -> Option<PathBuf> {
 
 fn song_cache_path() -> Option<PathBuf> {
     Some(app_dir()?.join("song-cache"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_settings_leave_live_chat_disconnected() {
+        let settings: AppSettings = serde_json::from_str(r#"{"language":"zh"}"#).unwrap();
+        assert!(!settings.danmu_enabled);
+        assert!(settings.danmu_room.is_empty());
+        assert!(settings.danmu_proxy.is_empty());
+    }
+
+    #[test]
+    fn remembers_live_room_mode_proxy_and_request_choice() {
+        let settings = AppSettings { danmu_enabled: true, danmu_room: "1747113738".into(),
+            danmu_proxy: "http://127.0.0.1:10808".into(), danmu_requests: false, ..AppSettings::default() };
+        let restored: AppSettings = serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        let restored = restored.normalized();
+        assert!(restored.danmu_enabled);
+        assert_eq!(restored.danmu_room, settings.danmu_room);
+        assert_eq!(restored.danmu_proxy, settings.danmu_proxy);
+        assert!(!restored.danmu_requests);
+    }
 }

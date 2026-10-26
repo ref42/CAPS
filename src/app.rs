@@ -190,6 +190,7 @@ fn is_weight_cut(family: &str) -> bool {
 fn han_family_chain(picked: Option<&str>) -> Vec<String> {
     let built_in = crate::components::HAN_FALLBACKS
         .iter()
+        .chain(crate::components::EMOJI_FALLBACKS.iter())
         .filter(|name| Some(**name) != picked);
     match picked {
         Some(picked) => std::iter::once(picked.to_string())
@@ -320,6 +321,20 @@ pub struct Caps {
     pub query: Entity<InputState>,
     pub video: Entity<InputState>,
     pub count: Entity<InputState>,
+    pub danmu_room: Entity<InputState>,
+    pub danmu_proxy: Entity<InputState>,
+    pub danmu_status: String,
+    pub danmu_request_status: String,
+    pub danmu_showing: bool,
+    pub lyric_segments: Vec<crate::live_emotes::Segment>,
+    pub outgoing_segments: Vec<crate::live_emotes::Segment>,
+    pub emote_cache: crate::live_emotes::Cache,
+    pub settings_live_tab: bool,
+    pub settings_scroll: ScrollHandle,
+    pub danmu_advanced: bool,
+    danmu_session: crate::live_mode::Rooms,
+    pub danmu_active_room: Option<u64>,
+    danmu_display: crate::live_mode::Display,
     pub opacity_slider: Entity<SliderState>,
     pub volume_slider: Entity<SliderState>,
     pub size_slider: Entity<SliderState>,
@@ -449,6 +464,10 @@ impl Caps {
         let count = cx.new(|cx| {
             InputState::new(window, cx).default_value(saved.settings.random_count.to_string())
         });
+        let danmu_room = cx.new(|cx| InputState::new(window, cx)
+            .placeholder("1747113738").default_value(saved.settings.danmu_room.clone()));
+        let danmu_proxy = cx.new(|cx| InputState::new(window, cx)
+            .placeholder("http://127.0.0.1:10808").default_value(saved.settings.danmu_proxy.clone()));
         let opacity_slider = cx.new(|_| {
             SliderState::new()
                 // Down to nothing: the capsule's text is plain white whatever the
@@ -480,7 +499,7 @@ impl Caps {
         let player = Arc::new(AudioPlayer::spawn());
         player.send(AudioCommand::SetVolume(saved.settings.volume as f32 / 100.));
         let mut subscriptions = Vec::new();
-        for input in [&query, &video, &count, &font_search] {
+        for input in [&query, &video, &count, &font_search, &danmu_room, &danmu_proxy] {
             subscriptions.push(cx.subscribe_in(input, window, |this, _, event, _, cx| {
                 match event {
                     InputEvent::Focus => {
@@ -506,6 +525,14 @@ impl Caps {
                 this.import(cx);
             }
         }));
+        for input in [&danmu_room, &danmu_proxy] {
+            subscriptions.push(cx.subscribe_in(input, window, |this, _, event, _, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    this.connect_danmu(cx);
+                    cx.notify();
+                }
+            }));
+        }
         // The font search filters as you type, and Enter takes the first match so
         // the list can be driven from the keyboard alone.
         subscriptions.push(cx.subscribe_in(&font_search, window, |this, _, event, _, cx| {
@@ -634,6 +661,20 @@ impl Caps {
             query,
             video,
             count,
+            danmu_room,
+            danmu_proxy,
+            danmu_status: String::new(),
+            danmu_request_status: String::new(),
+            danmu_showing: false,
+            lyric_segments: Vec::new(),
+            outgoing_segments: Vec::new(),
+            emote_cache: crate::live_emotes::Cache::default(),
+            settings_live_tab: false,
+            settings_scroll: ScrollHandle::new(),
+            danmu_advanced: false,
+            danmu_session: crate::live_mode::Rooms::default(),
+            danmu_active_room: None,
+            danmu_display: crate::live_mode::Display::default(),
             opacity_slider,
             volume_slider,
             size_slider,
@@ -825,18 +866,13 @@ impl Caps {
     /// there, and the panel must not reflow as the lyric changes. The idle
     /// capsule keeps its original width.
     fn width_target(&self, window: &Window, cx: &App, expansion: f32) -> f32 {
-        if !self.has_music() {
+        if !self.has_music() && !self.danmu_showing {
             return crate::windowing::COLLAPSED_W;
         }
         if expansion > 0.001 {
             return crate::windowing::EXPANDED_W;
         }
-        let want = crate::components::lyric_want(
-            window,
-            self.latin_family(),
-            self.han_fallbacks.to_owned(),
-            &self.lyric,
-        );
+        let want = self.lyric_content_width(window, &self.lyric, &self.lyric_segments);
         if want <= 0. {
             return crate::windowing::EXPANDED_W;
         }
@@ -961,6 +997,11 @@ impl Caps {
     fn tick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let now = Instant::now();
         let mut dirty = false;
+        if self.settings.danmu_enabled && !self.danmu_session.has_session() {
+            self.connect_danmu(cx);
+            dirty = true;
+        }
+        dirty |= self.poll_danmu(cx);
         for image in self.retired_covers.drain(..) {
             let _ = window.drop_image(image);
         }
@@ -1109,24 +1150,32 @@ impl Caps {
             }
             *value += (goal - *value) * 0.22;
         }
-        let text =
+        let message = if self.settings.danmu_enabled {
+            self.danmu_display.text(now).to_owned()
+        } else { String::new() };
+        self.danmu_showing = !message.is_empty();
+        let text = if self.danmu_showing { message } else {
             lyrics::current_lyric_line(&self.lyrics, self.audio.position).unwrap_or_else(|| {
                 self.current_track
                     .as_ref()
                     .map(|t| t.name.to_owned())
                     .unwrap_or_default()
-            });
-        if self.lyric != text {
+            })
+        };
+        let segments = if self.danmu_showing { self.danmu_display.segments.clone() } else { Vec::new() };
+        if self.lyric != text || self.lyric_segments != segments {
             self.outgoing_lyric = std::mem::replace(&mut self.lyric, text);
+            self.outgoing_segments = std::mem::replace(&mut self.lyric_segments, segments);
             self.lyric_changed = now;
         }
+        dirty |= self.emote_cache.update(&self.lyric_segments, &self.settings.danmu_proxy, cx);
         if self.lyric_changed.elapsed() < Duration::from_millis(500) {
             dirty = true;
         }
         // A line too wide for its box keeps moving after that entrance window,
         // including while the track is paused; without its own frames it would
         // settle half-hidden.
-        if self.has_music() && crate::components::lyric_scrolling() {
+        if (self.has_music() || self.danmu_showing) && crate::components::lyric_scrolling() {
             dirty = true;
         }
         if !self.slider_dragging {
@@ -1246,15 +1295,14 @@ impl Caps {
                 shift.1 -= crate::windowing::BLEED * scale_delta * dpi;
             }
         }
-        if shift.0 != 0. || shift.1 != 0. {
-            if let Some(origin) = crate::windowing::window_origin(window) {
+        if (shift.0 != 0. || shift.1 != 0.)
+            && let Some(origin) = crate::windowing::window_origin(window) {
                 // The resting spot moves with the window, or the tick would put
                 // the capsule back where it was before the width changed.
                 if let Some(rest) = self.rest_origin {
                     self.rest_origin = Some((rest.0 + shift.0, rest.1 + shift.1));
                 }
                 crate::windowing::move_window(window, cx, (origin.0 + shift.0, origin.1 + shift.1));
-            }
         }
         changed
     }
@@ -1412,6 +1460,122 @@ impl Caps {
             }
             _ => {}
         }
+    }
+
+    pub fn set_danmu_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if enabled {
+            self.connect_danmu(cx);
+        } else {
+            self.settings.danmu_enabled = false;
+            self.danmu_session = crate::live_mode::Rooms::default();
+            self.danmu_active_room = None;
+            self.emote_cache.reset(cx);
+            self.danmu_display = crate::live_mode::Display::default();
+            self.danmu_showing = false;
+            self.danmu_status.clear();
+            self.danmu_request_status.clear();
+            self.persist();
+        }
+    }
+
+    pub fn connect_danmu(&mut self, cx: &mut Context<Self>) {
+        let room_text = self.danmu_room.read(cx).value().trim().to_string();
+        let proxy = self.danmu_proxy.read(cx).value().trim().to_string();
+        let room = room_text.parse::<u64>().ok().filter(|id| *id > 0);
+        let error = if room.is_none() {
+            Some(self.tr("Enter a valid room ID.", "请输入有效的直播间 ID。").to_string())
+        } else if !proxy.is_empty() {
+            crate::bilibili_live::validate_proxy(&proxy).err().map(|_| self.tr(
+                "Use an HTTP proxy URL without credentials.", "代理需为不含账号密码的 HTTP 地址。"
+            ).to_string())
+        } else { None };
+        if let Some(error) = error {
+            self.danmu_status = error;
+            if !self.danmu_session.has_session() { self.settings.danmu_enabled = false; }
+            return;
+        }
+        if !self.danmu_session.connect(room.unwrap(), (!proxy.is_empty()).then_some(proxy.clone())) {
+            return;
+        }
+        if self.settings.danmu_proxy != proxy { self.emote_cache.reset(cx); }
+        self.danmu_request_status.clear();
+        self.settings.danmu_room = room_text;
+        self.settings.danmu_proxy = proxy.clone();
+        self.settings.danmu_enabled = true;
+        self.danmu_status = if self.danmu_session.switching() {
+            self.tr("Connecting…", "正在连接…").into()
+        } else {
+            let room = self.danmu_session.active_room().unwrap_or(room.unwrap());
+            self.say(format!("Connected to {room}"), format!("已连接直播间 {room}"))
+        };
+        self.persist();
+    }
+
+    pub fn toggle_danmu_requests(&mut self) {
+        self.settings.danmu_requests = !self.settings.danmu_requests;
+        self.danmu_session.cancel_requests();
+        self.danmu_request_status.clear();
+        self.persist();
+    }
+
+    fn poll_danmu(&mut self, cx: &mut Context<Self>) -> bool {
+        use crate::live_mode::Event;
+        let mut changed = false;
+        // Bound per-frame work even when a popular room is busy.
+        for _ in 0..64 {
+            let Some(event) = self.danmu_session.poll() else { break; };
+            changed = true;
+            match event {
+                Event::Status(text) => self.danmu_status = text,
+                Event::Connected(room) => {
+                    if self.danmu_active_room != Some(room) {
+                        self.danmu_active_room = Some(room);
+                        self.danmu_display = crate::live_mode::Display::default();
+                        self.emote_cache.reset(cx);
+                        self.lyric.clear();
+                        self.outgoing_lyric.clear();
+                        self.lyric_segments.clear();
+                        self.outgoing_segments.clear();
+                    }
+                    self.danmu_status = self.say(format!("Connected to {room}"), format!("已连接直播间 {room}"));
+                }
+                Event::Chat { user, text, emotes } => {
+                    self.danmu_display.push_chat(&user, &text, &emotes);
+                    if self.settings.danmu_requests
+                        && !self.danmu_session.switching()
+                        && let Some(query) = crate::live_mode::song_request(&text)
+                        {
+                        self.danmu_request_status = match self.danmu_session.request(query.clone()) {
+                            Ok(()) => self.say(format!("Requested: {query}"), format!("正在点歌：{query}")),
+                            Err(err) => self.say(err.into(), "请求过快、重复或等待队列已满，请稍后再试。".into()),
+                        };
+                    }
+                }
+                Event::Requested { query, result, .. } if self.settings.danmu_requests => {
+                    self.danmu_request_status = match result {
+                        Ok(track) => {
+                            let name = track.name.clone();
+                            let (index, added, start) = crate::live_mode::queue_request(
+                                &mut self.queue, track, self.current_track.is_some() || self.loading,
+                            );
+                            if added { self.queue_scroll.scroll_to_bottom(); self.persist(); }
+                            if start {
+                                self.play(index);
+                                self.say(format!("Loading requested song: {name}…"), format!("正在加载点播歌曲：{name}…"))
+                            } else if added {
+                                self.say(format!("Queued: {name}"), format!("已加入队列：{name}"))
+                            } else {
+                                self.say(format!("Already queued: {name}"), format!("已在队列中：{name}"))
+                            }
+                        }
+                        Err(err) => self.say(format!("{query}: {err}"), format!("点歌失败（{query}）：{err}")),
+                    };
+                    self.status = self.danmu_request_status.clone();
+                }
+                _ => {}
+            }
+        }
+        changed
     }
 
     pub fn search(&mut self, cx: &mut Context<Self>) {

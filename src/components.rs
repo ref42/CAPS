@@ -660,6 +660,8 @@ pub const HAN_FALLBACKS: [&str; 6] = [
     "DengXian",
 ];
 
+pub const EMOJI_FALLBACKS: [&str; 3] = ["Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"];
+
 /// The capsule's text style: the chosen Latin family, with Han resolved through
 /// the user's Han family and then [`HAN_FALLBACKS`] rather than DirectWrite's
 /// own choice.
@@ -1054,6 +1056,19 @@ impl Render for Caps {
             // header carries it, and the seek bar is laid over the capsule.
             .child(if self.has_music() {
                 self.music_header(e, s, window, cx).into_any_element()
+            } else if self.danmu_showing {
+                column()
+                    .flex_1()
+                    .min_w_0()
+                    .justify_center()
+                    .gap(px(4. * s))
+                    .child(self.lyric_view(s, window))
+                    .when(e > 0.7, |d| d.child(div()
+                        .text_size(px(type_size(LABEL, s)))
+                        .text_color(rgb(text_secondary()))
+                        .text_ellipsis()
+                        .child(format!("Bilibili · {}", self.danmu_active_room.map(|room| room.to_string()).unwrap_or_else(|| self.settings.danmu_room.clone())))))
+                    .into_any_element()
             } else {
                 // The spectrum takes a fixed column and centres in it, so it sits
                 // on the same pitch as the four readings rather than trailing
@@ -1145,7 +1160,9 @@ impl Render for Caps {
                 .p(px(10. * s))
                 .gap(px(10. * s))
                 .rounded(px(PANEL_RADIUS * s))
-                .bg(rgba((SURFACE_RAISED << 8) | alpha))
+                .bg(rgba(if tab == "settings" {
+                    ((if BACKDROP_IS_LIGHT.load(Ordering::Relaxed) { 0xf4f5f7 } else { SURFACE_RAISED }) << 8) | 0xff
+                } else { (SURFACE_RAISED << 8) | alpha }))
                 .border_1()
                 .border_color(rgba(hairline()))
                 .overflow_hidden()
@@ -1423,7 +1440,7 @@ impl Caps {
         let title_offset = self.marquee_offset(HoverLine::Capsule, TITLE_SLOT, s);
         let artist_offset = self.marquee_offset(HoverLine::Capsule, ARTIST_SLOT, s);
         let capsule_hovered = self.hover_line == Some(HoverLine::Capsule);
-        if e > 0.5 {
+        if e > 0.5 && !self.danmu_showing {
             copy = copy.child(scroll_line(
                 TITLE_SLOT,
                 track.name.to_owned(),
@@ -1441,7 +1458,7 @@ impl Caps {
         if e > 0.7 {
             copy = copy.child(scroll_line(
                 ARTIST_SLOT,
-                track.artist.to_owned(),
+                if self.danmu_showing { format!("{} · {}", track.name, track.artist) } else { track.artist.to_owned() },
                 LineStyle {
                     size: type_size(LABEL, s),
                     color: text_secondary(),
@@ -1608,15 +1625,24 @@ impl Caps {
             )
     }
 
-    /// One lyric line. The whole line settles in with a small vertical offset;
-    /// under reduced motion it only fades.
-    ///
-    /// It is a single text run, not one box per character: a row of boxes is
-    /// rounded character by character, which made the painted line wider than
-    /// the text that was measured for it and clipped the last glyphs. The line
-    /// is measured against the room it actually got and keeps the full face if
-    /// it fits. Long lines shrink only down to the legibility floor; past that
-    /// they scroll, so the whole line is readable rather than cut off.
+    /// Measure the same text runs and image slots used by the lyric view.
+    pub fn lyric_content_width(&self, window: &Window, text: &str, segments: &[crate::live_emotes::Segment]) -> f32 {
+        let text_width = |text: &str| lyric_want(window, self.latin_family(), self.han_fallbacks.to_owned(), text);
+        if segments.is_empty() { return text_width(text); }
+        segments.iter().map(|segment| match segment {
+            crate::live_emotes::Segment::Text(text) => text_width(text),
+            crate::live_emotes::Segment::Emote(emote) => {
+                match self.emote_cache.state(&emote.url) {
+                    crate::live_emotes::ImageState::Failed => text_width(&emote.text),
+                    // Keep the same geometry before and after the image arrives.
+                    _ => 20. * (emote.width as f32 / emote.height.max(1) as f32).clamp(0.5, 4.) + 2.,
+                }
+            }
+        }).sum()
+    }
+
+    /// Lyrics remain a single shaped run. Live chat splits only at image boundaries.
+    /// Long lines shrink to the legibility floor, then scroll to reveal the full name/text.
     fn lyric_view(&self, s: f32, window: &Window) -> Div {
         let elapsed = self.lyric_changed.elapsed().as_secs_f32();
         let measured = f32::from_bits(LYRIC_ROOM.load(Ordering::Relaxed));
@@ -1641,13 +1667,36 @@ impl Caps {
             if text.is_empty() || (outgoing && elapsed > 0.3) {
                 continue;
             }
-            let want = lyric_want(
-                window,
-                self.latin_family(),
-                self.han_fallbacks.to_owned(),
-                text,
-            ) * s;
+            let segments = if outgoing { &self.outgoing_segments } else { &self.lyric_segments };
+            let want = self.lyric_content_width(window, text, segments) * s;
             let (lyric_size, overflow) = lyric_fit(want, room, base, floor);
+            let mut content = row().flex_shrink_0().whitespace_nowrap();
+            if segments.is_empty() {
+                content = content.child(text.to_owned());
+            } else {
+                for segment in segments {
+                    content = match segment {
+                        crate::live_emotes::Segment::Text(text) => content.child(div().flex_shrink_0().child(text.clone())),
+                        crate::live_emotes::Segment::Emote(emote) => {
+                            let height = 20. * lyric_size / LYRIC;
+                            let width = height * (emote.width as f32 / emote.height.max(1) as f32).clamp(0.5, 4.);
+                            match self.emote_cache.state(&emote.url) {
+                                crate::live_emotes::ImageState::Ready(image) => {
+                                    content.child(img(image).h(px(height)).w(px(width)).mx(px(lyric_size / LYRIC))
+                                        .flex_shrink_0().object_fit(ObjectFit::Contain))
+                                }
+                                crate::live_emotes::ImageState::Loading => {
+                                    content.child(div().h(px(height)).w(px(width)).mx(px(lyric_size / LYRIC))
+                                        .flex_shrink_0().rounded(px(3. * s)).bg(rgba(well())))
+                                }
+                                crate::live_emotes::ImageState::Failed => {
+                                    content.child(div().flex_shrink_0().child(emote.text.clone()))
+                                }
+                            }
+                        }
+                    };
+                }
+            }
             if overflow > 0. {
                 scrolling = true;
             }
@@ -1665,12 +1714,7 @@ impl Caps {
                 .h(px(22. * s))
                 .text_size(px(lyric_size))
                 .opacity(if outgoing { 1. - p } else { p })
-                .child(
-                    div()
-                        .flex_shrink_0()
-                        .whitespace_nowrap()
-                        .child(text.to_owned()),
-                );
+                .child(content);
             if overflow > 0. {
                 // The row is only as wide as its glyphs and slides left; the
                 // viewport is what clips it, so the head leaves exactly as the
@@ -2483,6 +2527,79 @@ impl Caps {
             .child(control)
     }
 
+    fn danmu_settings(&self, s: f32, cx: &mut Context<Self>) -> Div {
+        column()
+            .gap(px(18. * s))
+            .child(column().gap(px(6. * s))
+                .child(row().justify_between()
+                    .child(div().font_weight(SEMIBOLD).text_size(px(TITLE * s))
+                        .child(self.tr("Bilibili live chat", "B站直播弹幕")))
+                    .child(button("toggle-live-chat", if self.settings.danmu_enabled {
+                        self.tr("Disconnect", "断开连接")
+                    } else { self.tr("Connect", "连接") }, self.settings.danmu_enabled, s)
+                        .h(px(30. * s))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.set_danmu_enabled(!this.settings.danmu_enabled, cx);
+                            cx.notify();
+                        }))))
+                .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
+                    "Messages briefly replace lyrics. Lyrics return when chat is quiet.",
+                    "收到弹幕时短暂显示，弹幕结束后恢复歌词。",
+                ))))
+            .child(column().gap(px(8. * s))
+                .child(div().font_weight(MEDIUM).child(self.tr("Room ID", "直播间 ID")))
+                .child(row().gap(px(8. * s))
+                    .child(div().flex_1().min_w_0().child(Input::new(&self.danmu_room)))
+                    .when(self.settings.danmu_enabled, |d| d.child(
+                        button("apply-live-room", self.tr("Apply", "应用"), false, s)
+                            .h(px(32. * s))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.connect_danmu(cx);
+                                cx.notify();
+                            }))
+                    ))))
+            .when(!self.danmu_status.is_empty(), |d| d.child(div()
+                .text_size(px(type_size(LABEL, s)))
+                .child(self.danmu_status.clone())))
+            .child(column().gap(px(8. * s)).p(px(12. * s)).rounded(px(10. * s)).bg(rgba(well()))
+                .child(row().justify_between()
+                    .child(div().font_weight(SEMIBOLD).child(self.tr("Song requests", "观众点歌")))
+                    .child(button("danmu-requests", if self.settings.danmu_requests {
+                        self.tr("On", "已开启")
+                    } else { self.tr("Off", "已关闭") }, self.settings.danmu_requests, s)
+                        .min_w(px(64. * s)).h(px(28. * s))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.toggle_danmu_requests();
+                            cx.notify();
+                        }))))
+                .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
+                    "点歌 song [artist]",
+                    "点歌 歌名 [歌手可选]",
+                )))
+                .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
+                    "Joins the queue. Starts automatically only when the player is stopped.",
+                    "按顺序加入队列，不打断当前歌曲；停止播放时自动开始。",
+                ))))
+            .when(!self.danmu_request_status.is_empty(), |d| d.child(div()
+                .text_size(px(type_size(LABEL, s)))
+                .child(self.danmu_request_status.clone())))
+            .child(button("live-network", if self.danmu_advanced {
+                self.tr("− Connection options", "− 连接选项")
+            } else { self.tr("+ Connection options", "+ 连接选项") }, false, s)
+                .justify_start().px_0()
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.danmu_advanced = !this.danmu_advanced;
+                    cx.notify();
+                })))
+            .when(self.danmu_advanced, |d| d.child(column().gap(px(8. * s))
+                .child(div().font_weight(MEDIUM).child(self.tr("HTTP proxy (optional)", "HTTP 代理（可选）")))
+                .child(Input::new(&self.danmu_proxy))
+                .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
+                    "Leave blank for a direct connection. Apply changes to reconnect.",
+                    "留空则直接连接。修改后点击应用重新连接。",
+                )))))
+    }
+
     fn settings_panel(&self, s: f32, cx: &mut Context<Self>) -> AnyElement {
         // One level of navigation: the picker replaces the settings list rather
         // than floating over it, because the capsule's window is only as large as
@@ -2493,12 +2610,44 @@ impl Caps {
         if let Some(slot) = self.font_picker {
             return self.font_picker_panel(slot, s, cx);
         }
+        let navigation = row().gap(px(6. * s)).pb(px(8. * s))
+            .border_b_1().border_color(rgba(hairline()))
+            .children([
+                ("settings-general", false, self.tr("General", "常规")),
+                ("settings-live", true, self.tr("Live chat", "直播互动")),
+            ].into_iter().map(|(id, live, label)| {
+                button(id, label, self.settings_live_tab == live, s)
+                    .h(px(30. * s)).min_w(px(88. * s))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.settings_live_tab = live;
+                        this.settings_scroll.set_offset(point(px(0.), px(0.)));
+                        window.blur(cx);
+                        this.input_focused = false;
+                        cx.notify();
+                    }))
+            }));
+        // A solid reading surface keeps dense settings legible over desktop content.
+        let frame = column().flex_1().min_h_0().p(px(10. * s))
+            .rounded(px(12. * s))
+            .bg(rgb(if BACKDROP_IS_LIGHT.load(Ordering::Relaxed) { 0xf4f5f7 } else { SURFACE_RAISED }))
+            .gap(px(12. * s))
+            .child(navigation);
+        if self.settings_live_tab {
+            let live = column().id("live-settings-scroll")
+                .flex_1().min_h_0().overflow_y_scroll()
+                .pr(px(16. * s)).track_scroll(&self.settings_scroll)
+                .child(self.danmu_settings(s, cx).flex_shrink_0());
+            return frame.child(self.settings_scroll_area(live, s))
+                .into_any_element();
+        }
         let mut panel = column()
             .id("settings-scroll")
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
-            .gap(px(16. * s));
+            .pr(px(16. * s)).track_scroll(&self.settings_scroll)
+            .gap(px(16. * s))
+            .child(div().font_weight(SEMIBOLD).child(self.tr("Playback & appearance", "播放与外观")));
         for (label, value, slider) in [
             (
                 self.tr("Opacity", "透明度"),
@@ -2657,7 +2806,18 @@ impl Caps {
                     "按住 Shift 拖动胶囊可移动位置。右键点击胶囊退出。",
                 )),
         );
-        panel.into_any_element()
+        frame.child(self.settings_scroll_area(panel, s)).into_any_element()
+    }
+
+    fn settings_scroll_area(&self, content: impl IntoElement, s: f32) -> Div {
+        column().relative().flex_1().min_h_0()
+            .child(content)
+            .child(div().absolute().right_0().top_0().bottom_0().w(px(6. * s))
+                .child(Scrollbar::vertical(&self.settings_scroll)
+                    .mode(ScrollbarMode::Always)
+                    .styles(|styles| styles
+                        .track(|style| style.bg(Hsla::from(rgba(well()))))
+                        .thumb(|style| style.bg(Hsla::from(rgba(track_tint())))))))
     }
 }
 

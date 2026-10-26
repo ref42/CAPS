@@ -1930,6 +1930,17 @@ impl Caps {
                     let track = selection.tracks.get(index)?;
                     let selected = selection.selected[index];
                     Some(column().w_full().min_w_0().h(px(54. * s)).justify_center().gap(px(3. * s))
+                        .id(("export-range-row", index)).cursor_pointer()
+                        .capture_any_mouse_down(cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                            if event.button == MouseButton::Left && !this.dialog_open
+                                && let Some(selection) = &mut this.export_selection {
+                                selection.begin_range(index, event.modifiers.shift);
+                                // Handle pointer selection once, including clicks on the checkbox.
+                                // The checkbox retains its native keyboard interaction.
+                                cx.stop_propagation();
+                                cx.notify();
+                            }
+                        }))
                         .px(px(8. * s)).rounded(px(7. * s))
                         .bg(if selected { rgba(crate::components::selection()) } else { rgba(0xffffff00) })
                         .child(gpui_kit::component::checkbox::Checkbox::new(("export-song", index))
@@ -1938,7 +1949,7 @@ impl Caps {
                             .child(div().text_ellipsis().child(track.name.clone()))
                             .on_click(cx.listener(move |this, checked: &bool, _, cx| {
                                 if !this.dialog_open && let Some(selection) = &mut this.export_selection {
-                                    selection.selected[index] = *checked;
+                                    selection.set_one(index, *checked);
                                     cx.notify();
                                 }
                             })))
@@ -1959,13 +1970,13 @@ impl Caps {
                 .child(button("export-all", self.tr("Select all", "全选"), false, s)
                     .on_click(cx.listener(|this, _, _, cx| {
                         if !this.dialog_open && let Some(selection) = &mut this.export_selection {
-                            selection.selected.fill(true); cx.notify();
+                            selection.set_all(true); cx.notify();
                         }
                     })))
                 .child(button("export-none", self.tr("Deselect all", "全不选"), false, s)
                     .on_click(cx.listener(|this, _, _, cx| {
                         if !this.dialog_open && let Some(selection) = &mut this.export_selection {
-                            selection.selected.fill(false); cx.notify();
+                            selection.set_all(false); cx.notify();
                         }
                     })))
                 .child(div().flex_1())

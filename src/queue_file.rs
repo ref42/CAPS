@@ -13,11 +13,56 @@ struct QueueFile {
 pub struct ExportSelection {
     pub tracks: Vec<Track>,
     pub selected: Vec<bool>,
+    anchor: Option<usize>,
+    drag: Option<SelectionDrag>,
+}
+
+struct SelectionDrag {
+    anchor: usize,
+    end: usize,
+    value: bool,
+    before: Vec<bool>,
 }
 
 impl ExportSelection {
     pub fn new(tracks: &[Track]) -> Self {
-        Self { tracks: tracks.to_vec(), selected: vec![true; tracks.len()] }
+        Self { tracks: tracks.to_vec(), selected: vec![true; tracks.len()], anchor: None, drag: None }
+    }
+
+    pub fn begin_range(&mut self, index: usize, shift: bool) {
+        if index >= self.selected.len() { return; }
+        let anchor = if shift { self.anchor.unwrap_or(index) } else { index };
+        let value = shift || !self.selected[index];
+        let before = self.selected.clone();
+        self.anchor = Some(anchor);
+        self.selected[anchor.min(index)..=anchor.max(index)].fill(value);
+        self.drag = Some(SelectionDrag { anchor, end: index, value, before });
+    }
+
+    pub fn extend_range(&mut self, index: usize) -> bool {
+        let Some(drag) = &mut self.drag else { return false; };
+        if index >= self.selected.len() || index == drag.end { return false; }
+        drag.end = index;
+        self.selected.clone_from(&drag.before);
+        self.selected[drag.anchor.min(index)..=drag.anchor.max(index)].fill(drag.value);
+        true
+    }
+
+    pub fn dragging(&self) -> bool { self.drag.is_some() }
+    pub fn end_range(&mut self) { self.drag = None; }
+
+    pub fn set_one(&mut self, index: usize, value: bool) {
+        if let Some(selected) = self.selected.get_mut(index) {
+            *selected = value;
+            self.anchor = Some(index);
+            self.end_range();
+        }
+    }
+
+    pub fn set_all(&mut self, value: bool) {
+        self.selected.fill(value);
+        self.anchor = None;
+        self.end_range();
     }
 
     pub fn chosen(&self) -> Vec<Track> {
@@ -76,6 +121,39 @@ mod tests {
             cover: "cover.jpg".into(),
             duration: Some(123),
         }
+    }
+
+    #[test]
+    fn drag_range_selects_deselects_and_restores_rows_when_reversed() {
+        let tracks: Vec<_> = (0..8).map(|i| track(SOURCE_QQMUSIC, &i.to_string())).collect();
+        let mut selection = ExportSelection::new(&tracks);
+        selection.set_all(false);
+        selection.set_one(7, true);
+        selection.begin_range(1, false);
+        selection.extend_range(5);
+        assert_eq!(selection.selected, [false, true, true, true, true, true, false, true]);
+        selection.extend_range(3);
+        assert_eq!(selection.selected, [false, true, true, true, false, false, false, true]);
+        selection.end_range();
+        assert!(!selection.extend_range(6));
+        selection.begin_range(3, false);
+        selection.extend_range(1);
+        assert_eq!(selection.selected, [false, false, false, false, false, false, false, true]);
+    }
+
+    #[test]
+    fn shift_range_uses_anchor_and_bulk_selection_resets_gesture() {
+        let tracks: Vec<_> = (0..6).map(|i| track(SOURCE_QQMUSIC, &i.to_string())).collect();
+        let mut selection = ExportSelection::new(&tracks);
+        selection.set_all(false);
+        selection.begin_range(4, false);
+        selection.end_range();
+        selection.begin_range(1, true);
+        assert_eq!(selection.selected, [false, true, true, true, true, false]);
+        selection.set_all(false);
+        assert!(!selection.dragging());
+        selection.begin_range(2, true);
+        assert_eq!(selection.selected, [false, false, true, false, false, false]);
     }
 
     #[test]

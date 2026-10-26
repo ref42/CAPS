@@ -990,6 +990,7 @@ impl Caps {
     fn tick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let now = Instant::now();
         let mut dirty = false;
+        dirty |= self.update_export_drag(window);
         if self.settings.danmu_enabled && !self.danmu_session.has_session() {
             self.connect_danmu(cx);
             dirty = true;
@@ -1092,7 +1093,8 @@ impl Caps {
         }
         if crate::motion::should_collapse(
             self.hover,
-            self.drag.is_some() || self.slider_dragging,
+            self.drag.is_some() || self.slider_dragging
+                || self.export_selection.as_ref().is_some_and(|selection| selection.dragging()),
             self.dialog_open,
             self.leave_at,
             now,
@@ -1625,7 +1627,36 @@ impl Caps {
         }
         self.export_selection = Some(crate::queue_file::ExportSelection::new(&self.queue));
         self.export_scroll = UniformListScrollHandle::new();
-        self.status = self.tr("Choose songs to export.", "选择要导出的歌曲。").into();
+        self.status = self.tr("Drag across songs or Shift-click to select a range.", "按住拖动或 Shift+点击可选择连续歌曲。").into();
+    }
+
+    fn update_export_drag(&mut self, window: &Window) -> bool {
+        let Some(selection) = &mut self.export_selection else { return false; };
+        if !selection.dragging() { return false; }
+        if self.dialog_open || self.settings.active_tab != "queue" || !crate::windowing::left_button_down() {
+            selection.end_range();
+            return true;
+        }
+        let state = self.export_scroll.0.borrow();
+        let bounds = state.base_handle.bounds();
+        let Some(item) = state.last_item_size else { return false; };
+        if selection.tracks.is_empty() { return false; }
+        let height = item.contents.height.as_f32() / selection.tracks.len() as f32;
+        if height <= 0. { return false; }
+        let pointer = window.mouse_position();
+        let top = bounds.origin.y.as_f32();
+        let bottom = bounds.bottom_right().y.as_f32();
+        let mut offset = state.base_handle.offset();
+        // Scroll while held near either edge, including when the pointer stops.
+        let edge = height * 0.35;
+        let y = pointer.y.as_f32();
+        if y < top + edge { offset.y += px(4.); }
+        else if y > bottom - edge { offset.y -= px(4.); }
+        state.base_handle.set_offset(offset);
+        let y = y.clamp(top, (bottom - 1.).max(top));
+        let index = ((y - top - state.base_handle.offset().y.as_f32()) / height).floor().max(0.) as usize;
+        selection.extend_range(index.min(selection.tracks.len() - 1));
+        true
     }
 
     pub fn save_selected_queue(&mut self) {

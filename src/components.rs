@@ -1833,17 +1833,26 @@ impl Caps {
                     .child(
                         row()
                             .gap(px(6. * s))
-                            // The order sits next to the button that empties the
-                            // queue, because both act on the queue as a whole
-                            // rather than on the track that happens to be on. It
-                            // is named rather than drawn: a loop or crossing
-                            // arrows are guesswork at this size, whereas "repeat
-                            // one" is not.
+                            // Queue-wide actions sit together with the named play order.
                             .child(
                                 button("play-order", self.tr(order_en, order_zh), order_played, s)
                                     .min_w(px(64. * s))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.cycle_play_order();
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                button("export-queue", self.tr("Export", "导出"), false, s)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.export_queue();
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                button("import-queue", self.tr("Import", "导入"), false, s)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.import_queue();
                                         cx.notify();
                                     })),
                             )
@@ -1859,6 +1868,14 @@ impl Caps {
                     ),
             )
             .child(self.track_list(true, s, cx))
+            .child(
+                div()
+                    .text_size(px(type_size(LABEL, s)))
+                    .text_color(rgb(text_tertiary()))
+                    .max_h(px(32. * s))
+                    .overflow_hidden()
+                    .child(self.status.to_owned()),
+            )
             .into_any_element()
     }
 

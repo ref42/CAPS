@@ -37,6 +37,8 @@ pub enum Message {
     Queue(Result<Vec<Track>, String>, bool),
     Imported(Result<(Track, String), String>),
     Folder(Option<String>),
+    QueueImported(Option<Result<Vec<Track>, String>>),
+    QueueExported(Option<Result<usize, String>>),
     Loaded(u64, Track, Result<String, String>),
     Lyrics(u64, Vec<LyricLine>),
     Cover(u64, Option<Arc<Image>>, Option<(u32, u32)>),
@@ -1310,6 +1312,24 @@ impl Caps {
                 }
                 Err(err) => self.status = err,
             },
+            Message::QueueImported(result) => {
+                self.dialog_open = false;
+                if let Some(result) = result {
+                    self.receive(Message::Queue(result, false), cx);
+                }
+            }
+            Message::QueueExported(result) => {
+                self.dialog_open = false;
+                if let Some(result) = result {
+                    self.status = match result {
+                        Ok(count) => self.say(
+                            format!("Exported {count} tracks to JSON."),
+                            format!("已导出 {count} 首歌曲到 JSON。"),
+                        ),
+                        Err(err) => err,
+                    };
+                }
+            }
             Message::Folder(folder) => {
                 self.dialog_open = false;
                 if let Some(folder) = folder {
@@ -1439,6 +1459,45 @@ impl Caps {
             let _ = tx.send(Message::Imported(actions::import_video(source, url).await));
         });
     }
+    pub fn export_queue(&mut self) {
+        if self.dialog_open {
+            return;
+        }
+        self.dialog_open = true;
+        let tracks = self.queue.clone();
+        let title = self.tr("Export queue", "导出队列");
+        let tx = self.tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let result = rfd::FileDialog::new()
+                .set_title(title)
+                .add_filter("JSON", &["json"])
+                .set_file_name("caps-queue.json")
+                .save_file()
+                .map(|path| {
+                    let count = tracks.len();
+                    crate::queue_file::export(&path, tracks).map(|()| count)
+                });
+            let _ = tx.send(Message::QueueExported(result));
+        });
+    }
+
+    pub fn import_queue(&mut self) {
+        if self.dialog_open {
+            return;
+        }
+        self.dialog_open = true;
+        let title = self.tr("Import queue", "导入队列");
+        let tx = self.tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let result = rfd::FileDialog::new()
+                .set_title(title)
+                .add_filter("JSON", &["json"])
+                .pick_file()
+                .map(|path| crate::queue_file::import(&path));
+            let _ = tx.send(Message::QueueImported(result));
+        });
+    }
+
     pub fn pick_folder(&mut self) {
         if self.dialog_open {
             return;

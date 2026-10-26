@@ -17,6 +17,7 @@ mod lyrics;
 mod mode;
 mod motion;
 mod qqmusic;
+mod queue_file;
 mod shitease;
 mod storage;
 mod track;

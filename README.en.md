@@ -40,6 +40,7 @@ CAPS supports these audio sources:
 - The capsule grows around its centre to give a lyric line the room it needs: a line that fits stays at full size, a longer one widens the capsule, and only a line too long for the display shrinks or scrolls instead of being cut off at the edge.
 - The queue has its own scrollbar down the right-hand side, so a long queue can be dragged through rather than only wheeled.
 - The button beside **Clear queue** sets the play order: in order, repeat all, repeat one, or shuffle. It cycles through the four, names the one in force, and remembers the choice; it takes the accent tint while an order other than the default is on. Adding tracks always appends them to the end of the queue and leaves the list there, where they arrived.
+- **Export** and **Import**, next to the play-order button, save and load a `.json` queue. Export includes every queued track in order; import appends new tracks and skips duplicates without interrupting playback. The file contains song metadata, not audio; local songs still need their original files at the saved paths.
 - Mode notes in Settings:
   - Normal mode: when no song is playing, CAPS shows CPU usage, memory usage, upload speed, and download speed. Picking a song from the queue starts playback immediately and shows available lyrics plus the spectrum.
   - Silent mode: only shows CPU usage, memory usage, upload speed, and download speed.

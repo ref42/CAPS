@@ -1491,7 +1491,18 @@ impl Caps {
         }
         self.chat_window_open = true;
         let parent = cx.entity().downgrade();
-        let options = crate::windowing::options(cx);
+        let mut options = crate::windowing::options(cx);
+        let chat_size = size(px(420.), px(560.));
+        let origin = cx.primary_display()
+            .map(|display| {
+                let bounds = display.bounds();
+                point(
+                    bounds.origin.x + (bounds.size.width - chat_size.width) / 2.,
+                    bounds.origin.y + px(120.),
+                )
+            })
+            .unwrap_or(point(px(520.), px(120.)));
+        options.window_bounds = Some(WindowBounds::Windowed(Bounds::new(origin, chat_size)));
         let _ = cx.open_window(options, move |window, cx| {
             window.set_window_title("CAPS Chat");
             window.set_background_appearance(WindowBackgroundAppearance::Transparent);
@@ -1564,6 +1575,7 @@ impl Caps {
                         self.outgoing_segments.clear();
                     }
                     self.danmu_status = self.say(format!("Connected to {room}"), format!("已连接直播间 {room}"));
+                    self.open_chat_island(cx);
                 }
                 Event::Chat { user, text, emotes } => {
                     self.chat_history.push((user.clone(), text.clone()));

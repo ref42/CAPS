@@ -1085,19 +1085,6 @@ impl Render for Caps {
             // header carries it, and the seek bar is laid over the capsule.
             .child(if self.has_music() {
                 self.music_header(e, s, window, cx).into_any_element()
-            } else if self.danmu_showing {
-                column()
-                    .flex_1()
-                    .min_w_0()
-                    .justify_center()
-                    .gap(px(4. * s))
-                    .child(self.lyric_view(s, window))
-                    .when(e > 0.7, |d| d.child(div()
-                        .text_size(px(type_size(LABEL, s)))
-                        .text_color(rgb(text_secondary()))
-                        .text_ellipsis()
-                        .child(format!("Bilibili · {}", self.danmu_active_room.map(|room| room.to_string()).unwrap_or_else(|| self.settings.danmu_room.clone())))))
-                    .into_any_element()
             } else {
                 // The spectrum takes a fixed column and centres in it, so it sits
                 // on the same pitch as the four readings rather than trailing
@@ -1469,7 +1456,7 @@ impl Caps {
         let title_offset = self.marquee_offset(HoverLine::Capsule, TITLE_SLOT, s);
         let artist_offset = self.marquee_offset(HoverLine::Capsule, ARTIST_SLOT, s);
         let capsule_hovered = self.hover_line == Some(HoverLine::Capsule);
-        if e > 0.5 && !self.danmu_showing {
+        if e > 0.5 {
             copy = copy.child(scroll_line(
                 TITLE_SLOT,
                 track.name.to_owned(),
@@ -1487,7 +1474,7 @@ impl Caps {
         if e > 0.7 {
             copy = copy.child(scroll_line(
                 ARTIST_SLOT,
-                if self.danmu_showing { format!("{} · {}", track.name, track.artist) } else { track.artist.to_owned() },
+                track.artist.to_owned(),
                 LineStyle {
                     size: type_size(LABEL, s),
                     color: text_secondary(),

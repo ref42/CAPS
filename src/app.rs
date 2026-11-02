@@ -14,7 +14,6 @@ use gpui_kit::{
     component::{
         input::{InputEvent, InputState},
         slider::{SliderEvent, SliderState},
-        Root,
     },
     *,
 };
@@ -1485,30 +1484,9 @@ impl Caps {
         }
     }
 
-    pub fn open_chat_island(&mut self, cx: &mut Context<Self>) {
-        if self.chat_window_open {
-            return;
-        }
+    pub fn open_chat_island(&mut self, _cx: &mut Context<Self>) {
+        self.settings.active_tab = "chat".into();
         self.chat_window_open = true;
-        let parent = cx.entity().downgrade();
-        let mut options = crate::windowing::options(cx);
-        let chat_size = size(px(420.), px(560.));
-        let origin = cx.primary_display()
-            .map(|display| {
-                let bounds = display.bounds();
-                point(
-                    bounds.origin.x + (bounds.size.width - chat_size.width) / 2.,
-                    bounds.origin.y + px(120.),
-                )
-            })
-            .unwrap_or(point(px(520.), px(120.)));
-        options.window_bounds = Some(WindowBounds::Windowed(Bounds::new(origin, chat_size)));
-        let _ = cx.open_window(options, move |window, cx| {
-            window.set_window_title("CAPS Chat");
-            window.set_background_appearance(WindowBackgroundAppearance::Transparent);
-            let view = cx.new(|_| crate::components::ChatIsland { parent });
-            cx.new(|cx| Root::new(view, window, cx).bg(rgba(0x00000000)))
-        });
     }
 
     pub fn connect_danmu(&mut self, cx: &mut Context<Self>) {
@@ -1575,7 +1553,6 @@ impl Caps {
                         self.outgoing_segments.clear();
                     }
                     self.danmu_status = self.say(format!("Connected to {room}"), format!("已连接直播间 {room}"));
-                    self.open_chat_island(cx);
                 }
                 Event::Chat { user, text, emotes } => {
                     self.chat_history.push((user.clone(), text.clone()));

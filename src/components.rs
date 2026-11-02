@@ -1850,15 +1850,15 @@ impl Caps {
                 .py(px(7. * s))
                 .rounded(px(8. * s))
                 .hover(|style| style.bg(rgba(0xffffff0e)))
-                .child(div().flex_shrink_0().text_color(rgb(accent())).child(if user.is_empty() { self.tr("Viewer", "??").to_owned() } else { user.clone() }))
+                .child(div().flex_shrink_0().text_color(rgb(accent())).child(if user.is_empty() { self.tr("Viewer", "观众").to_owned() } else { user.clone() }))
                 .child(div().flex_1().min_w_0().text_ellipsis().child(text.clone()))
         });
-        let empty = self.tr("No messages yet. Connect to a live room to start the chat.", "???????????????????????? ");
+        let empty = self.tr("No messages yet. Connect to a live room to start the chat.", "还没有消息。连接直播间后，聊天记录会显示在这里。");
         column()
             .flex_1()
             .min_h_0()
             .gap(px(8. * s))
-            .child(div().font_weight(SEMIBOLD).child(self.tr("Chat history", "????")))
+            .child(div().font_weight(SEMIBOLD).child(self.tr("Chat history", "聊天记录")))
             .child(column().id("chat-history-scroll").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.chat_scroll)
                 .when(self.chat_history.is_empty(), |d| d.child(div().text_color(rgb(text_tertiary())).child(empty)))
                 .children(messages))

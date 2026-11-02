@@ -20,6 +20,25 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
+pub struct ChatIsland {
+    pub parent: WeakEntity<Caps>,
+    pub(crate) _subscription: Subscription,
+}
+
+impl Render for ChatIsland {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(parent) = self.parent.upgrade() else {
+            return div().into_any_element();
+        };
+        div()
+            .p(px(14.))
+            .rounded(px(22.))
+            .bg(rgb(SURFACE_RAISED))
+            .child(parent.read(cx).chat_panel(1.))
+            .into_any_element()
+    }
+}
+
 // ---------------------------------------------------------------- palette ---
 //
 // Two appearances, chosen from what the capsule is floating over. The surface is
@@ -1126,7 +1145,6 @@ impl Render for Caps {
                 [
                     ("search", self.tr("Search", "搜索")),
                     ("queue", self.tr("Queue", "队列")),
-                    ("chat", self.tr("Chat", "Chat")),
                     ("settings", self.tr("Settings", "设置")),
                 ]
                 .into_iter()
@@ -1150,7 +1168,6 @@ impl Render for Caps {
             );
             let content = match tab {
                 "queue" => self.queue_panel(s, cx),
-                "chat" => self.chat_panel(s),
                 "settings" => self.settings_panel(s, cx),
                 _ => self.search_panel(s, cx),
             };

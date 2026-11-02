@@ -14,6 +14,7 @@ use gpui_kit::{
     component::{
         input::{InputEvent, InputState},
         slider::{SliderEvent, SliderState},
+        Root,
     },
     *,
 };
@@ -334,6 +335,7 @@ pub struct Caps {
     danmu_display: crate::live_mode::Display,
     pub chat_history: Vec<(String, String)>,
     pub chat_scroll: ScrollHandle,
+    pub chat_window_open: bool,
     pub opacity_slider: Entity<SliderState>,
     pub volume_slider: Entity<SliderState>,
     pub size_slider: Entity<SliderState>,
@@ -672,6 +674,7 @@ impl Caps {
             danmu_display: crate::live_mode::Display::default(),
             chat_history: Vec::new(),
             chat_scroll: ScrollHandle::new(),
+            chat_window_open: false,
             opacity_slider,
             volume_slider,
             size_slider,
@@ -1480,6 +1483,21 @@ impl Caps {
             self.danmu_request_status.clear();
             self.persist();
         }
+    }
+
+    pub fn open_chat_island(&mut self, cx: &mut Context<Self>) {
+        if self.chat_window_open {
+            return;
+        }
+        self.chat_window_open = true;
+        let parent = cx.entity().downgrade();
+        let options = crate::windowing::options(cx);
+        let _ = cx.open_window(options, move |window, cx| {
+            window.set_window_title("CAPS Chat");
+            window.set_background_appearance(WindowBackgroundAppearance::Transparent);
+            let view = cx.new(|_| crate::components::ChatIsland { parent });
+            cx.new(|cx| Root::new(view, window, cx).bg(rgba(0x00000000)))
+        });
     }
 
     pub fn connect_danmu(&mut self, cx: &mut Context<Self>) {

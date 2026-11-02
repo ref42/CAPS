@@ -20,6 +20,24 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
+pub struct ChatIsland {
+    pub parent: WeakEntity<Caps>,
+}
+
+impl Render for ChatIsland {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(parent) = self.parent.upgrade() else {
+            return div().into_any_element();
+        };
+        div()
+            .p(px(14.))
+            .rounded(px(22.))
+            .bg(rgb(SURFACE_RAISED))
+            .child(parent.read(cx).chat_panel(1.))
+            .into_any_element()
+    }
+}
+
 // ---------------------------------------------------------------- palette ---
 //
 // Two appearances, chosen from what the capsule is floating over. The surface is
@@ -1162,7 +1180,6 @@ impl Render for Caps {
             );
             let content = match tab {
                 "queue" => self.queue_panel(s, cx),
-                "chat" => self.chat_panel(s, cx),
                 "settings" => self.settings_panel(s, cx),
                 _ => self.search_panel(s, cx),
             };
@@ -1851,7 +1868,7 @@ impl Caps {
             .into_any_element()
     }
 
-    fn chat_panel(&self, s: f32, _cx: &mut Context<Self>) -> AnyElement {
+    fn chat_panel(&self, s: f32) -> AnyElement {
         let messages = self.chat_history.iter().enumerate().map(|(index, (user, text))| {
             row()
                 .id(("chat-message", index))
@@ -2676,8 +2693,12 @@ impl Caps {
                 .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
                     "Messages briefly replace lyrics. Lyrics return when chat is quiet.",
                     "收到弹幕时短暂显示，弹幕结束后恢复歌词。",
-                ))))
-            .child(column().gap(px(8. * s))
+                )))
+                .child(button("open-chat-island", self.tr("Open chat island", "Open chat island"), false, s)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.open_chat_island(cx);
+                        cx.notify();
+                    })))).child(column().gap(px(8. * s))
                 .child(div().font_weight(MEDIUM).child(self.tr("Room ID", "直播间 ID")))
                 .child(row().gap(px(8. * s))
                     .child(div().flex_1().min_w_0().child(Input::new(&self.danmu_room)))

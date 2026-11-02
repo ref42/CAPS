@@ -1162,6 +1162,7 @@ impl Render for Caps {
             );
             let content = match tab {
                 "queue" => self.queue_panel(s, cx),
+                "chat" => self.chat_panel(s, cx),
                 "settings" => self.settings_panel(s, cx),
                 _ => self.search_panel(s, cx),
             };
@@ -1847,6 +1848,32 @@ impl Caps {
                     .overflow_hidden()
                     .child(self.status.to_owned()),
             )
+            .into_any_element()
+    }
+
+    fn chat_panel(&self, s: f32, _cx: &mut Context<Self>) -> AnyElement {
+        let messages = self.chat_history.iter().enumerate().map(|(index, (user, text))| {
+            row()
+                .id(("chat-message", index))
+                .w_full()
+                .items_start()
+                .gap(px(8. * s))
+                .px(px(8. * s))
+                .py(px(7. * s))
+                .rounded(px(8. * s))
+                .hover(|style| style.bg(rgba(0xffffff0e)))
+                .child(div().flex_shrink_0().text_color(rgb(accent())).child(if user.is_empty() { self.tr("Viewer", "??").to_owned() } else { user.clone() }))
+                .child(div().flex_1().min_w_0().text_ellipsis().child(text.clone()))
+        });
+        let empty = self.tr("No messages yet. Connect to a live room to start the chat.", "???????????????????????? ");
+        column()
+            .flex_1()
+            .min_h_0()
+            .gap(px(8. * s))
+            .child(div().font_weight(SEMIBOLD).child(self.tr("Chat history", "????")))
+            .child(column().id("chat-history-scroll").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.chat_scroll)
+                .when(self.chat_history.is_empty(), |d| d.child(div().text_color(rgb(text_tertiary())).child(empty)))
+                .children(messages))
             .into_any_element()
     }
 

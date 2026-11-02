@@ -332,6 +332,8 @@ pub struct Caps {
     danmu_session: crate::live_mode::Rooms,
     pub danmu_active_room: Option<u64>,
     danmu_display: crate::live_mode::Display,
+    pub chat_history: Vec<(String, String)>,
+    pub chat_scroll: ScrollHandle,
     pub opacity_slider: Entity<SliderState>,
     pub volume_slider: Entity<SliderState>,
     pub size_slider: Entity<SliderState>,
@@ -668,6 +670,8 @@ impl Caps {
             danmu_session: crate::live_mode::Rooms::default(),
             danmu_active_room: None,
             danmu_display: crate::live_mode::Display::default(),
+            chat_history: Vec::new(),
+            chat_scroll: ScrollHandle::new(),
             opacity_slider,
             volume_slider,
             size_slider,
@@ -1533,6 +1537,8 @@ impl Caps {
                     if self.danmu_active_room != Some(room) {
                         self.danmu_active_room = Some(room);
                         self.danmu_display = crate::live_mode::Display::default();
+                        self.chat_history.clear();
+                        self.chat_scroll.set_offset(point(px(0.), px(0.)));
                         self.emote_cache.reset(cx);
                         self.lyric.clear();
                         self.outgoing_lyric.clear();
@@ -1542,6 +1548,11 @@ impl Caps {
                     self.danmu_status = self.say(format!("Connected to {room}"), format!("已连接直播间 {room}"));
                 }
                 Event::Chat { user, text, emotes } => {
+                    self.chat_history.push((user.clone(), text.clone()));
+                    if self.chat_history.len() > 200 {
+                        self.chat_history.drain(..self.chat_history.len() - 200);
+                    }
+                    self.chat_scroll.scroll_to_bottom();
                     self.danmu_display.push_chat(&user, &text, &emotes);
                     if self.settings.danmu_requests
                         && !self.danmu_session.switching()

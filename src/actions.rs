@@ -77,6 +77,20 @@ pub async fn random(count: u32) -> Result<Vec<Track>, String> {
     }
 }
 
+/// Explicitly adding a song promotes its existing entry, preserving metadata.
+/// Returns the previous index so playback and shuffle cursors can follow it.
+pub fn move_or_append_track(queue: &mut Vec<Track>, track: Track) -> Option<usize> {
+    let previous = queue.iter().position(|queued|
+        queued.source == track.source && queued.id == track.id);
+    let track = previous.map(|index| queue.remove(index)).unwrap_or(track);
+    queue.push(track);
+    previous
+}
+
+pub fn index_after_move_to_end(index: usize, moved: usize, last: usize) -> usize {
+    if index == moved { last } else if index > moved { index - 1 } else { index }
+}
+
 pub fn append_unique_tracks(
     queue: &mut Vec<Track>,
     tracks: impl IntoIterator<Item = Track>,
@@ -201,6 +215,41 @@ pub async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn track(source: &str, id: &str) -> Track {
+        serde_json::from_value(serde_json::json!({
+            "source": source, "id": id, "name": "Same title", "artist": "Artist",
+            "album": "Saved album", "cover": "", "duration": 180
+        })).unwrap()
+    }
+
+    #[test]
+    fn readding_promotes_existing_entry_preserving_metadata_and_other_sources() {
+        let mut queue = vec![track(SOURCE_QQMUSIC, "a"), track(SOURCE_QQMUSIC, "b"), track(SOURCE_NETEASE, "a")];
+        let original = queue[0].clone();
+        let mut fresh = original.clone();
+        fresh.album.clear();
+        assert_eq!(move_or_append_track(&mut queue, fresh), Some(0));
+        assert_eq!(queue, vec![track(SOURCE_QQMUSIC, "b"), track(SOURCE_NETEASE, "a"), original.clone()]);
+        assert_eq!(move_or_append_track(&mut queue, original.clone()), Some(2));
+        assert_eq!(queue.len(), 3);
+        assert_eq!(move_or_append_track(&mut queue, track(SOURCE_KUGOU, "a")), None);
+        assert_eq!(queue.len(), 4);
+    }
+
+    #[test]
+    fn moving_any_row_preserves_playback_and_history_track_identity() {
+        let original = vec![track(SOURCE_QQMUSIC, "a"), track(SOURCE_QQMUSIC, "b"), track(SOURCE_QQMUSIC, "c")];
+        for moved in 0..original.len() {
+            let mut queue = original.clone();
+            move_or_append_track(&mut queue, original[moved].clone());
+            for (index, track) in original.iter().enumerate() {
+                assert_eq!(&queue[index_after_move_to_end(index, moved, queue.len()-1)], track);
+            }
+        }
+    }
+
     #[tokio::test]
     #[ignore = "requires live music provider access"]
     async fn live_search_keeps_other_providers_after_preferred_results() {

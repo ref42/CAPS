@@ -395,7 +395,7 @@ pub struct Caps {
     play_generation: u64,
     playback_job: Option<tokio::task::JoinHandle<()>>,
     search_generation: u64,
-    loading: bool,
+    pub loading: bool,
     tx: mpsc::Sender<Message>,
     rx: mpsc::Receiver<Message>,
     persist_at: Option<Instant>,
@@ -1619,6 +1619,36 @@ impl Caps {
             let _ = tx.send(Message::Queue(actions::random(count).await, replace));
         });
     }
+    /// Re-adding a result changes order, never the current audio or chat priority.
+    pub fn add_to_queue(&mut self, track: Track) {
+        let name = track.name.clone();
+        let previous = actions::move_or_append_track(&mut self.queue, track);
+        if let Some(moved) = previous {
+            let last = self.queue.len() - 1;
+            self.current_index = self.current_index.map(|index|
+                actions::index_after_move_to_end(index, moved, last));
+            for index in &mut self.shuffle_history {
+                *index = actions::index_after_move_to_end(*index, moved, last);
+            }
+        }
+        self.queue_scroll.scroll_to_bottom();
+        self.status = if previous.is_some() {
+            self.say(format!("Moved {name} to the end of the queue."), format!("已将 {name} 移到队列末尾。"))
+        } else {
+            self.say(format!("Added {name}"), format!("已添加 {name}"))
+        };
+        self.persist();
+    }
+
+    pub fn locate_current_song(&mut self) {
+        if let Some(current) = &self.current_track
+            && let Some(index) = self.queue.iter().position(|track|
+                track.source == current.source && track.id == current.id)
+        {
+            self.queue_scroll.scroll_to_item_strict(index, ScrollStrategy::Center);
+        }
+    }
+
     pub fn export_queue(&mut self) {
         if self.dialog_open { return; }
         if self.queue.is_empty() {
@@ -1772,6 +1802,9 @@ impl Caps {
         let id = self.play_generation;
         self.current_index = Some(index);
         self.current_track = Some(track.to_owned());
+        // Keep the playing row in view whenever playback changes, including
+        // automatic advancement through the queue.
+        self.queue_scroll.scroll_to_item_strict(index, ScrollStrategy::Center);
         // Not `Normal` outright: Quiet is a mode, and it has to outlive the
         // track that was playing when it was chosen.
         self.mode = self.mode.after_track_change();

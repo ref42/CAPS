@@ -1906,6 +1906,49 @@ impl Caps {
                             ),
                     ),
             )
+            .when_some(self.current_track.as_ref(), |panel, track| {
+                let state = if self.loading {
+                    self.tr("Loading", "Loading")
+                } else if self.audio.is_playing {
+                    self.tr("Now playing", "Now playing")
+                } else {
+                    self.tr("Paused", "Paused")
+                };
+                panel.child(
+                    row()
+                        .gap(px(10. * s))
+                        .px(px(10. * s))
+                        .py(px(7. * s))
+                        .rounded(px(10. * s))
+                        .bg(rgba(selection()))
+                        .child(
+                            column()
+                                .flex_1()
+                                .min_w_0()
+                                .gap(px(2. * s))
+                                .child(
+                                    div()
+                                        .text_size(px(LABEL * s))
+                                        .text_color(rgb(accent()))
+                                        .child(state),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(BODY * s))
+                                        .text_ellipsis()
+                                        .child(format!("{} - {}", track.name, track.artist)),
+                                ),
+                        )
+                        .child(
+                            button("locate-current", self.tr("Jump to song", "Jump to song"), true, s)
+                                .flex_shrink_0()
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.locate_current_song();
+                                    cx.notify();
+                                })),
+                        ),
+                )
+            })
             .child(self.track_list(true, s, cx))
             .child(
                 div()
@@ -2259,16 +2302,7 @@ impl Caps {
         let Some(track) = self.results.get(index).cloned() else {
             return;
         };
-        let added = crate::actions::append_unique_tracks(&mut self.queue, [track.to_owned()]);
-        self.status = if added == 0 {
-            self.tr("Already queued.", "已在队列中。").into()
-        } else {
-            self.say(
-                format!("Added {}", track.name),
-                format!("已添加 {}", track.name),
-            )
-        };
-        self.persist();
+        self.add_to_queue(track);
     }
 
     /// One font slot: what it applies to, the family in use, and a way in to the

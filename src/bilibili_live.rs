@@ -3,6 +3,8 @@
 pub mod danmu;
 #[path = "bilibili_live/activity.rs"]
 pub mod activity;
+#[path = "bilibili_live/account.rs"]
+pub mod account;
 use futures_util::{SinkExt, StreamExt};
 use md5::{Digest, Md5};
 use serde_json::{Value, json};
@@ -114,6 +116,7 @@ pub async fn listen(
     let options = Options { room, proxy };
     let mut builder = reqwest::Client::builder()
         .user_agent(UA)
+        .redirect(reqwest::redirect::Policy::none())
         .no_proxy()
         .timeout(Duration::from_secs(20));
     if let Some(proxy) = &options.proxy {
@@ -162,13 +165,18 @@ async fn session(
     let buvid = api_data(&fingerprint)?["b_3"]
         .as_str()
         .ok_or("Missing anonymous buvid")?;
-    let cookie = format!("buvid3={buvid}");
+    let (mut uid, session_cookie) = account::connection_identity();
+    let mut cookie = format!("buvid3={buvid}; {session_cookie}");
     let nav = get(
         client,
         "https://api.bilibili.com/x/web-interface/nav",
         &cookie,
     )
     .await?;
+    if uid != 0 && nav["data"]["isLogin"] != true {
+        uid = 0;
+        cookie = format!("buvid3={buvid}");
+    }
     // Anonymous nav returns -101 but still supplies public WBI signing keys.
     let image = nav
         .pointer("/data/wbi_img/img_url")
@@ -216,6 +224,7 @@ async fn session(
     let url = format!("wss://{host}:{port}/sub");
 
     let mut request = url.into_client_request()?;
+    request.headers_mut().insert("Cookie", cookie.parse()?);
     request.headers_mut().insert("User-Agent", UA.parse()?);
     request
         .headers_mut()
@@ -230,7 +239,7 @@ async fn session(
         )
     })
     .await??;
-    let auth = json!({"uid":0,"roomid":room,"protover":3,"platform":"web","type":2,"buvid":buvid,"key":token});
+    let auth = json!({"uid":uid,"roomid":room,"protover":3,"platform":"web","type":2,"buvid":buvid,"key":token});
     socket
         .send(Message::Binary(
             danmu::packet(7, &serde_json::to_vec(&auth)?).into(),

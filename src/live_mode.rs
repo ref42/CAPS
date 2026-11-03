@@ -31,6 +31,7 @@ pub enum Event {
         text: String,
         emotes: Vec<bilibili_live::danmu::Emote>,
         kind: bilibili_live::activity::Kind,
+        author: bilibili_live::activity::Author,
     },
     DeleteSuperChats(Vec<String>),
     Requested {
@@ -115,7 +116,7 @@ impl Session {
                         for activity in bilibili_live::activity::events(&command, resolved) {
                             let event = match activity {
                                 bilibili_live::activity::Event::Message(message) => Event::Chat {
-                                    user: message.user, text: message.text, emotes: message.emotes, kind: message.kind,
+                                    user: message.user, text: message.text, emotes: message.emotes, kind: message.kind, author: message.author,
                                 },
                                 bilibili_live::activity::Event::DeleteSuperChats(ids) => Event::DeleteSuperChats(ids),
                             };
@@ -398,6 +399,7 @@ mod tests {
             text: text.into(),
             emotes: Vec::new(),
             kind: bilibili_live::activity::Kind::Danmu,
+            author: bilibili_live::activity::Author::default(),
         }
     }
 

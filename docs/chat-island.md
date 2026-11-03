@@ -9,7 +9,13 @@ The chat window opens explicitly from Settings > Live chat. It remains above oth
 - Window size is remembered independently of the main capsule and fitted to the display when reopened.
 - Use A− and A+ in the footer to change message text from 12 to 28 pt. Stickers scale with the text. This preference is saved separately from capsule size.
 - Hover over history to pause automatic following. Scrolling keeps following paused until Latest is clicked.
-- Send in room opens the connected Bilibili room in the browser. Sign in and send there; CAPS does not collect browser cookies or account credentials.
+- Choose Sign in with QR, scan with the Bilibili app, and confirm on your phone. Then type in the native composer and click Send or press Enter. No browser is opened.
+- Sign out removes the remembered session. Sessions are encrypted with Windows per-user DPAPI in a separate file, never in settings JSON. If Bilibili expires the session, sign in again.
+- Messages are sent once per explicit action. Failures preserve the draft; uncertain delivery asks you to check history before retrying. Room restrictions and server length limits are reported by Bilibili.
+
+## Identity and appearance
+
+Available sender avatars, fan medals and guard badges are retained from live events. Initials stand in for unavailable avatars. Authenticated connections use the signed-in UID and session, and messages identified as belonging to the signed-in account receive a You marker. Login does not fabricate identities or override fields Bilibili omits.
 
 ## Paid events
 
@@ -20,6 +26,9 @@ The latest SC is highlighted for 60 seconds. Gifts can be highlighted for 10 sec
 ## Implementation
 
 - `src/components/chat.rs`: independent window state, layout, drag/resize interaction, history following and font controls.
+- `src/components/chat/account_ui.rs`: QR sign-in panel, account controls, avatars and message composer.
+- `src/bilibili_live/account.rs`: cancellable QR polling, profile validation and explicit sending.
+- `src/bilibili_live/account_vault.rs`: Windows per-user encrypted session persistence.
 - `src/windowing/chat_resize.rs`: physical-pixel resize geometry and logical size restoration.
 - `src/bilibili_live/activity.rs`: typed SC/gift events, bounded protobuf decoding and stable transaction keys.
 - `src/live_emotes.rs`: history, deduplication, validated image loading and decoded image cache.
@@ -32,3 +41,5 @@ Native geometry operations are deferred so synchronous Windows resize/move callb
 ## Validation
 
 Automated checks cover all eight resize directions, opposite-edge anchoring, minimum size at high DPI, display fitting, preference persistence, legacy and batched gifts, SC amounts/deletions, duplicate suppression, Unicode, malformed packets and image URL restrictions. Desktop interaction and antialiasing still need visual verification on Windows; the automation surface has not exposed the popup as a targetable window.
+
+QR endpoint smoke testing requests a fresh code and verifies its unscanned status without displaying keys, authorizing an account or sending messages. Real phone confirmation and delivery require an account and are not exercised automatically. Cancellation, Unicode form fields, alternate send-error fields and DPAPI round trips/tamper rejection have automated coverage.

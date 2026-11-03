@@ -40,6 +40,7 @@ use gpui_kit::{
 };
 
 fn main() {
+    bilibili_live::account::restore();
     let Ok(runtime) = tokio::runtime::Runtime::new() else {
         log::error!("CAPS: could not start its async runtime, exiting");
         return;

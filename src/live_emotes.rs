@@ -17,6 +17,7 @@ pub struct ChatMessage {
     pub user: String,
     pub body: Vec<Segment>,
     pub kind: Kind,
+    pub author: crate::bilibili_live::activity::Author,
 }
 
 impl ChatMessage {
@@ -29,7 +30,21 @@ impl ChatMessage {
             user: user.to_owned(),
             body,
             kind: Kind::Danmu,
+            author: crate::bilibili_live::activity::Author::default(),
         }
+    }
+
+    pub fn media(&self) -> Vec<Segment> {
+        let mut segments = self.body.clone();
+        if let Some(url) = &self.author.avatar {
+            segments.push(Segment::Emote(Emote {
+                text: self.user.clone(),
+                url: url.clone(),
+                width: 32,
+                height: 32,
+            }));
+        }
+        segments
     }
 }
 

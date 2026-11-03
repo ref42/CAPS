@@ -2,8 +2,12 @@
 //! Never read Caps during render: GPUI associates entities with the last window
 //! that rendered them, which can redirect an entity's update_in to this window.
 use super::*;
+use crate::bilibili_live::account::{Account, SendState, State as AccountState};
 use crate::bilibili_live::activity::Kind;
 use crate::live_emotes::{Cache, ChatMessage, ImageState, Segment};
+use gpui_kit::component::input::{InputEvent, InputState};
+
+mod account_ui;
 
 const RADIUS: f32 = 22.;
 const CHAT_TEXT: u32 = 0xf1f3f5;
@@ -28,10 +32,26 @@ pub struct ChatIsland {
     resize: Option<chat_resize::Drag>,
     region: Option<(Size<Pixels>, f32)>,
     _subscription: Option<Subscription>,
+    account: Account,
+    composer: Entity<InputState>,
+    _composer_subscription: Option<Subscription>,
+    in_flight_draft: Option<String>,
 }
 
 impl ChatIsland {
-    pub fn new(parent: WeakEntity<Caps>, window: &Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(parent: WeakEntity<Caps>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let proxy = parent
+            .upgrade()
+            .map(|entity| entity.read(cx).settings.danmu_proxy.clone())
+            .unwrap_or_default();
+        let composer = cx.new(|cx| InputState::new(window, cx).placeholder("Message / 发送弹幕…"));
+        let composer_subscription =
+            cx.subscribe_in(&composer, window, |this, _, event, window, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    this.send_message(window, cx);
+                }
+                cx.notify();
+            });
         let subscription = parent.upgrade().map(|entity| {
             cx.observe(&entity, |this, main, cx| {
                 if this.sync(main.read(cx)) {
@@ -42,6 +62,7 @@ impl ChatIsland {
         });
         cx.on_release(|this, app| {
             this.cache.reset(app);
+            this.clear_login_image(app);
             let _ = this.parent.update(app, |main, cx| {
                 main.chat_window_open = false;
                 cx.notify();
@@ -57,6 +78,34 @@ impl ChatIsland {
                 if cx
                     .update(|window, app| {
                         view.update(app, |this, cx| {
+                            let old_qr = if let AccountState::Qr { image, .. } = &this.account.state
+                            {
+                                Some(image.clone())
+                            } else {
+                                None
+                            };
+                            if this.account.poll() {
+                                if !matches!(this.account.state, AccountState::Qr { .. })
+                                    && let Some(image) = old_qr
+                                {
+                                    ImageSource::from(image).remove_asset(cx);
+                                }
+                                if matches!(this.account.send_state, SendState::Sent) {
+                                    if let Some(sent) = this.in_flight_draft.take()
+                                        && this.composer.read(cx).value().as_ref() == sent
+                                    {
+                                        this.composer.update(cx, |input, cx| {
+                                            input.set_value("", window, cx)
+                                        });
+                                    }
+                                }
+                                cx.notify();
+                            }
+                            if std::mem::take(&mut this.account.identity_changed) {
+                                let _ = this
+                                    .parent
+                                    .update(cx, |main, cx| main.refresh_chat_identity(cx));
+                            }
                             if let Some(resize) = this.resize {
                                 if !left_button_down() {
                                     this.resize = None;
@@ -104,10 +153,23 @@ impl ChatIsland {
                                 }
                                 let start = this.scroll.top_item().min(this.history.len());
                                 let end = (this.scroll.bottom_item() + 1).min(this.history.len());
-                                let visible: Vec<_> = this.history[start..end.max(start)]
+                                let mut visible: Vec<_> = this.history[start..end.max(start)]
                                     .iter()
-                                    .flat_map(|message| message.body.iter().cloned())
+                                    .chain(this.spotlight.iter().map(|(message, _)| message))
+                                    .flat_map(ChatMessage::media)
                                     .collect();
+                                if let AccountState::SignedIn(profile) = &this.account.state
+                                    && let Some(url) = &profile.avatar
+                                {
+                                    visible.push(Segment::Emote(
+                                        crate::bilibili_live::danmu::Emote {
+                                            text: profile.name.clone(),
+                                            url: url.clone(),
+                                            width: 32,
+                                            height: 32,
+                                        },
+                                    ));
+                                }
                                 if this.cache.update(&visible, &this.proxy, cx) {
                                     if this.follow_latest && !this.reading {
                                         this.scroll.scroll_to_bottom();
@@ -143,6 +205,10 @@ impl ChatIsland {
             resize: None,
             region: None,
             _subscription: subscription,
+            account: Account::new(&proxy),
+            composer,
+            _composer_subscription: Some(composer_subscription),
+            in_flight_draft: None,
         };
         if let Some(main) = island.parent.upgrade() {
             island.sync(main.read(cx));
@@ -348,6 +414,16 @@ impl ChatIsland {
         let scale = self.message_size as f32 / 14.;
         let is_gift = matches!(message.kind, Kind::Gift { .. });
         let is_sc = matches!(message.kind, Kind::SuperChat { .. });
+        let own_profile = if let AccountState::SignedIn(profile) = &self.account.state {
+            (profile.uid == message.author.uid && message.author.uid != 0).then_some(profile)
+        } else {
+            None
+        };
+        let avatar_url = message
+            .author
+            .avatar
+            .as_deref()
+            .or_else(|| own_profile.and_then(|profile| profile.avatar.as_deref()));
         let mut body = row()
             .w_full()
             .min_w_0()
@@ -413,13 +489,41 @@ impl ChatIsland {
                 div()
                     .text_size(px((self.message_size as f32 * 0.85).max(12.)))
                     .font_weight(MEDIUM)
-                    .text_color(rgb(CHAT_ACCENT))
+                    .text_color(rgb(CHAT_TEXT))
                     .child(if message.user.is_empty() {
                         self.tr("Viewer", "观众").to_owned()
                     } else {
                         message.user.clone()
                     }),
             )
+            .when(own_profile.is_some(), |d| {
+                d.child(
+                    div()
+                        .text_size(px(11.))
+                        .text_color(rgb(CHAT_ACCENT))
+                        .child(self.tr("You", "你")),
+                )
+            })
+            .when_some(message.author.medal.as_ref(), |d, (name, level)| {
+                d.child(
+                    div()
+                        .text_size(px(11.))
+                        .px(px(5.))
+                        .rounded(px(4.))
+                        .bg(rgba(0x91d8c218))
+                        .text_color(rgb(CHAT_ACCENT))
+                        .child(format!("{name} {level}")),
+                )
+            })
+            .when(message.author.guard > 0, |d| {
+                d.child(div().text_size(px(11.)).text_color(rgb(0xcbb8ef)).child(
+                    match message.author.guard {
+                        1 => self.tr("Governor", "总督"),
+                        2 => self.tr("Admiral", "提督"),
+                        _ => self.tr("Captain", "舰长"),
+                    },
+                ))
+            })
             .when_some(badge, |d, (label, color)| {
                 d.child(
                     div()
@@ -429,23 +533,42 @@ impl ChatIsland {
                         .child(label),
                 )
             });
-        column()
-            .id(("chat-message", index))
-            .w_full()
+        let content = column()
+            .flex_1()
+            .min_w_0()
             .flex_shrink_0()
             .gap(px(3.))
             .py(px(8.))
             .text_size(px(self.message_size as f32))
+            .child(author)
+            .child(body);
+        row()
+            .id(("chat-message", index))
+            .w_full()
+            .flex_shrink_0()
+            .items_start()
+            .gap(px(10.))
+            .py(px(5.))
             .when(is_sc, |d| {
-                d.px(px(12.))
+                d.px(px(10.))
                     .my(px(4.))
-                    .rounded(px(12.))
+                    .rounded(px(14.))
                     .bg(rgba(0xf6d48b12))
                     .border_1()
                     .border_color(rgba(0xf6d48b38))
             })
-            .child(author)
-            .child(body)
+            .when(is_gift, |d| {
+                d.px(px(10.))
+                    .my(px(2.))
+                    .rounded(px(14.))
+                    .bg(rgba(0xcbb8ef0c))
+            })
+            .child(div().pt(px(8.)).child(self.avatar(
+                avatar_url,
+                &message.user,
+                32. + (scale - 1.) * 8.,
+            )))
+            .child(content)
             .into_any_element()
     }
 }
@@ -589,38 +712,19 @@ impl Render for ChatIsland {
             .border_t_1()
             .border_color(rgba(0xffffff12))
             .child(
-                row()
-                    .w_full()
-                    .gap(px(6.))
-                    .child(
-                        div()
-                            .w_full()
-                            .min_w_0()
-                            .text_ellipsis()
-                            .text_size(px(12.))
-                            .text_color(rgb(CHAT_SECONDARY))
-                            .child(if self.status.is_empty() {
-                                self.tr("Not connected", "未连接").to_owned()
-                            } else {
-                                self.status.clone()
-                            }),
-                    )
-                    .when_some(self.room, |d, room| {
-                        d.child(
-                            button(
-                                "chat-send-in-room",
-                                self.tr("Send in room ↗", "去直播间发弹幕 ↗"),
-                                false,
-                                1.,
-                            )
-                            .h(px(24.))
-                            .text_size(px(12.))
-                            .text_color(rgb(CHAT_ACCENT))
-                            .on_click(move |_, _, cx| {
-                                cx.open_url(&format!("https://live.bilibili.com/{room}"))
-                            }),
-                        )
-                    }),
+                row().w_full().gap(px(6.)).child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .text_ellipsis()
+                        .text_size(px(12.))
+                        .text_color(rgb(CHAT_SECONDARY))
+                        .child(if self.status.is_empty() {
+                            self.tr("Not connected", "未连接").to_owned()
+                        } else {
+                            self.status.clone()
+                        }),
+                ),
             )
             .child(
                 row()
@@ -655,6 +759,11 @@ impl Render for ChatIsland {
                         })),
                     ),
             );
+        let footer = footer.child(self.composer_view(cx));
+        let signing_in = matches!(
+            self.account.state,
+            AccountState::Loading | AccountState::Qr { .. }
+        );
         column()
             .relative()
             .size_full()
@@ -666,19 +775,22 @@ impl Render for ChatIsland {
             .line_height(relative(1.45))
             .font(self.font.clone())
             .child(header)
-            .when_some(self.spotlight.as_ref(), |d, (message, _)| {
-                d.child(
-                    column()
-                        .id("paid-spotlight")
-                        .flex_shrink_0()
-                        .max_h(px(140.))
-                        .overflow_y_scroll()
-                        .px(px(14.))
-                        .child(self.message(usize::MAX, message)),
-                )
+            .child(self.account_panel(window, cx))
+            .when(!signing_in, |d| {
+                d.when_some(self.spotlight.as_ref(), |d, (message, _)| {
+                    d.child(
+                        column()
+                            .id("paid-spotlight")
+                            .flex_shrink_0()
+                            .max_h(px(140.))
+                            .overflow_y_scroll()
+                            .px(px(14.))
+                            .child(self.message(usize::MAX, message)),
+                    )
+                })
+                .child(history)
+                .child(footer)
             })
-            .child(history)
-            .child(footer)
             .children(self.resize_handles(cx))
     }
 }

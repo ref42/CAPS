@@ -34,11 +34,57 @@ impl Kind {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Author {
+    pub uid: u64,
+    pub avatar: Option<String>,
+    pub medal: Option<(String, u64)>,
+    pub guard: u64,
+}
+
+fn author(command: &Value) -> Author {
+    let info = &command["info"];
+    let data = &command["data"];
+    let avatar = info
+        .pointer("/0/15/user/base/face")
+        .and_then(Value::as_str)
+        .or_else(|| data.pointer("/user_info/face").and_then(Value::as_str))
+        .or_else(|| data["face"].as_str())
+        .and_then(danmu::image_url);
+    let medal_name = info.pointer("/3/1").and_then(Value::as_str).or_else(|| {
+        data.pointer("/medal_info/medal_name")
+            .and_then(Value::as_str)
+    });
+    let level = info
+        .pointer("/3/0")
+        .and_then(number)
+        .or_else(|| number(&data["medal_info"]["medal_level"]))
+        .unwrap_or(0);
+    Author {
+        uid: info
+            .pointer("/2/0")
+            .and_then(number)
+            .or_else(|| number(&data["uid"]))
+            .unwrap_or(0),
+        avatar,
+        medal: medal_name
+            .filter(|name| !name.is_empty())
+            .map(|name| (name.chars().take(16).collect(), level)),
+        guard: info
+            .get(7)
+            .and_then(number)
+            .or_else(|| number(&data["guard_level"]))
+            .or_else(|| number(&data["user_info"]["guard_level"]))
+            .unwrap_or(0),
+    }
+}
+
 pub struct Message {
     pub user: String,
     pub text: String,
     pub emotes: Vec<Emote>,
     pub kind: Kind,
+    pub author: Author,
 }
 
 pub enum Event {
@@ -90,6 +136,7 @@ fn gift(
         user: bounded(user),
         text,
         emotes,
+        author: Author::default(),
         kind: Kind::Gift {
             id: transaction.map(|id| format!("gift:{id}:{gift_id}")),
             name,
@@ -112,6 +159,7 @@ pub fn events(command: &Value, room: u64) -> Vec<Event> {
         "DANMU_MSG" | "SUPER_CHAT_MESSAGE" => danmu::chat(command, room)
             .map(|chat| {
                 Event::Message(Message {
+                    author: author(command),
                     user: bounded(chat["user"].as_str().unwrap_or("")),
                     text: bounded(chat["text"].as_str().unwrap_or("")),
                     emotes: serde_json::from_value(chat["emotes"].clone()).unwrap_or_default(),
@@ -135,6 +183,12 @@ pub fn events(command: &Value, room: u64) -> Vec<Event> {
             number(&data["giftId"]).unwrap_or(0),
             data["gift_info"]["img_basic"].as_str(),
         )
+        .map(|mut event| {
+            if let Event::Message(message) = &mut event {
+                message.author = author(command);
+            }
+            event
+        })
         .into_iter()
         .collect(),
         "SEND_GIFT_V2" => gifts_v2(data),
@@ -172,8 +226,14 @@ pub fn events(command: &Value, room: u64) -> Vec<Event> {
 // Partial protobuf definitions intentionally skip fields not displayed by CAPS.
 #[derive(Clone, PartialEq, prost::Message)]
 struct GiftBroadcast {
+    #[prost(uint64, tag = "1")]
+    uid: u64,
     #[prost(string, tag = "2")]
     user: String,
+    #[prost(string, tag = "3")]
+    avatar: String,
+    #[prost(uint64, tag = "5")]
+    guard: u64,
     #[prost(message, repeated, tag = "10")]
     gifts: Vec<GiftItem>,
 }
@@ -230,6 +290,14 @@ fn gifts_v2(data: &Value) -> Vec<Event> {
                     .as_ref()
                     .map(|material| material.image.as_str()),
             )
+            .map(|mut event| {
+                if let Event::Message(message) = &mut event {
+                    message.author.avatar = danmu::image_url(&packet.avatar);
+                    message.author.uid = packet.uid;
+                    message.author.guard = packet.guard;
+                }
+                event
+            })
         })
         .collect()
 }
@@ -332,5 +400,25 @@ mod tests {
         assert!(events(&json!({"cmd":"SUPER_CHAT_MESSAGE", "data":{}}), 1).is_empty());
         let chat = message(json!({"cmd":"SUPER_CHAT_MESSAGE", "data":{"message":"hi"}}));
         assert!(matches!(chat.kind, Kind::SuperChat { yuan: None, .. }));
+    }
+
+    #[test]
+    fn keeps_available_identity_and_fan_medal_without_guessing_missing_values() {
+        let mut options = vec![Value::Null; 16];
+        options[15] = json!({"user":{"base":{"face":"//i0.hdslb.com/avatar.png"}}});
+        let chat = message(
+            json!({"cmd":"DANMU_MSG","info":[options,"hi",[42,"观众"],[7,"粉丝牌"],[],[],[],3]}),
+        );
+        assert_eq!(chat.author.uid, 42);
+        assert_eq!(
+            chat.author.avatar.as_deref(),
+            Some("https://i0.hdslb.com/avatar.png")
+        );
+        assert_eq!(chat.author.medal, Some(("粉丝牌".into(), 7)));
+        assert_eq!(chat.author.guard, 3);
+        assert_eq!(
+            message(json!({"cmd":"DANMU_MSG","info":[[],"hi",[0,"用**"]]})).author,
+            Author::default()
+        );
     }
 }

@@ -1482,6 +1482,13 @@ impl Caps {
         }
     }
 
+    pub fn refresh_chat_identity(&mut self, cx: &mut Context<Self>) {
+        self.danmu_session = crate::live_mode::Rooms::default();
+        self.chat_requests.cancel_waiting();
+        if self.settings.danmu_enabled { self.connect_danmu(cx); }
+        cx.notify();
+    }
+
     pub fn open_chat_island(&mut self, cx: &mut Context<Self>) {
         if self.chat_window_open {
             return;
@@ -1606,10 +1613,11 @@ impl Caps {
                     self.chat_deleted_sc.extend(ids);
                     if self.chat_deleted_sc.len() > 200 { self.chat_deleted_sc.drain(..self.chat_deleted_sc.len() - 200); }
                 },
-                Event::Chat { user, text, emotes, kind } => {
+                Event::Chat { user, text, emotes, kind, author } => {
                     let allows_request = kind.allows_song_request();
                     let mut message = crate::live_emotes::ChatMessage::new(&user, &text, &emotes);
                     message.kind = kind;
+                    message.author = author;
                     let fresh = crate::live_emotes::push_history(&mut self.chat_history, message);
                     if self.settings.danmu_requests
                         && fresh && allows_request

@@ -1,5 +1,5 @@
 //! Session-only playback priority for accepted live-chat requests.
-use crate::track::Track;
+use crate::music::track::Track;
 use std::collections::VecDeque;
 
 #[derive(Clone, PartialEq, Eq)]

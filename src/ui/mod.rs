@@ -3,13 +3,17 @@
 //! Everything the capsule shows is drawn from the token block below. The palette
 //! is deliberately small: one dark appearance, one accent, and the album's own
 //! colours for the spectrum and the seek bar.
+pub(crate) mod formatting;
+pub(crate) mod locale;
+pub(crate) mod motion;
+pub(crate) mod windowing;
+
 use crate::{
     app::{Caps, FontSlot, Source},
-    audio::AudioCommand,
-    formatting::format_rate,
-    mode::{MusicMode, PlayOrder},
-    motion,
-    windowing::*,
+    music::audio::AudioCommand,
+    ui::formatting::format_rate,
+    music::mode::{MusicMode, PlayOrder},
+    ui::windowing::*,
 };
 use gpui_kit::base::{
     Scrollbar, ScrollbarMode, Slider as BaseSlider, SliderIndicator, SliderThumb, SliderTrack,
@@ -1397,8 +1401,8 @@ impl Caps {
         } else {
             self.spinning_cover.as_ref()
         } {
-            let frame = (self.cover_turn * crate::artwork::SPIN_FRAMES as f32) as usize
-                % crate::artwork::SPIN_FRAMES;
+            let frame = (self.cover_turn * crate::music::artwork::SPIN_FRAMES as f32) as usize
+                % crate::music::artwork::SPIN_FRAMES;
             let image = image.to_owned();
             cover = cover.child(
                 canvas(
@@ -1627,14 +1631,14 @@ impl Caps {
     }
 
     /// Measure the same text runs and image slots used by the lyric view.
-    pub fn lyric_content_width(&self, window: &Window, text: &str, segments: &[crate::live_emotes::Segment]) -> f32 {
+    pub fn lyric_content_width(&self, window: &Window, text: &str, segments: &[crate::live::live_emotes::Segment]) -> f32 {
         let text_width = |text: &str| lyric_want(window, self.latin_family(), self.han_fallbacks.to_owned(), text);
         if segments.is_empty() { return text_width(text); }
         segments.iter().map(|segment| match segment {
-            crate::live_emotes::Segment::Text(text) => text_width(text),
-            crate::live_emotes::Segment::Emote(emote) => {
+            crate::live::live_emotes::Segment::Text(text) => text_width(text),
+            crate::live::live_emotes::Segment::Emote(emote) => {
                 match self.emote_cache.state(&emote.url) {
-                    crate::live_emotes::ImageState::Failed => text_width(&emote.text),
+                    crate::live::live_emotes::ImageState::Failed => text_width(&emote.text),
                     // Keep the same geometry before and after the image arrives.
                     _ => 20. * (emote.width as f32 / emote.height.max(1) as f32).clamp(0.5, 4.) + 2.,
                 }
@@ -1677,20 +1681,20 @@ impl Caps {
             } else {
                 for segment in segments {
                     content = match segment {
-                        crate::live_emotes::Segment::Text(text) => content.child(div().flex_shrink_0().child(text.clone())),
-                        crate::live_emotes::Segment::Emote(emote) => {
+                        crate::live::live_emotes::Segment::Text(text) => content.child(div().flex_shrink_0().child(text.clone())),
+                        crate::live::live_emotes::Segment::Emote(emote) => {
                             let height = 20. * lyric_size / LYRIC;
                             let width = height * (emote.width as f32 / emote.height.max(1) as f32).clamp(0.5, 4.);
                             match self.emote_cache.state(&emote.url) {
-                                crate::live_emotes::ImageState::Ready(image) => {
+                                crate::live::live_emotes::ImageState::Ready(image) => {
                                     content.child(img(image).h(px(height)).w(px(width)).mx(px(lyric_size / LYRIC))
                                         .flex_shrink_0().object_fit(ObjectFit::Contain))
                                 }
-                                crate::live_emotes::ImageState::Loading => {
+                                crate::live::live_emotes::ImageState::Loading => {
                                     content.child(div().h(px(height)).w(px(width)).mx(px(lyric_size / LYRIC))
                                         .flex_shrink_0().rounded(px(3. * s)).bg(rgba(well())))
                                 }
-                                crate::live_emotes::ImageState::Failed => {
+                                crate::live::live_emotes::ImageState::Failed => {
                                     content.child(div().flex_shrink_0().child(emote.text.clone()))
                                 }
                             }
@@ -1976,7 +1980,7 @@ impl Caps {
                             }
                         }))
                         .px(px(8. * s)).rounded(px(7. * s))
-                        .bg(if selected { rgba(crate::components::selection()) } else { rgba(0xffffff00) })
+                        .bg(if selected { rgba(crate::ui::selection()) } else { rgba(0xffffff00) })
                         .child(gpui_kit::component::checkbox::Checkbox::new(("export-song", index))
                             .w_full().checked(selected)
                             .accessibility_label(track.name.clone())
@@ -2129,7 +2133,7 @@ impl Caps {
         &mut self,
         queued: bool,
         index: usize,
-        track: &crate::track::Track,
+        track: &crate::music::track::Track,
         s: f32,
         cx: &mut Context<Self>,
     ) -> AnyElement {

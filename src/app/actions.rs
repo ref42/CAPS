@@ -1,7 +1,7 @@
 //! UI-independent music jobs. Progress crosses into the native UI through messages.
-use crate::lyrics::LyricLine;
-use crate::track::*;
-use crate::{kugou, local_music, qishui, qqmusic, shitease, storage};
+use crate::music::lyrics::LyricLine;
+use crate::music::track::*;
+use crate::{providers::kugou, music::local_music, providers::qishui, providers::qqmusic, providers::shitease, app::storage};
 use std::{collections::HashSet, sync::Arc};
 
 #[derive(Clone)]
@@ -16,7 +16,7 @@ impl Progress {
 }
 
 pub async fn search(text: String) -> Result<Vec<Track>, String> {
-    let query = crate::search_query::SearchQuery::parse(&text)?;
+    let query = crate::music::search_query::SearchQuery::parse(&text)?;
     let text = query.text.clone();
     let (a, b, c, d) = tokio::join!(
         shitease::search_shitease_songs(text.to_owned(), Some(150), None),
@@ -113,10 +113,10 @@ pub fn append_unique_tracks(
 pub async fn load_track_audio(
     track: &Track,
     mut status: Progress,
-) -> Result<crate::audio::LoadedAudio, String> {
+) -> Result<crate::music::audio::LoadedAudio, String> {
     use crate::{
-        audio::LoadedAudio,
-        streaming::{RemoteMedia, media_client},
+        music::audio::LoadedAudio,
+        providers::streaming::{RemoteMedia, media_client},
     };
     if track.source == SOURCE_LOCAL {
         if !std::path::Path::new(&track.id).is_file() {
@@ -178,7 +178,7 @@ pub async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
     if track.source == SOURCE_QISHUI {
         return qishui::lyric(&track.id)
             .await
-            .map(|text| crate::lyrics::parse_lrc(&text))
+            .map(|text| crate::music::lyrics::parse_lrc(&text))
             .unwrap_or_default();
     }
     if track.source == SOURCE_LOCAL {
@@ -186,28 +186,28 @@ pub async fn load_track_lyrics(track: &Track) -> Vec<LyricLine> {
         let text = tokio::task::spawn_blocking(move || local_music::read_lyrics(&id))
             .await
             .unwrap_or_default();
-        return crate::lyrics::parse_lrc(&text);
+        return crate::music::lyrics::parse_lrc(&text);
     }
     if track.source == SOURCE_QQMUSIC {
         return qqmusic::lyric(&track.id)
             .await
-            .map(|text| crate::lyrics::parse_lrc(&text))
+            .map(|text| crate::music::lyrics::parse_lrc(&text))
             .unwrap_or_default();
     }
     if track.source == SOURCE_KUGOU {
         if let Ok(text) = kugou::lyric(&track.id, &track.name, &track.artist, track.duration).await
         {
-            return crate::lyrics::parse_lrc(&text);
+            return crate::music::lyrics::parse_lrc(&text);
         }
-        return crate::lyric_finder::find(&track.name, &track.artist, track.duration)
+        return crate::music::lyric_finder::find(&track.name, &track.artist, track.duration)
             .await
-            .map(|text| crate::lyrics::parse_lrc(&text))
+            .map(|text| crate::music::lyrics::parse_lrc(&text))
             .unwrap_or_default();
     }
     if track.source == SOURCE_NETEASE || track.source == SOURCE_SHITEASE {
         return shitease::get_shitease_lyric(track.id.to_owned(), None)
             .await
-            .map(|response| crate::lyrics::parse_lrc(response.lyric.as_deref().unwrap_or_default()))
+            .map(|response| crate::music::lyrics::parse_lrc(response.lyric.as_deref().unwrap_or_default()))
             .unwrap_or_default();
     }
     Vec::new()
@@ -259,11 +259,11 @@ mod tests {
             counts
         });
         println!("Results per provider: {counts:?}");
-        assert!(counts.contains_key(crate::track::SOURCE_QQMUSIC), "QQ provider did not respond");
+        assert!(counts.contains_key(crate::music::track::SOURCE_QQMUSIC), "QQ provider did not respond");
         assert!(counts.len() > 1, "Other providers did not respond");
         let mut passed_preferred = false;
         for track in &tracks {
-            if track.source != crate::track::SOURCE_QQMUSIC { passed_preferred = true; }
+            if track.source != crate::music::track::SOURCE_QQMUSIC { passed_preferred = true; }
             else { assert!(!passed_preferred); }
         }
     }

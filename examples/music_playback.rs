@@ -1,18 +1,15 @@
 //! Live provider check: cargo run --example music_playback -- qishui "晴天"
 //! Search providers accept a song/artist query.
 #![allow(dead_code)]
-#[path = "../src/providers/kugou.rs"]
-mod kugou;
-#[path = "../src/providers/qishui.rs"]
-mod qishui;
-#[path = "../src/providers/qqmusic.rs"]
-mod qqmusic;
-#[path = "../src/providers/shitease.rs"]
-mod shitease;
-#[path = "../src/providers/streaming.rs"]
-mod streaming;
-#[path = "../src/track.rs"]
-mod track;
+#[path = "../src/providers/mod.rs"]
+mod providers;
+#[path = "../src/music/track.rs"]
+pub(crate) mod track;
+// Providers share this track type; the standalone sample needs no app or UI.
+mod music {
+    pub(crate) use super::track;
+}
+use providers::{kugou, qishui, qqmusic, shitease, streaming};
 
 use rodio::Source;
 use std::time::{Duration, Instant};

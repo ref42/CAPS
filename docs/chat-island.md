@@ -25,13 +25,13 @@ The latest SC is highlighted for 60 seconds. Gifts can be highlighted for 10 sec
 
 ## Implementation
 
-- `src/components/chat.rs`: independent window state, layout, drag/resize interaction, history following and font controls.
-- `src/components/chat/account_ui.rs`: QR sign-in panel, account controls, avatars and message composer.
-- `src/bilibili_live/account.rs`: cancellable QR polling, profile validation and explicit sending.
-- `src/bilibili_live/account_vault.rs`: Windows per-user encrypted session persistence.
-- `src/windowing/chat_resize.rs`: physical-pixel resize geometry and logical size restoration.
-- `src/bilibili_live/activity.rs`: typed SC/gift events, bounded protobuf decoding and stable transaction keys.
-- `src/live_emotes.rs`: history, deduplication, validated image loading and decoded image cache.
+- `src/ui/chat.rs`: independent window state, layout, drag/resize interaction, history following and font controls.
+- `src/ui/chat/account_ui.rs`: QR sign-in panel, account controls, avatars and message composer.
+- `src/live/bilibili_live/account.rs`: cancellable QR polling, profile validation and explicit sending.
+- `src/live/bilibili_live/account/vault.rs`: Windows per-user encrypted session persistence.
+- `src/ui/windowing/chat_resize.rs`: physical-pixel resize geometry and logical size restoration.
+- `src/live/bilibili_live/activity.rs`: typed SC/gift events, bounded protobuf decoding and stable transaction keys.
+- `src/live/live_emotes.rs`: history, deduplication, validated image loading and decoded image cache.
 - `src/providers/`: music provider implementations and streaming decoder.
 
 Main and chat update loops resolve their captured windows explicitly. Chat rendering uses a snapshot rather than reading the main entity during render. This prevents GPUI entity/window association from redirecting the main capsule's geometry updates to chat.

@@ -1,7 +1,7 @@
 //! Qishui's public catalogue and public track playback. No private session is used.
 use crate::{
-    streaming::RemoteMedia,
-    track::{SOURCE_QISHUI, Track},
+    providers::streaming::RemoteMedia,
+    music::track::{SOURCE_QISHUI, Track},
 };
 use reqwest::Url;
 use serde_json::Value;
@@ -228,7 +228,7 @@ pub async fn resolve_audio(id: &str) -> Result<RemoteMedia, String> {
     let (url, duration) = player_url(&payload, id)?;
     let urls = audio_urls(&json(client.get(url)).await?, duration)?;
     Ok(RemoteMedia {
-        client: crate::streaming::media_client("https://www.qishui.com/")?,
+        client: crate::providers::streaming::media_client("https://www.qishui.com/")?,
         urls,
     })
 }

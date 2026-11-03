@@ -1,5 +1,5 @@
-use crate::storage;
-use crate::track::{SOURCE_LOCAL, Track};
+use crate::app::storage;
+use crate::music::track::{SOURCE_LOCAL, Track};
 use image::ImageFormat;
 use std::collections::HashSet;
 use std::fs;

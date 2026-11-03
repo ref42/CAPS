@@ -166,8 +166,8 @@ cargo test --locked --example bilibili_danmu
 cargo clippy --locked --example bilibili_danmu -- -D warnings
 ```
 
-CAPS and the CLI example share `src/bilibili_live.rs` and its packet decoder.
-`src/live_mode.rs` owns the bounded UI handoff, display rotation, request parsing,
+CAPS and the CLI example share `src/live/bilibili_live/mod.rs` and its packet decoder.
+`src/live/live_mode.rs` owns the bounded UI handoff, display rotation, request parsing,
 search worker, cancellation, and rate limits. The example remains useful for
 diagnostics and JSON-line captures.
 

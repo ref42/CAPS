@@ -1,5 +1,5 @@
 //! Read-only live capture using the same connection as CAPS.
-#[path = "../src/bilibili_live.rs"]
+#[path = "../src/live/bilibili_live/mod.rs"]
 mod live;
 use std::{error::Error, io::Write, time::Duration};
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;

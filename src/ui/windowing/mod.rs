@@ -499,7 +499,7 @@ pub fn left_button_down() -> bool {
 
 /// The size and position the popup should open at.
 pub fn options(cx: &App) -> WindowOptions {
-    let settings = crate::storage::load_state().settings;
+    let settings = crate::app::storage::load_state().settings;
     let scale = settings.capsule_size as f32 / 100.;
     let size = size(
         px(window_width(COLLAPSED_W) * scale),

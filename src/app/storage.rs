@@ -1,4 +1,4 @@
-use crate::track::{SOURCE_LOCAL, Track};
+use crate::music::track::{SOURCE_LOCAL, Track};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::hash::{Hash, Hasher};

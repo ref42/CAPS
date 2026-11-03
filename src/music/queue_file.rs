@@ -1,5 +1,5 @@
 //! Portable queue metadata. Audio files themselves are not embedded.
-use crate::track::Track;
+use crate::music::track::Track;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
@@ -107,7 +107,7 @@ fn decode(bytes: &[u8]) -> Result<Vec<Track>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{actions::append_unique_tracks, track::*};
+    use crate::{app::actions::append_unique_tracks, music::track::*};
 
     fn track(source: &str, id: &str) -> Track {
         Track {

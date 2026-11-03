@@ -1,14 +1,15 @@
+pub(crate) mod actions;
+pub(crate) mod storage;
+pub(crate) mod updater;
+
 use crate::{
-    actions,
-    audio::{AudioCommand, AudioPlayer, AudioState},
-    audio_spectrum,
-    components::HoverLine,
-    lyrics::{self, LyricLine},
-    mode::{MusicMode, PlayOrder},
-    motion::Motion,
-    storage,
-    track::Track,
-    updater,
+    music::audio::{AudioCommand, AudioPlayer, AudioState},
+    music::audio_spectrum,
+    ui::HoverLine,
+    music::lyrics::{self, LyricLine},
+    music::mode::{MusicMode, PlayOrder},
+    ui::motion::Motion,
+    music::track::Track,
 };
 use gpui_kit::{
     component::{
@@ -37,7 +38,7 @@ pub enum Message {
     Folder(Option<String>),
     QueueImported(Option<Result<Vec<Track>, String>>),
     QueueExported(Option<Result<usize, String>>),
-    Loaded(u64, Track, Result<crate::audio::LoadedAudio, String>),
+    Loaded(u64, Track, Result<crate::music::audio::LoadedAudio, String>),
     Lyrics(u64, Vec<LyricLine>),
     Cover(u64, Option<Arc<Image>>, Option<(u32, u32)>),
     Thumbnail(String, Option<Arc<Image>>),
@@ -186,9 +187,9 @@ fn is_weight_cut(family: &str) -> bool {
 /// The family to draw Han with, then the stand-ins to try after it. Whatever is
 /// named here is only consulted for characters the Latin family cannot draw.
 fn han_family_chain(picked: Option<&str>) -> Vec<String> {
-    let built_in = crate::components::HAN_FALLBACKS
+    let built_in = crate::ui::HAN_FALLBACKS
         .iter()
-        .chain(crate::components::EMOJI_FALLBACKS.iter())
+        .chain(crate::ui::EMOJI_FALLBACKS.iter())
         .filter(|name| Some(**name) != picked);
     match picked {
         Some(picked) => std::iter::once(picked.to_string())
@@ -306,7 +307,7 @@ pub struct Caps {
     pub results: Vec<Track>,
     pub current_index: Option<usize>,
     pub current_track: Option<Track>,
-    chat_requests: crate::request_queue::Requests,
+    chat_requests: crate::music::request_queue::Requests,
     pub player: Arc<AudioPlayer>,
     pub audio: AudioState,
     pub mode: MusicMode,
@@ -323,15 +324,15 @@ pub struct Caps {
     pub danmu_proxy: Entity<InputState>,
     pub danmu_status: String,
     pub danmu_request_status: String,
-    pub lyric_segments: Vec<crate::live_emotes::Segment>,
-    pub outgoing_segments: Vec<crate::live_emotes::Segment>,
-    pub emote_cache: crate::live_emotes::Cache,
+    pub lyric_segments: Vec<crate::live::live_emotes::Segment>,
+    pub outgoing_segments: Vec<crate::live::live_emotes::Segment>,
+    pub emote_cache: crate::live::live_emotes::Cache,
     pub settings_live_tab: bool,
     pub settings_scroll: ScrollHandle,
     pub danmu_advanced: bool,
-    danmu_session: crate::live_mode::Rooms,
+    danmu_session: crate::live::live_mode::Rooms,
     pub danmu_active_room: Option<u64>,
-    pub chat_history: Vec<crate::live_emotes::ChatMessage>,
+    pub chat_history: Vec<crate::live::live_emotes::ChatMessage>,
     pub chat_window_open: bool,
     pub chat_deleted_sc: Vec<String>,
     pub opacity_slider: Entity<SliderState>,
@@ -387,7 +388,7 @@ pub struct Caps {
     /// visible where it happened — at the end of the list — and the results
     /// list keeps its own position.
     pub queue_scroll: UniformListScrollHandle,
-    pub export_selection: Option<crate::queue_file::ExportSelection>,
+    pub export_selection: Option<crate::music::queue_file::ExportSelection>,
     pub export_scroll: UniformListScrollHandle,
     /// The line the pointer is on, and when it got there. A line of text that
     /// does not fit scrolls while the pointer rests on it.
@@ -424,7 +425,7 @@ impl Caps {
             let url = url.to_owned();
             let tx = self.tx.to_owned();
             tokio::spawn(async move {
-                let cover = crate::artwork::load(&url).await;
+                let cover = crate::music::artwork::load(&url).await;
                 let _ = tx.send(Message::Thumbnail(url, cover));
             });
         }
@@ -460,7 +461,7 @@ impl Caps {
         // Closing the main capsule ends the app, including auxiliary chat windows.
         cx.on_release(|this, cx| { this.save(); cx.quit(); }).detach();
         let saved = storage::load_state();
-        let language = crate::locale::Language::from_code(&saved.settings.language);
+        let language = crate::ui::locale::Language::from_code(&saved.settings.language);
         let query =
             cx.new(|cx| InputState::new(window, cx).placeholder(language.search_placeholder()));
         let count = cx.new(|cx| {
@@ -652,7 +653,7 @@ impl Caps {
             queue: saved.queue,
             results: Vec::new(),
             current_index: saved.current_index,
-            chat_requests: crate::request_queue::Requests::default(),
+            chat_requests: crate::music::request_queue::Requests::default(),
             current_track: None,
             player,
             audio: AudioState::default(),
@@ -669,11 +670,11 @@ impl Caps {
             danmu_request_status: String::new(),
             lyric_segments: Vec::new(),
             outgoing_segments: Vec::new(),
-            emote_cache: crate::live_emotes::Cache::default(),
+            emote_cache: crate::live::live_emotes::Cache::default(),
             settings_live_tab: false,
             settings_scroll: ScrollHandle::new(),
             danmu_advanced: false,
-            danmu_session: crate::live_mode::Rooms::default(),
+            danmu_session: crate::live::live_mode::Rooms::default(),
             danmu_active_room: None,
             chat_history: Vec::new(),
             chat_window_open: false,
@@ -684,8 +685,8 @@ impl Caps {
             seek_slider,
             expanded: false,
             expand_motion: Motion::with_durations(0., forward, reverse),
-            width_motion: Motion::with_durations(crate::windowing::COLLAPSED_W, forward, reverse),
-            last_width: crate::windowing::COLLAPSED_W,
+            width_motion: Motion::with_durations(crate::ui::windowing::COLLAPSED_W, forward, reverse),
+            last_width: crate::ui::windowing::COLLAPSED_W,
             hover: false,
             input_focused: false,
             slider_dragging: false,
@@ -840,7 +841,7 @@ impl Caps {
             return;
         }
         self.settings.language = code.into();
-        let language = crate::locale::Language::from_code(code);
+        let language = crate::ui::locale::Language::from_code(code);
         self.query.update(cx, |input, cx| {
             input.set_placeholder(language.search_placeholder(), window, cx);
         });
@@ -870,27 +871,27 @@ impl Caps {
     /// capsule keeps its original width.
     fn width_target(&self, window: &Window, cx: &App, expansion: f32) -> f32 {
         if expansion > 0.001 {
-            return crate::windowing::EXPANDED_W;
+            return crate::ui::windowing::EXPANDED_W;
         }
         if !self.has_music() {
-            return crate::windowing::COLLAPSED_W;
+            return crate::ui::windowing::COLLAPSED_W;
         }
         let want = self.lyric_content_width(window, &self.lyric, &self.lyric_segments);
         if want <= 0. {
-            return crate::windowing::EXPANDED_W;
+            return crate::ui::windowing::EXPANDED_W;
         }
         let scale = self.settings.capsule_size as f32 / 100.;
         let cap = window
             .display(cx)
             .map(|display| {
-                f32::from(display.bounds().size.width) / scale - 2. * crate::windowing::BLEED - 24.
+                f32::from(display.bounds().size.width) / scale - 2. * crate::ui::windowing::BLEED - 24.
             })
-            .unwrap_or(crate::windowing::MAX_EXPANDED_W)
+            .unwrap_or(crate::ui::windowing::MAX_EXPANDED_W)
             .clamp(
-                crate::windowing::EXPANDED_W,
-                crate::windowing::MAX_EXPANDED_W,
+                crate::ui::windowing::EXPANDED_W,
+                crate::ui::windowing::MAX_EXPANDED_W,
             );
-        crate::components::width_for_lyric(want, expansion).clamp(crate::windowing::EXPANDED_W, cap)
+        crate::ui::width_for_lyric(want, expansion).clamp(crate::ui::windowing::EXPANDED_W, cap)
     }
 
     /// Whether the pointer is over the capsule. Returns whether that changed.
@@ -920,8 +921,8 @@ impl Caps {
     /// Start moving the window with the pointer. Called on shift + left click.
     pub fn begin_drag(&mut self, window: &Window) {
         let (Some(cursor), Some(origin)) = (
-            crate::windowing::cursor_position(),
-            crate::windowing::window_origin(window),
+            crate::ui::windowing::cursor_position(),
+            crate::ui::windowing::window_origin(window),
         ) else {
             return;
         };
@@ -947,7 +948,7 @@ impl Caps {
         // Folded, and where the drag put it: that is the capsule's resting spot,
         // and where the panel folding will bring it back to.
         self.rest_origin = Some((drag.requested.0, drag.requested.1));
-        if let Some(origin) = crate::windowing::window_origin(window) {
+        if let Some(origin) = crate::ui::windowing::window_origin(window) {
             let dpi = window.scale_factor().max(0.1);
             self.settings.window_position = Some((origin.0 / dpi, origin.1 / dpi));
         }
@@ -962,11 +963,11 @@ impl Caps {
         let Some(mut drag) = self.drag else {
             return;
         };
-        if !crate::windowing::left_button_down() {
+        if !crate::ui::windowing::left_button_down() {
             self.end_drag(window);
             return;
         }
-        let Some(cursor) = crate::windowing::cursor_position() else {
+        let Some(cursor) = crate::ui::windowing::cursor_position() else {
             return;
         };
         let target = (
@@ -985,8 +986,8 @@ impl Caps {
             self.expand_motion.value(now),
             self.width_motion.value(now),
         );
-        let target = match crate::windowing::window_size(window) {
-            Some(size) => crate::windowing::clamp_painted(window, geometry, target, size, cursor),
+        let target = match crate::ui::windowing::window_size(window) {
+            Some(size) => crate::ui::windowing::clamp_painted(window, geometry, target, size, cursor),
             None => target,
         };
         if (target.0 - drag.requested.0).abs() < 1. && (target.1 - drag.requested.1).abs() < 1. {
@@ -994,7 +995,7 @@ impl Caps {
         }
         drag.requested = target;
         self.drag = Some(drag);
-        crate::windowing::move_window(window, cx, target);
+        crate::ui::windowing::move_window(window, cx, target);
     }
 
     fn tick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1011,7 +1012,7 @@ impl Caps {
         }
         if self.audio.is_playing && !self.reduce_motion {
             self.cover_turn = (self.cover_turn
-                + now.duration_since(self.last_frame).as_secs_f32() / crate::artwork::SPIN_SECONDS)
+                + now.duration_since(self.last_frame).as_secs_f32() / crate::music::artwork::SPIN_SECONDS)
                 % 1.;
             dirty = true;
         }
@@ -1027,7 +1028,7 @@ impl Caps {
         let expansion = self.expand_motion.value(now);
         let width = self.width_motion.value(now);
         let geometry = self.painted_geometry(window, expansion, width);
-        crate::windowing::publish_geometry(geometry);
+        crate::ui::windowing::publish_geometry(geometry);
         // Keep the painted shape on the display it is on. A resize is applied a
         // frame after it is asked for, so the window can briefly be smaller than
         // the paint it holds — and a window that has just grown at the edge of
@@ -1036,8 +1037,8 @@ impl Caps {
         // Measuring by the paint rather than the window rectangle is what lets
         // the transparent margin hang off the screen, so the capsule itself can
         // sit flush against the edge.
-        if let Some((left, top, right, bottom)) = crate::windowing::window_rect(window) {
-            let target = crate::windowing::clamp_painted(
+        if let Some((left, top, right, bottom)) = crate::ui::windowing::window_rect(window) {
+            let target = crate::ui::windowing::clamp_painted(
                 window,
                 geometry,
                 (left, top),
@@ -1045,7 +1046,7 @@ impl Caps {
                 (left, top),
             );
             if (target.0 - left).abs() > 0.5 || (target.1 - top).abs() > 0.5 {
-                crate::windowing::move_window(window, cx, target);
+                crate::ui::windowing::move_window(window, cx, target);
             }
         }
         // The panel needs room, and at the bottom of the screen taking it means
@@ -1054,7 +1055,7 @@ impl Caps {
         // still open its panel on hover.
         if expansion <= 0.001
             && self.drag.is_none()
-            && let Some((left, top, right, bottom)) = crate::windowing::window_rect(window)
+            && let Some((left, top, right, bottom)) = crate::ui::windowing::window_rect(window)
         {
             let rest = match self.rest_origin {
                 Some(rest) => rest,
@@ -1064,14 +1065,14 @@ impl Caps {
                 }
             };
             if (left - rest.0).abs() > 0.5 || (top - rest.1).abs() > 0.5 {
-                let target = crate::windowing::clamp_painted(
+                let target = crate::ui::windowing::clamp_painted(
                     window,
                     geometry,
                     rest,
                     (right - left, bottom - top),
                     rest,
                 );
-                crate::windowing::move_window(window, cx, target);
+                crate::ui::windowing::move_window(window, cx, target);
             }
         }
         // What the capsule is floating over decides whether its text is white or
@@ -1086,22 +1087,22 @@ impl Caps {
                 .is_none_or(|at| now.duration_since(at) > Duration::from_millis(500))
         {
             self.backdrop_at = Some(now);
-            if let Some(samples) = crate::windowing::sample_backdrop(window)
+            if let Some(samples) = crate::ui::windowing::sample_backdrop(window)
                 && let Some(light) =
-                    crate::components::set_backdrop(&samples, self.settings.opacity as f32 / 100.)
+                    crate::ui::set_backdrop(&samples, self.settings.opacity as f32 / 100.)
             {
-                crate::components::sync_theme(light, window, cx);
+                crate::ui::sync_theme(light, window, cx);
                 dirty = true;
             }
         }
-        if let Some(inside) = crate::windowing::pointer_inside(window) {
+        if let Some(inside) = crate::ui::windowing::pointer_inside(window) {
             dirty |= self.set_hover(inside);
         }
         if self.drag.is_some() {
             self.follow_drag(window, cx, now);
             dirty = true;
         }
-        if crate::motion::should_collapse(
+        if crate::ui::motion::should_collapse(
             self.hover,
             self.drag.is_some() || self.slider_dragging
                 || self.export_selection.as_ref().is_some_and(|selection| selection.dragging()),
@@ -1191,7 +1192,7 @@ impl Caps {
         // A line too wide for its box keeps moving after that entrance window,
         // including while the track is paused; without its own frames it would
         // settle half-hidden.
-        if self.has_music() && crate::components::lyric_scrolling() {
+        if self.has_music() && crate::ui::lyric_scrolling() {
             dirty = true;
         }
         if !self.slider_dragging {
@@ -1226,16 +1227,16 @@ impl Caps {
 
     /// The painted capsules in the window's own device pixels. Hit testing reads
     /// exactly these numbers, so click-through always matches the last paint.
-    fn painted_geometry(&self, window: &Window, expansion: f32, width: f32) -> crate::windowing::Geometry {
+    fn painted_geometry(&self, window: &Window, expansion: f32, width: f32) -> crate::ui::windowing::Geometry {
         let unit = self.settings.capsule_size as f32 / 100. * window.scale_factor();
-        crate::windowing::Geometry {
+        crate::ui::windowing::Geometry {
             unit,
-            bleed: crate::windowing::BLEED * unit,
+            bleed: crate::ui::windowing::BLEED * unit,
             width: width * unit,
-            header: crate::windowing::header_height(expansion) * unit,
-            panel: crate::windowing::panel_height(expansion) * unit,
-            panel_top: crate::windowing::panel_top(expansion) * unit,
-            panel_radius: crate::windowing::PANEL_RADIUS * unit,
+            header: crate::ui::windowing::header_height(expansion) * unit,
+            panel: crate::ui::windowing::panel_height(expansion) * unit,
+            panel_top: crate::ui::windowing::panel_top(expansion) * unit,
+            panel_radius: crate::ui::windowing::PANEL_RADIUS * unit,
         }
     }
 
@@ -1247,7 +1248,7 @@ impl Caps {
         // A little room while the capsule moves, added evenly on all four sides,
         // so the mask never trails the paint it is clipping.
         let slack = if animating {
-            crate::windowing::REGION_LEAD
+            crate::ui::windowing::REGION_LEAD
         } else {
             0.
         };
@@ -1264,7 +1265,7 @@ impl Caps {
             return;
         }
         self.last_shape = Some(key);
-        crate::windowing::apply_region(window, geometry, slack);
+        crate::ui::windowing::apply_region(window, geometry, slack);
     }
 
     /// Resize the popup so it always has room for the painted capsules. Returns
@@ -1278,8 +1279,8 @@ impl Caps {
     ) -> bool {
         let scale = self.settings.capsule_size as f32 / 100.;
         let wanted = size(
-            px(crate::windowing::window_width(width) * scale),
-            px(crate::windowing::window_height(expansion) * scale),
+            px(crate::ui::windowing::window_width(width) * scale),
+            px(crate::ui::windowing::window_height(expansion) * scale),
         );
         let key = (
             wanted.width.as_f32().ceil() as i32,
@@ -1307,18 +1308,18 @@ impl Caps {
         if scale_delta != 0. {
             self.last_scale = scale;
             if self.drag.is_none() {
-                shift.0 -= (crate::windowing::BLEED + width * 0.5) * scale_delta * dpi;
-                shift.1 -= crate::windowing::BLEED * scale_delta * dpi;
+                shift.0 -= (crate::ui::windowing::BLEED + width * 0.5) * scale_delta * dpi;
+                shift.1 -= crate::ui::windowing::BLEED * scale_delta * dpi;
             }
         }
         if (shift.0 != 0. || shift.1 != 0.)
-            && let Some(origin) = crate::windowing::window_origin(window) {
+            && let Some(origin) = crate::ui::windowing::window_origin(window) {
                 // The resting spot moves with the window, or the tick would put
                 // the capsule back where it was before the width changed.
                 if let Some(rest) = self.rest_origin {
                     self.rest_origin = Some((rest.0 + shift.0, rest.1 + shift.1));
                 }
-                crate::windowing::move_window(window, cx, (origin.0 + shift.0, origin.1 + shift.1));
+                crate::ui::windowing::move_window(window, cx, (origin.0 + shift.0, origin.1 + shift.1));
         }
         changed
     }
@@ -1450,7 +1451,7 @@ impl Caps {
             }
             Message::UpdateProgress(bytes, total) => {
                 self.update_progress = total.filter(|t| *t > 0).map(|t| bytes as f32 / t as f32);
-                let size = crate::formatting::format_bytes(bytes);
+                let size = crate::ui::formatting::format_bytes(bytes);
                 self.update_status = self.say(
                     format!("Downloading {size}"),
                     format!("正在下载 {size}"),
@@ -1472,7 +1473,7 @@ impl Caps {
             self.connect_danmu(cx);
         } else {
             self.settings.danmu_enabled = false;
-            self.danmu_session = crate::live_mode::Rooms::default();
+            self.danmu_session = crate::live::live_mode::Rooms::default();
             self.chat_requests.cancel_waiting();
             self.danmu_active_room = None;
             self.emote_cache.reset(cx);
@@ -1483,7 +1484,7 @@ impl Caps {
     }
 
     pub fn refresh_chat_identity(&mut self, cx: &mut Context<Self>) {
-        self.danmu_session = crate::live_mode::Rooms::default();
+        self.danmu_session = crate::live::live_mode::Rooms::default();
         self.chat_requests.cancel_waiting();
         if self.settings.danmu_enabled { self.connect_danmu(cx); }
         cx.notify();
@@ -1499,20 +1500,20 @@ impl Caps {
         cx.defer(move |app| {
             if parent.upgrade().is_none() { return; }
             let failure_parent = parent.clone();
-            let mut options = crate::windowing::options(app);
+            let mut options = crate::ui::windowing::options(app);
             // The Windows backend maps PopUp to WS_EX_TOPMOST. Floating does
             // not set that flag. Both honor explicit bounds.
             options.kind = WindowKind::PopUp;
             options.focus = true;
             options.is_movable = true;
             options.is_resizable = true;
-            let minimum = crate::windowing::chat_resize::MIN_SIZE;
+            let minimum = crate::ui::windowing::chat_resize::MIN_SIZE;
             options.window_min_size = Some(size(px(minimum.0), px(minimum.1)));
             options.app_owns_titlebar_drag = true;
             let display = app.primary_display().map(|display| display.bounds());
             let available = display.map(|b| (b.size.width.as_f32() - 56., b.size.height.as_f32() - 116.))
                 .unwrap_or((1280., 900.));
-            let restored = crate::windowing::chat_resize::restored_size(saved_size, available);
+            let restored = crate::ui::windowing::chat_resize::restored_size(saved_size, available);
             let chat_size = size(px(restored.0), px(restored.1));
             let origin = display
                 .map(|bounds| {
@@ -1529,7 +1530,7 @@ impl Caps {
             let opened = app.open_window(options, move |window, cx| {
                 window.set_window_title("CAPS Chat");
                 window.set_background_appearance(WindowBackgroundAppearance::Transparent);
-                let view = cx.new(|cx| crate::components::ChatIsland::new(parent, window, cx));
+                let view = cx.new(|cx| crate::ui::ChatIsland::new(parent, window, cx));
                 cx.new(|cx| Root::new(view, window, cx).bg(rgba(0x00000000)))
             });
             if let Ok(handle) = opened {
@@ -1551,7 +1552,7 @@ impl Caps {
         let error = if room.is_none() {
             Some(self.tr("Enter a valid room ID.", "请输入有效的直播间 ID。").to_string())
         } else if !proxy.is_empty() {
-            crate::bilibili_live::validate_proxy(&proxy).err().map(|_| self.tr(
+            crate::live::bilibili_live::validate_proxy(&proxy).err().map(|_| self.tr(
                 "Use an HTTP proxy URL without credentials.", "代理需为不含账号密码的 HTTP 地址。"
             ).to_string())
         } else { None };
@@ -1587,7 +1588,7 @@ impl Caps {
     }
 
     fn poll_danmu(&mut self, cx: &mut Context<Self>) -> bool {
-        use crate::live_mode::Event;
+        use crate::live::live_mode::Event;
         let mut changed = false;
         // Bound per-frame work even when a popular room is busy.
         for _ in 0..64 {
@@ -1609,20 +1610,20 @@ impl Caps {
                     self.danmu_status = self.say(format!("Connected to {room}"), format!("已连接直播间 {room}"));
                 }
                 Event::DeleteSuperChats(ids) => {
-                    crate::live_emotes::delete_super_chats(&mut self.chat_history, &ids);
+                    crate::live::live_emotes::delete_super_chats(&mut self.chat_history, &ids);
                     self.chat_deleted_sc.extend(ids);
                     if self.chat_deleted_sc.len() > 200 { self.chat_deleted_sc.drain(..self.chat_deleted_sc.len() - 200); }
                 },
                 Event::Chat { user, text, emotes, kind, author } => {
                     let allows_request = kind.allows_song_request();
-                    let mut message = crate::live_emotes::ChatMessage::new(&user, &text, &emotes);
+                    let mut message = crate::live::live_emotes::ChatMessage::new(&user, &text, &emotes);
                     message.kind = kind;
                     message.author = author;
-                    let fresh = crate::live_emotes::push_history(&mut self.chat_history, message);
+                    let fresh = crate::live::live_emotes::push_history(&mut self.chat_history, message);
                     if self.settings.danmu_requests
                         && fresh && allows_request
                         && !self.danmu_session.switching()
-                        && let Some(query) = crate::live_mode::song_request(&text)
+                        && let Some(query) = crate::live::live_mode::song_request(&text)
                         {
                         self.danmu_request_status = match self.danmu_session.request(query.clone()) {
                             Ok(()) => self.say(format!("Requested: {query}"), format!("正在点歌：{query}")),
@@ -1732,7 +1733,7 @@ impl Caps {
             self.status = self.tr("Add songs before exporting.", "请先添加要导出的歌曲。").into();
             return;
         }
-        self.export_selection = Some(crate::queue_file::ExportSelection::new(&self.queue));
+        self.export_selection = Some(crate::music::queue_file::ExportSelection::new(&self.queue));
         self.export_scroll = UniformListScrollHandle::new();
         self.status = self.tr("Drag across songs or Shift-click to select a range.", "按住拖动或 Shift+点击可选择连续歌曲。").into();
     }
@@ -1740,7 +1741,7 @@ impl Caps {
     fn update_export_drag(&mut self, window: &Window) -> bool {
         let Some(selection) = &mut self.export_selection else { return false; };
         if !selection.dragging() { return false; }
-        if self.dialog_open || self.settings.active_tab != "queue" || !crate::windowing::left_button_down() {
+        if self.dialog_open || self.settings.active_tab != "queue" || !crate::ui::windowing::left_button_down() {
             selection.end_range();
             return true;
         }
@@ -1787,7 +1788,7 @@ impl Caps {
                 .save_file()
                 .map(|path| {
                     let count = tracks.len();
-                    crate::queue_file::export(&path, tracks).map(|()| count)
+                    crate::music::queue_file::export(&path, tracks).map(|()| count)
                 });
             let _ = tx.send(Message::QueueExported(result));
         });
@@ -1805,7 +1806,7 @@ impl Caps {
                 .set_title(title)
                 .add_filter("JSON", &["json"])
                 .pick_file()
-                .map(|path| crate::queue_file::import(&path));
+                .map(|path| crate::music::queue_file::import(&path));
             let _ = tx.send(Message::QueueImported(result));
         });
     }
@@ -1834,7 +1835,7 @@ impl Caps {
         let tx = self.tx.to_owned();
         self.status = self.tr("Loading local audio…", "正在加载本地音乐…").into();
         tokio::task::spawn_blocking(move || {
-            if let Err(err) = crate::local_music::load_all_batched(&folder, 80, |batch, _| {
+            if let Err(err) = crate::music::local_music::load_all_batched(&folder, 80, |batch, _| {
                 tx.send(Message::Queue(Ok(batch), false)).is_ok()
             }) {
                 let _ = tx.send(Message::Queue(Err(err), false));
@@ -1920,7 +1921,7 @@ impl Caps {
         let color_tx = tx.to_owned();
         let cover_url = track.cover.to_owned();
         tokio::spawn(async move {
-            let colors = crate::album_color::spectrum_colors(cover_url)
+            let colors = crate::music::album_color::spectrum_colors(cover_url)
                 .await
                 .map(|(a, b)| (parse_rgb(&a), parse_rgb(&b)));
             let _ = color_tx.send(Message::Cover(id, None, colors));
@@ -1933,7 +1934,7 @@ impl Caps {
         tokio::spawn(async move {
             let cover = match cached {
                 Some(cover) => Some(cover),
-                None => crate::artwork::load(&track.cover).await,
+                None => crate::music::artwork::load(&track.cover).await,
             };
             let _ = tx.send(Message::Cover(id, cover.to_owned(), None));
             // Reduced motion keeps the still artwork instead of paying for a
@@ -1941,14 +1942,14 @@ impl Caps {
             if spin
                 && let Some(cover) = cover
                 && let Ok(Some(spin)) =
-                    tokio::task::spawn_blocking(move || crate::artwork::spin_frames(&cover)).await
+                    tokio::task::spawn_blocking(move || crate::music::artwork::spin_frames(&cover)).await
             {
                 let _ = tx.send(Message::Spin(id, spin));
             }
         });
     }
     pub fn stop(&mut self) {
-        self.chat_requests = crate::request_queue::Requests::default();
+        self.chat_requests = crate::music::request_queue::Requests::default();
         if let Some(job) = self.playback_job.take() { job.abort(); }
         if let Some(old) = self.spinning_cover.take() {
             self.retired_covers.push(old);
@@ -2071,10 +2072,10 @@ impl Caps {
         if self.hover_line != Some(line) {
             return 0.;
         }
-        crate::components::marquee_phase(
+        crate::ui::marquee_phase(
             Instant::now().duration_since(self.marquee_start),
-            crate::components::line_travel(slot),
-            crate::components::MARQUEE_SPEED * s,
+            crate::ui::line_travel(slot),
+            crate::ui::MARQUEE_SPEED * s,
         )
     }
 
@@ -2084,12 +2085,12 @@ impl Caps {
     pub fn marquee_running(&self) -> bool {
         match self.hover_line {
             Some(HoverLine::Capsule) => {
-                crate::components::line_overflows(crate::components::TITLE_SLOT)
-                    || crate::components::line_overflows(crate::components::ARTIST_SLOT)
+                crate::ui::line_overflows(crate::ui::TITLE_SLOT)
+                    || crate::ui::line_overflows(crate::ui::ARTIST_SLOT)
             }
             Some(HoverLine::Row(..)) => {
-                crate::components::line_overflows(crate::components::NAME_SLOT)
-                    || crate::components::line_overflows(crate::components::ROW_SLOT)
+                crate::ui::line_overflows(crate::ui::NAME_SLOT)
+                    || crate::ui::line_overflows(crate::ui::ROW_SLOT)
             }
             None => false,
         }

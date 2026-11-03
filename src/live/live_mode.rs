@@ -1,8 +1,8 @@
 //! Bounded live chat and song-request jobs; dropping a session cancels both workers.
 use crate::{
-    actions,
-    bilibili_live::{self, LiveEvent},
-    track::Track,
+    app::actions,
+    live::bilibili_live::{self, LiveEvent},
+    music::track::Track,
 };
 use std::{
     collections::VecDeque,
@@ -309,7 +309,7 @@ fn normalized(text: &str) -> String {
 
 /// Honor platform priority, then prefer a title/artist match within that group.
 fn choose_track(query: &str, tracks: Vec<Track>) -> Option<Track> {
-    let parsed = crate::search_query::SearchQuery::parse(query).ok()?;
+    let parsed = crate::music::search_query::SearchQuery::parse(query).ok()?;
     let query = normalized(&parsed.text);
     let mut best = None;
     let mut score = (false, 0);

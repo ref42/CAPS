@@ -2,9 +2,9 @@
 //! Never read Caps during render: GPUI associates entities with the last window
 //! that rendered them, which can redirect an entity's update_in to this window.
 use super::*;
-use crate::bilibili_live::account::{Account, SendState, State as AccountState};
-use crate::bilibili_live::activity::Kind;
-use crate::live_emotes::{Cache, ChatMessage, ImageState, Segment};
+use crate::live::bilibili_live::account::{Account, SendState, State as AccountState};
+use crate::live::bilibili_live::activity::Kind;
+use crate::live::live_emotes::{Cache, ChatMessage, ImageState, Segment};
 use gpui_kit::component::input::{InputEvent, InputState};
 
 mod account_ui;
@@ -162,7 +162,7 @@ impl ChatIsland {
                                     && let Some(url) = &profile.avatar
                                 {
                                     visible.push(Segment::Emote(
-                                        crate::bilibili_live::danmu::Emote {
+                                        crate::live::bilibili_live::danmu::Emote {
                                             text: profile.name.clone(),
                                             url: url.clone(),
                                             width: 32,
@@ -268,7 +268,7 @@ impl ChatIsland {
         self.message_size = self
             .message_size
             .saturating_add_signed(delta)
-            .clamp(crate::storage::CHAT_FONT_MIN, crate::storage::CHAT_FONT_MAX);
+            .clamp(crate::app::storage::CHAT_FONT_MIN, crate::app::storage::CHAT_FONT_MAX);
         let size = self.message_size;
         let _ = self.parent.update(cx, |main, cx| {
             main.settings.chat_font_size = size;
@@ -292,7 +292,7 @@ impl ChatIsland {
                     .text_color(rgb(CHAT_TEXT))
                     .aria_label(self.tr("Decrease message font size", "缩小弹幕字号"))
                     .hover(|style| style.bg(rgba(0xffffff14)).text_color(rgb(CHAT_TEXT)))
-                    .when(self.message_size == crate::storage::CHAT_FONT_MIN, |d| {
+                    .when(self.message_size == crate::app::storage::CHAT_FONT_MIN, |d| {
                         d.opacity(0.4)
                     })
                     .on_click(cx.listener(|this, _, _, cx| this.adjust_font_size(-1, cx))),
@@ -313,7 +313,7 @@ impl ChatIsland {
                     .text_color(rgb(CHAT_TEXT))
                     .aria_label(self.tr("Increase message font size", "放大弹幕字号"))
                     .hover(|style| style.bg(rgba(0xffffff14)).text_color(rgb(CHAT_TEXT)))
-                    .when(self.message_size == crate::storage::CHAT_FONT_MAX, |d| {
+                    .when(self.message_size == crate::app::storage::CHAT_FONT_MAX, |d| {
                         d.opacity(0.4)
                     })
                     .on_click(cx.listener(|this, _, _, cx| this.adjust_font_size(1, cx))),

@@ -463,7 +463,6 @@ impl Drop for Account {
 }
 
 #[cfg(target_os = "windows")]
-#[path = "account_vault.rs"]
 mod vault;
 #[cfg(not(target_os = "windows"))]
 mod vault {

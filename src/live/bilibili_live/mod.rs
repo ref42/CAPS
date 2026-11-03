@@ -1,9 +1,6 @@
 //! Anonymous Bilibili live connection shared by CAPS and the CLI example.
-#[path = "bilibili_live/protocol.rs"]
 pub mod danmu;
-#[path = "bilibili_live/activity.rs"]
 pub mod activity;
-#[path = "bilibili_live/account.rs"]
 pub mod account;
 use futures_util::{SinkExt, StreamExt};
 use md5::{Digest, Md5};

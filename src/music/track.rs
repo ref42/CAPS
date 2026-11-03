@@ -1,4 +1,4 @@
-use crate::shitease;
+use crate::providers::shitease;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -42,8 +42,8 @@ impl From<shitease::ShiteaseSong> for Track {
     }
 }
 
-impl From<crate::qqmusic::QqMusicSong> for Track {
-    fn from(song: crate::qqmusic::QqMusicSong) -> Self {
+impl From<crate::providers::qqmusic::QqMusicSong> for Track {
+    fn from(song: crate::providers::qqmusic::QqMusicSong) -> Self {
         Self {
             source: SOURCE_QQMUSIC.to_string(),
             id: song.songmid,
@@ -58,8 +58,8 @@ impl From<crate::qqmusic::QqMusicSong> for Track {
     }
 }
 
-impl From<crate::kugou::KugouSong> for Track {
-    fn from(song: crate::kugou::KugouSong) -> Self {
+impl From<crate::providers::kugou::KugouSong> for Track {
+    fn from(song: crate::providers::kugou::KugouSong) -> Self {
         Self {
             source: SOURCE_KUGOU.to_string(),
             id: song.hash,

@@ -1,5 +1,4 @@
 //! Range-backed media, decoded off the audio thread into a bounded PCM queue.
-#[path = "streaming/decoder.rs"]
 mod decoder;
 use std::{
     fs::{File, OpenOptions},

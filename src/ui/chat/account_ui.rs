@@ -34,7 +34,7 @@ impl ChatIsland {
     }
     pub(super) fn cancel_sign_in(&mut self, cx: &mut Context<Self>) {
         self.clear_login_image(cx);
-        if crate::bilibili_live::account::has_session() {
+        if crate::live::bilibili_live::account::has_session() {
             if let Err(error) = self.account.logout() {
                 self.account.state = AccountState::Failed(error);
             }
@@ -168,7 +168,7 @@ impl ChatIsland {
                         .child(
                             button(
                                 "chat-cancel-loading",
-                                if crate::bilibili_live::account::has_session() {
+                                if crate::live::bilibili_live::account::has_session() {
                                     self.tr("Sign out", "退出登录")
                                 } else {
                                     self.tr("Cancel", "取消")

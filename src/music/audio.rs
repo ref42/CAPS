@@ -8,7 +8,7 @@ use rodio::Source;
 #[derive(Debug)]
 pub enum LoadedAudio {
     File(String),
-    Stream(crate::streaming::BufferedSource),
+    Stream(crate::providers::streaming::BufferedSource),
 }
 
 #[derive(Debug)]
@@ -87,7 +87,7 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
     let mut current_title = String::new();
     let mut current_detail = String::new();
     let mut volume = 1.0_f32;
-    let mut stream: Option<crate::streaming::Control> = None;
+    let mut stream: Option<crate::providers::streaming::Control> = None;
 
     loop {
         match rx.recv_timeout(Duration::from_millis(100)) {
@@ -248,7 +248,7 @@ fn update_state(
     path: &str,
     title: &str,
     detail: &str,
-    stream: Option<&crate::streaming::Control>,
+    stream: Option<&crate::providers::streaming::Control>,
 ) {
     let mut s = match state.lock() {
         Ok(guard) => guard,

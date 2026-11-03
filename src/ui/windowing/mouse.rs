@@ -180,7 +180,7 @@ pub fn window_rect(window: &Window) -> Option<(f32, f32, f32, f32)> {
 
 /// How far the painted shape sits inside the window's own rectangle is derived
 /// from the geometry the region is built with — see
-/// [`crate::windowing::painted_insets`] — because the region itself is dilated
+/// [`crate::ui::windowing::painted_insets`] — because the region itself is dilated
 /// past the paint while the island animates.
 ///
 /// The window's client size, in device pixels. What the system adds around it —
@@ -227,7 +227,7 @@ pub fn monitor_rect(point: (f32, f32)) -> Option<(f32, f32, f32, f32)> {
 }
 
 /// Ask the foreground executor to reposition the window. See
-/// [`crate::windowing::move_window`] for why this is not done inline.
+/// [`crate::ui::windowing::move_window`] for why this is not done inline.
 pub fn move_window(cx: &App, hwnd: isize, origin: (f32, f32)) {
     let hwnd = hwnd as Hwnd;
     cx.foreground_executor()

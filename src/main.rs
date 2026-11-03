@@ -1,38 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-mod actions;
-mod album_color;
 mod app;
-mod artwork;
-mod audio;
-mod audio_spectrum;
-mod bilibili_live;
-mod components;
-mod search_query;
-#[path = "providers/qishui.rs"]
-mod qishui;
-#[path = "providers/streaming.rs"]
-mod streaming;
-mod formatting;
-#[path = "providers/kugou.rs"]
-mod kugou;
-mod local_music;
-mod live_mode;
-mod live_emotes;
-mod locale;
-mod lyric_finder;
-mod lyrics;
-mod mode;
-mod motion;
-#[path = "providers/qqmusic.rs"]
-mod qqmusic;
-mod queue_file;
-mod request_queue;
-#[path = "providers/shitease.rs"]
-mod shitease;
-mod storage;
-mod track;
-mod updater;
-mod windowing;
+mod live;
+mod music;
+mod providers;
+mod ui;
+
+use crate::{app::storage, live::bilibili_live, music::audio_spectrum, ui::windowing};
 
 use gpui_kit::{
     component::{Root, Theme, ThemeMode},
@@ -53,7 +26,7 @@ fn main() {
             gpui_kit::init(cx);
             gpui_kit::component::set_locale(&storage::load_state().settings.language);
             Theme::change(ThemeMode::Dark, None, cx);
-            components::input_theme(false, cx);
+            ui::input_theme(false, cx);
             // Prefer the platform's own UI face, in the order Windows itself
             // uses. `Arial` used to win this list by accident, which is why the
             // capsule rendered like a document instead of like the system.

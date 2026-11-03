@@ -1,5 +1,5 @@
 //! A trailing provider is a ranking preference, never a source filter.
-use crate::track::{
+use crate::music::track::{
     SOURCE_KUGOU, SOURCE_NETEASE, SOURCE_QISHUI, SOURCE_QQMUSIC, SOURCE_SHITEASE, Track,
 };
 

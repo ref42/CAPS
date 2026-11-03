@@ -1,6 +1,6 @@
 //! Inline live-chat images. Network and decoding never block chat reception or UI ticks.
-use crate::bilibili_live::activity::Kind;
-use crate::bilibili_live::danmu::{Emote, image_url};
+use crate::live::bilibili_live::activity::Kind;
+use crate::live::bilibili_live::danmu::{Emote, image_url};
 use gpui_kit::{App, Image, ImageFormat, ImageSource};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
@@ -17,7 +17,7 @@ pub struct ChatMessage {
     pub user: String,
     pub body: Vec<Segment>,
     pub kind: Kind,
-    pub author: crate::bilibili_live::activity::Author,
+    pub author: crate::live::bilibili_live::activity::Author,
 }
 
 impl ChatMessage {
@@ -30,7 +30,7 @@ impl ChatMessage {
             user: user.to_owned(),
             body,
             kind: Kind::Danmu,
-            author: crate::bilibili_live::activity::Author::default(),
+            author: crate::live::bilibili_live::activity::Author::default(),
         }
     }
 

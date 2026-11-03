@@ -1499,16 +1499,19 @@ impl Caps {
             options.kind = WindowKind::Floating;
             options.focus = false;
             options.is_movable = true;
+            options.app_owns_titlebar_drag = true;
             let chat_size = size(px(420.), px(560.));
             let origin = app.primary_display()
                 .map(|display| {
                     let bounds = display.bounds();
                     point(
-                        bounds.origin.x + (bounds.size.width - chat_size.width) / 2.,
-                        bounds.origin.y + px(120.),
+                        // Keep the vice island in its own screen-side slot so
+                        // it can never cover the centered playback island.
+                        bounds.origin.x + bounds.size.width - chat_size.width - px(28.),
+                        bounds.origin.y + px(88.),
                     )
                 })
-                .unwrap_or(point(px(520.), px(120.)));
+                .unwrap_or(point(px(960.), px(88.)));
             options.window_bounds = Some(WindowBounds::Windowed(Bounds::new(origin, chat_size)));
             options.show = true;
             let _ = app.open_window(options, move |window, cx| {
@@ -1588,7 +1591,6 @@ impl Caps {
                         self.outgoing_segments.clear();
                     }
                     self.danmu_status = self.say(format!("Connected to {room}"), format!("已连接直播间 {room}"));
-                    self.open_chat_island(cx);
                 }
                 Event::Chat { user, text, emotes } => {
                     self.chat_history.push((user.clone(), text.clone()));

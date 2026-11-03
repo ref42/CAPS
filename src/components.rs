@@ -34,6 +34,9 @@ impl Render for ChatIsland {
             .p(px(14.))
             .rounded(px(22.))
             .bg(rgb(SURFACE_RAISED))
+            .on_mouse_down(MouseButton::Left, |_event, window, _cx| {
+                window.start_window_move();
+            })
             .child(parent.read(cx).chat_panel(1.))
             .into_any_element()
     }

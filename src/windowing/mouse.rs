@@ -247,6 +247,20 @@ pub fn move_window(cx: &App, hwnd: isize, origin: (f32, f32)) {
         .detach();
 }
 
+/// One deferred native operation avoids re-entering GPUI with the App borrowed.
+pub fn resize_window(cx: &App, hwnd: isize, bounds: (f32, f32, f32, f32)) {
+    cx.foreground_executor().spawn(async move {
+        let (left, top, right, bottom) = bounds;
+        unsafe {
+            SetWindowPos(hwnd as Hwnd, std::ptr::null_mut(),
+                left.round() as i32, top.round() as i32,
+                (right - left).round().max(1.) as i32,
+                (bottom - top).round().max(1.) as i32,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }).detach();
+}
+
 /// Whether a right-button message landed on the capsule rather than the panel.
 /// `screen_coords` is true for the non-client variants of the message, whose
 /// coordinates are relative to the desktop instead of the client area.
@@ -332,6 +346,27 @@ pub fn apply_region(window: &Window, geometry: super::Geometry, slack: f32) {
             DeleteObject(region);
         }
     }
+}
+
+/// Clip both the transparent corners and the native non-client frame. Defer
+/// SetWindowRgn: Windows may synchronously dispatch layout/paint messages.
+pub fn apply_chat_region(window: &Window, cx: &App, radius: f32) {
+    let Some(hwnd) = window_handle(window) else { return; };
+    // Leave the painted antialiased curve inside the 1-bit native mask.
+    let radius = (radius - super::REGION_OUTSET).max(0.) * window.scale_factor();
+    cx.foreground_executor().spawn(async move {
+        let hwnd = hwnd as Hwnd;
+        let mut rect = Rect::default();
+        unsafe {
+            let Some((x, y)) = client_offset(hwnd) else { return; };
+            if GetClientRect(hwnd, &mut rect) == 0 { return; }
+            let region = round_rect(x, y, (rect.right - rect.left) as f32,
+                (rect.bottom - rect.top) as f32, radius);
+            if !region.is_null() && SetWindowRgn(hwnd, region, 1) == 0 {
+                DeleteObject(region);
+            }
+        }
+    }).detach();
 }
 
 /// Where the client area starts inside the window rectangle. Windows draws a

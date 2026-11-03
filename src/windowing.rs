@@ -9,6 +9,8 @@
 use gpui_kit::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+pub mod chat_resize;
+
 #[cfg(target_os = "windows")]
 mod mouse;
 
@@ -261,6 +263,14 @@ pub fn apply_region(window: &Window, geometry: Geometry, slack: f32) {
     let _ = (window, geometry, slack);
 }
 
+/// The chat window has its own rounded region, independent of capsule geometry.
+pub fn apply_chat_region(window: &Window, cx: &App, radius: f32) {
+    #[cfg(target_os = "windows")]
+    mouse::apply_chat_region(window, cx, radius);
+    #[cfg(not(target_os = "windows"))]
+    let _ = (window, cx, radius);
+}
+
 /// The cursor's screen position, in device pixels.
 pub fn cursor_position() -> Option<(f32, f32)> {
     #[cfg(target_os = "windows")]
@@ -304,6 +314,16 @@ pub fn move_window(window: &Window, cx: &App, origin: (f32, f32)) {
     {
         let _ = (window, cx, origin);
     }
+}
+
+/// Resize and reposition together so the edge opposite the pointer stays fixed.
+pub fn resize_chat_window(window: &Window, cx: &App, bounds: (f32, f32, f32, f32)) {
+    #[cfg(target_os = "windows")]
+    if let Some(handle) = mouse::window_handle(window) {
+        mouse::resize_window(cx, handle, bounds);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = (window, cx, bounds);
 }
 
 /// The window's own size, in device pixels.

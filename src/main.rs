@@ -8,9 +8,12 @@ mod audio_spectrum;
 mod bilibili_live;
 mod components;
 mod search_query;
+#[path = "providers/qishui.rs"]
 mod qishui;
+#[path = "providers/streaming.rs"]
 mod streaming;
 mod formatting;
+#[path = "providers/kugou.rs"]
 mod kugou;
 mod local_music;
 mod live_mode;
@@ -20,9 +23,11 @@ mod lyric_finder;
 mod lyrics;
 mod mode;
 mod motion;
+#[path = "providers/qqmusic.rs"]
 mod qqmusic;
 mod queue_file;
 mod request_queue;
+#[path = "providers/shitease.rs"]
 mod shitease;
 mod storage;
 mod track;

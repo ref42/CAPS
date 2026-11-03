@@ -5,6 +5,8 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
 const MAX_PERSISTED_QUEUE: usize = 500;
+pub const CHAT_FONT_MIN: u32 = 12;
+pub const CHAT_FONT_MAX: u32 = 28;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -23,6 +25,9 @@ pub struct AppSettings {
     /// Top-left of the window, in physical pixels, after the user dragged the
     /// capsule. `None` means "top centre of the primary display".
     pub window_position: Option<(f32, f32)>,
+    /// Chat's client size in logical pixels, independent of the main capsule.
+    pub chat_window_size: Option<(f32, f32)>,
+    pub chat_font_size: u32,
     /// Latin/UI family override. `None` keeps the platform's own UI face.
     pub latin_font: Option<String>,
     /// Han family override. `None` keeps the platform's Han companion for the
@@ -55,6 +60,8 @@ impl Default for AppSettings {
             local_music_folder: String::new(),
             language: "en".to_string(),
             window_position: None,
+            chat_window_size: None,
+            chat_font_size: 14,
             latin_font: None,
             han_font: None,
             play_order: "all".to_string(),
@@ -82,6 +89,7 @@ impl AppSettings {
         self.opacity = self.opacity.min(100);
         self.volume = self.volume.clamp(0, 100);
         self.capsule_size = self.capsule_size.clamp(85, 150);
+        self.chat_font_size = self.chat_font_size.clamp(CHAT_FONT_MIN, CHAT_FONT_MAX);
         self.random_count = self.random_count.clamp(1, 999);
         if !matches!(self.active_tab.as_str(), "search" | "queue" | "settings") {
             self.active_tab = "search".to_string();
@@ -234,6 +242,21 @@ mod tests {
         assert!(!settings.danmu_enabled);
         assert!(settings.danmu_room.is_empty());
         assert!(settings.danmu_proxy.is_empty());
+        assert_eq!(settings.chat_window_size, None);
+        assert_eq!(settings.chat_font_size, 14);
+    }
+
+    #[test]
+    fn chat_size_and_font_are_saved_independently_of_the_capsule() {
+        let settings = AppSettings { chat_window_size: Some((640., 720.)), chat_font_size: 22,
+            capsule_size: 120, ..AppSettings::default() };
+        let restored: AppSettings = serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        let restored = restored.normalized();
+        assert_eq!(restored.chat_window_size, Some((640., 720.)));
+        assert_eq!(restored.chat_font_size, 22);
+        assert_eq!(restored.capsule_size, 120);
+        assert_eq!(AppSettings { chat_font_size: 0, ..settings.clone() }.normalized().chat_font_size, CHAT_FONT_MIN);
+        assert_eq!(AppSettings { chat_font_size: 200, ..settings }.normalized().chat_font_size, CHAT_FONT_MAX);
     }
 
     #[test]

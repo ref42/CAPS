@@ -20,27 +20,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
-pub struct ChatIsland {
-    pub parent: WeakEntity<Caps>,
-    pub(crate) _subscription: Subscription,
-}
-
-impl Render for ChatIsland {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(parent) = self.parent.upgrade() else {
-            return div().into_any_element();
-        };
-        div()
-            .p(px(14.))
-            .rounded(px(22.))
-            .bg(rgb(SURFACE_RAISED))
-            .on_mouse_down(MouseButton::Left, |_event, window, _cx| {
-                window.start_window_move();
-            })
-            .child(parent.read(cx).chat_panel(1.))
-            .into_any_element()
-    }
-}
+mod chat;
+pub use chat::ChatIsland;
 
 // ---------------------------------------------------------------- palette ---
 //
@@ -1722,7 +1703,8 @@ impl Caps {
             }
             let offset = lyric_scroll_offset(elapsed, overflow, s);
             let p = motion::ease((elapsed / if outgoing { 0.22 } else { 0.36 }).clamp(0., 1.));
-            let rise = if self.reduce_motion { 0. } else { 8. };
+            let variant = self.lyric.bytes().fold(0u32, |hash, byte| hash.wrapping_mul(31).wrapping_add(byte as u32)) % 3;
+            let rise = if self.reduce_motion { 0. } else { match variant { 0 => 0., 1 => 8., _ => -8. } };
             let mut letters = row()
                 .absolute()
                 .right_0()
@@ -1856,32 +1838,6 @@ impl Caps {
                     .overflow_hidden()
                     .child(self.status.to_owned()),
             )
-            .into_any_element()
-    }
-
-    fn chat_panel(&self, s: f32) -> AnyElement {
-        let messages = self.chat_history.iter().enumerate().map(|(index, (user, text))| {
-            row()
-                .id(("chat-message", index))
-                .w_full()
-                .items_start()
-                .gap(px(8. * s))
-                .px(px(8. * s))
-                .py(px(7. * s))
-                .rounded(px(8. * s))
-                .hover(|style| style.bg(rgba(0xffffff0e)))
-                .child(div().flex_shrink_0().text_color(rgb(accent())).child(if user.is_empty() { self.tr("Viewer", "观众").to_owned() } else { user.clone() }))
-                .child(div().flex_1().min_w_0().text_ellipsis().child(text.clone()))
-        });
-        let empty = self.tr("No messages yet. Connect to a live room to start the chat.", "还没有消息。连接直播间后，聊天记录会显示在这里。");
-        column()
-            .flex_1()
-            .min_h_0()
-            .gap(px(8. * s))
-            .child(div().font_weight(SEMIBOLD).child(self.tr("Chat history", "聊天记录")))
-            .child(column().id("chat-history-scroll").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.chat_scroll)
-                .when(self.chat_history.is_empty(), |d| d.child(div().text_color(rgb(text_tertiary())).child(empty)))
-                .children(messages))
             .into_any_element()
     }
 
@@ -2667,50 +2623,59 @@ impl Caps {
     }
 
     fn danmu_settings(&self, s: f32, cx: &mut Context<Self>) -> Div {
-        column()
-            .gap(px(18. * s))
-            .child(column().gap(px(6. * s))
-                .child(row().justify_between()
-                    .child(div().font_weight(SEMIBOLD).text_size(px(TITLE * s))
-                        .child(self.tr("Bilibili live chat", "B站直播弹幕")))
-                    .child(button("toggle-live-chat", if self.settings.danmu_enabled {
-                        self.tr("Disconnect", "断开连接")
-                    } else { self.tr("Connect", "连接") }, self.settings.danmu_enabled, s)
-                        .h(px(30. * s))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.set_danmu_enabled(!this.settings.danmu_enabled, cx);
-                            cx.notify();
-                        }))))
+        let connected = self.settings.danmu_enabled;
+        column().gap(px(18. * s))
+            .child(column().gap(px(5. * s))
+                .child(div().font_weight(SEMIBOLD).text_size(px(TITLE * s))
+                    .child(self.tr("Bilibili live chat", "B 站直播聊天")))
                 .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
-                    "Messages briefly replace lyrics. Lyrics return when chat is quiet.",
-                    "收到弹幕时短暂显示，弹幕结束后恢复歌词。",
-                )))
-                .child(button("open-chat-island", self.tr("Open chat island", "Open chat island"), false, s)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.open_chat_island(cx);
-                        cx.notify();
-                    })))).child(column().gap(px(8. * s))
+                    "Chat in its own floating window. Lyrics stay in the main capsule.",
+                    "弹幕显示在独立悬浮窗，主胶囊保留歌词。",
+                ))))
+            .child(column().gap(px(8. * s))
                 .child(div().font_weight(MEDIUM).child(self.tr("Room ID", "直播间 ID")))
                 .child(row().gap(px(8. * s))
                     .child(div().flex_1().min_w_0().child(Input::new(&self.danmu_room)))
-                    .when(self.settings.danmu_enabled, |d| d.child(
-                        button("apply-live-room", self.tr("Apply", "应用"), false, s)
-                            .h(px(32. * s))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.connect_danmu(cx);
-                                cx.notify();
-                            }))
-                    ))))
-            .when(!self.danmu_status.is_empty(), |d| d.child(div()
-                .text_size(px(type_size(LABEL, s)))
-                .child(self.danmu_status.clone())))
-            .child(column().gap(px(8. * s)).p(px(12. * s)).rounded(px(10. * s)).bg(rgba(well()))
+                    .child(button("apply-live-room", if connected {
+                        self.tr("Apply", "应用")
+                    } else { self.tr("Connect", "连接") }, !connected, s)
+                        .h(px(34. * s)).min_w(px(64. * s))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.connect_danmu(cx);
+                            cx.notify();
+                        }))))
+                .child(row().gap(px(8. * s)).items_start()
+                    .child(div().flex_1().min_w_0().text_size(px(type_size(LABEL, s)))
+                        .child(if self.danmu_status.is_empty() {
+                            self.tr("Enter a room ID to connect.", "输入直播间 ID 后连接。").to_owned()
+                        } else { self.danmu_status.clone() }))
+                    .when(connected, |d| d.child(button("toggle-live-chat", self.tr("Disconnect", "断开"), false, s)
+                        .h(px(28. * s))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.set_danmu_enabled(false, cx);
+                            cx.notify();
+                        }))))))
+            .child(column().gap(px(7. * s))
+                .child(button("open-chat-island", if self.chat_window_open {
+                    self.tr("Chat window is open", "聊天窗口已打开")
+                } else { self.tr("Open chat window", "打开聊天悬浮窗") }, true, s)
+                    .w_full().h(px(38. * s))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.open_chat_island(cx);
+                        cx.notify();
+                    })))
+                .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
+                    "Always visible. Drag its header to place it anywhere.",
+                    "始终置顶，按住窗口标题即可自由移动。",
+                ))))
+            .child(column().gap(px(8. * s)).pt(px(16. * s))
+                .border_t_1().border_color(rgba(hairline()))
                 .child(row().justify_between()
                     .child(div().font_weight(SEMIBOLD).child(self.tr("Song requests", "观众点歌")))
                     .child(button("danmu-requests", if self.settings.danmu_requests {
                         self.tr("On", "已开启")
                     } else { self.tr("Off", "已关闭") }, self.settings.danmu_requests, s)
-                        .min_w(px(64. * s)).h(px(28. * s))
+                        .min_w(px(64. * s)).h(px(30. * s))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.toggle_danmu_requests();
                             cx.notify();
@@ -2720,27 +2685,28 @@ impl Caps {
                     "点歌 歌曲 [歌手] [平台]",
                 )))
                 .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
-                    "Interrupts regular music. Chat requests play in arrival order.",
-                    "立即切换普通歌曲；观众点歌按先后顺序播放。",
-                ))))
-            .when(!self.danmu_request_status.is_empty(), |d| d.child(div()
-                .text_size(px(type_size(LABEL, s)))
-                .child(self.danmu_request_status.clone())))
-            .child(button("live-network", if self.danmu_advanced {
-                self.tr("− Connection options", "− 连接选项")
-            } else { self.tr("+ Connection options", "+ 连接选项") }, false, s)
-                .justify_start().px_0()
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.danmu_advanced = !this.danmu_advanced;
-                    cx.notify();
-                })))
-            .when(self.danmu_advanced, |d| d.child(column().gap(px(8. * s))
-                .child(div().font_weight(MEDIUM).child(self.tr("HTTP proxy (optional)", "HTTP 代理（可选）")))
-                .child(Input::new(&self.danmu_proxy))
-                .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
-                    "Leave blank for a direct connection. Apply changes to reconnect.",
-                    "留空则直接连接。修改后点击应用重新连接。",
-                )))))
+                    "Switches from regular music. Requests then play in arrival order.",
+                    "切换当前普通歌曲，之后按收到顺序播放点歌。",
+                )))
+                .when(!self.danmu_request_status.is_empty(), |d| d.child(div()
+                    .text_size(px(type_size(LABEL, s))).child(self.danmu_request_status.clone()))))
+            .child(column().gap(px(8. * s)).pt(px(10. * s))
+                .border_t_1().border_color(rgba(hairline()))
+                .child(button("live-network", if self.danmu_advanced {
+                    self.tr("− Connection options", "− 连接选项")
+                } else { self.tr("+ Connection options", "+ 连接选项") }, false, s)
+                    .h(px(30. * s)).justify_start().px_0()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.danmu_advanced = !this.danmu_advanced;
+                        cx.notify();
+                    })))
+                .when(self.danmu_advanced, |d| d.child(column().gap(px(8. * s))
+                    .child(div().font_weight(MEDIUM).child(self.tr("HTTP proxy (optional)", "HTTP 代理（可选）")))
+                    .child(Input::new(&self.danmu_proxy))
+                    .child(div().text_size(px(type_size(LABEL, s))).child(self.tr(
+                        "Leave blank for a direct connection. Apply changes to reconnect.",
+                        "留空则直接连接，修改后点击应用重新连接。",
+                    ))))))
     }
 
     fn settings_panel(&self, s: f32, cx: &mut Context<Self>) -> AnyElement {

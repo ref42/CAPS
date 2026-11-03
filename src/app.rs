@@ -323,7 +323,6 @@ pub struct Caps {
     pub danmu_proxy: Entity<InputState>,
     pub danmu_status: String,
     pub danmu_request_status: String,
-    pub danmu_showing: bool,
     pub lyric_segments: Vec<crate::live_emotes::Segment>,
     pub outgoing_segments: Vec<crate::live_emotes::Segment>,
     pub emote_cache: crate::live_emotes::Cache,
@@ -332,10 +331,9 @@ pub struct Caps {
     pub danmu_advanced: bool,
     danmu_session: crate::live_mode::Rooms,
     pub danmu_active_room: Option<u64>,
-    danmu_display: crate::live_mode::Display,
-    pub chat_history: Vec<(String, String)>,
-    pub chat_scroll: ScrollHandle,
+    pub chat_history: Vec<crate::live_emotes::ChatMessage>,
     pub chat_window_open: bool,
+    pub chat_deleted_sc: Vec<String>,
     pub opacity_slider: Entity<SliderState>,
     pub volume_slider: Entity<SliderState>,
     pub size_slider: Entity<SliderState>,
@@ -459,6 +457,8 @@ impl Caps {
         self.thumbnails.insert(url, Thumbnail { image, used });
     }
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Closing the main capsule ends the app, including auxiliary chat windows.
+        cx.on_release(|this, cx| { this.save(); cx.quit(); }).detach();
         let saved = storage::load_state();
         let language = crate::locale::Language::from_code(&saved.settings.language);
         let query =
@@ -595,7 +595,12 @@ impl Caps {
             let mut misses = 0u32;
             loop {
                 tokio::time::sleep(TICK_INTERVAL).await;
-                match view.update_in(cx, |this, window, cx| this.tick(window, cx)) {
+                // A shared entity can be read by another window (chat). Resolve
+                // the timer through its captured window, never the entity's
+                // most recently associated window.
+                match cx.update(|window, app| {
+                    view.update(app, |this, cx| this.tick(window, cx))
+                }).and_then(|result| result) {
                     Ok(()) => misses = 0,
                     // The app is briefly borrowed by a frame on the main thread.
                     // Give up only once the window is genuinely gone.
@@ -662,7 +667,6 @@ impl Caps {
             danmu_proxy,
             danmu_status: String::new(),
             danmu_request_status: String::new(),
-            danmu_showing: false,
             lyric_segments: Vec::new(),
             outgoing_segments: Vec::new(),
             emote_cache: crate::live_emotes::Cache::default(),
@@ -671,10 +675,9 @@ impl Caps {
             danmu_advanced: false,
             danmu_session: crate::live_mode::Rooms::default(),
             danmu_active_room: None,
-            danmu_display: crate::live_mode::Display::default(),
             chat_history: Vec::new(),
-            chat_scroll: ScrollHandle::new(),
             chat_window_open: false,
+            chat_deleted_sc: Vec::new(),
             opacity_slider,
             volume_slider,
             size_slider,
@@ -866,11 +869,11 @@ impl Caps {
     /// there, and the panel must not reflow as the lyric changes. The idle
     /// capsule keeps its original width.
     fn width_target(&self, window: &Window, cx: &App, expansion: f32) -> f32 {
-        if !self.has_music() && !self.danmu_showing {
-            return crate::windowing::COLLAPSED_W;
-        }
         if expansion > 0.001 {
             return crate::windowing::EXPANDED_W;
+        }
+        if !self.has_music() {
+            return crate::windowing::COLLAPSED_W;
         }
         let want = self.lyric_content_width(window, &self.lyric, &self.lyric_segments);
         if want <= 0. {
@@ -1167,11 +1170,7 @@ impl Caps {
             }
             *value += (goal - *value) * 0.22;
         }
-        let message = if self.settings.danmu_enabled {
-            self.danmu_display.text(now).to_owned()
-        } else { String::new() };
-        self.danmu_showing = !message.is_empty();
-        let text = if self.danmu_showing { message } else {
+        let text = {
             lyrics::current_lyric_line(&self.lyrics, self.audio.position).unwrap_or_else(|| {
                 self.current_track
                     .as_ref()
@@ -1179,7 +1178,7 @@ impl Caps {
                     .unwrap_or_default()
             })
         };
-        let segments = if self.danmu_showing { self.danmu_display.segments.clone() } else { Vec::new() };
+        let segments = Vec::new();
         if self.lyric != text || self.lyric_segments != segments {
             self.outgoing_lyric = std::mem::replace(&mut self.lyric, text);
             self.outgoing_segments = std::mem::replace(&mut self.lyric_segments, segments);
@@ -1192,7 +1191,7 @@ impl Caps {
         // A line too wide for its box keeps moving after that entrance window,
         // including while the track is paused; without its own frames it would
         // settle half-hidden.
-        if (self.has_music() || self.danmu_showing) && crate::components::lyric_scrolling() {
+        if self.has_music() && crate::components::lyric_scrolling() {
             dirty = true;
         }
         if !self.slider_dragging {
@@ -1477,8 +1476,6 @@ impl Caps {
             self.chat_requests.cancel_waiting();
             self.danmu_active_room = None;
             self.emote_cache.reset(cx);
-            self.danmu_display = crate::live_mode::Display::default();
-            self.danmu_showing = false;
             self.danmu_status.clear();
             self.danmu_request_status.clear();
             self.persist();
@@ -1491,22 +1488,30 @@ impl Caps {
         }
         self.chat_window_open = true;
         let parent = cx.entity().downgrade();
+        let saved_size = self.settings.chat_window_size;
         cx.defer(move |app| {
+            if parent.upgrade().is_none() { return; }
+            let failure_parent = parent.clone();
             let mut options = crate::windowing::options(app);
-            // Floating windows honor explicit screen bounds while remaining
-            // above the main capsule. PopUp windows ignore their origin and
-            // caused the chat surface to land on top of the main island.
-            options.kind = WindowKind::Floating;
-            options.focus = false;
+            // The Windows backend maps PopUp to WS_EX_TOPMOST. Floating does
+            // not set that flag. Both honor explicit bounds.
+            options.kind = WindowKind::PopUp;
+            options.focus = true;
             options.is_movable = true;
+            options.is_resizable = true;
+            let minimum = crate::windowing::chat_resize::MIN_SIZE;
+            options.window_min_size = Some(size(px(minimum.0), px(minimum.1)));
             options.app_owns_titlebar_drag = true;
-            let chat_size = size(px(420.), px(560.));
-            let origin = app.primary_display()
-                .map(|display| {
-                    let bounds = display.bounds();
+            let display = app.primary_display().map(|display| display.bounds());
+            let available = display.map(|b| (b.size.width.as_f32() - 56., b.size.height.as_f32() - 116.))
+                .unwrap_or((1280., 900.));
+            let restored = crate::windowing::chat_resize::restored_size(saved_size, available);
+            let chat_size = size(px(restored.0), px(restored.1));
+            let origin = display
+                .map(|bounds| {
                     point(
-                        // Keep the vice island in its own screen-side slot so
-                        // it can never cover the centered playback island.
+                        // Default to a screen-side slot, independent of the
+                        // main island's saved position.
                         bounds.origin.x + bounds.size.width - chat_size.width - px(28.),
                         bounds.origin.y + px(88.),
                     )
@@ -1514,16 +1519,21 @@ impl Caps {
                 .unwrap_or(point(px(960.), px(88.)));
             options.window_bounds = Some(WindowBounds::Windowed(Bounds::new(origin, chat_size)));
             options.show = true;
-            let _ = app.open_window(options, move |window, cx| {
+            let opened = app.open_window(options, move |window, cx| {
                 window.set_window_title("CAPS Chat");
                 window.set_background_appearance(WindowBackgroundAppearance::Transparent);
-                let view = cx.new(|cx| {
-                    let entity = parent.upgrade().expect("CAPS main window still exists");
-                    let subscription = cx.observe(&entity, |_, _, cx| cx.notify());
-                    crate::components::ChatIsland { parent, _subscription: subscription }
-                });
+                let view = cx.new(|cx| crate::components::ChatIsland::new(parent, window, cx));
                 cx.new(|cx| Root::new(view, window, cx).bg(rgba(0x00000000)))
             });
+            if let Ok(handle) = opened {
+                let _ = handle.update(app, |_, window, _| window.activate_window());
+            } else if let Err(error) = opened {
+                let _ = failure_parent.update(app, |main, cx| {
+                    main.chat_window_open = false;
+                    main.danmu_status = format!("Could not open chat island: {error}");
+                    cx.notify();
+                });
+            }
         });
     }
 
@@ -1581,9 +1591,8 @@ impl Caps {
                 Event::Connected(room) => {
                     if self.danmu_active_room != Some(room) {
                         self.danmu_active_room = Some(room);
-                        self.danmu_display = crate::live_mode::Display::default();
                         self.chat_history.clear();
-                        self.chat_scroll.set_offset(point(px(0.), px(0.)));
+                        self.chat_deleted_sc.clear();
                         self.emote_cache.reset(cx);
                         self.lyric.clear();
                         self.outgoing_lyric.clear();
@@ -1592,14 +1601,18 @@ impl Caps {
                     }
                     self.danmu_status = self.say(format!("Connected to {room}"), format!("已连接直播间 {room}"));
                 }
-                Event::Chat { user, text, emotes } => {
-                    self.chat_history.push((user.clone(), text.clone()));
-                    if self.chat_history.len() > 200 {
-                        self.chat_history.drain(..self.chat_history.len() - 200);
-                    }
-                    self.chat_scroll.scroll_to_bottom();
-                    self.danmu_display.push_chat(&user, &text, &emotes);
+                Event::DeleteSuperChats(ids) => {
+                    crate::live_emotes::delete_super_chats(&mut self.chat_history, &ids);
+                    self.chat_deleted_sc.extend(ids);
+                    if self.chat_deleted_sc.len() > 200 { self.chat_deleted_sc.drain(..self.chat_deleted_sc.len() - 200); }
+                },
+                Event::Chat { user, text, emotes, kind } => {
+                    let allows_request = kind.allows_song_request();
+                    let mut message = crate::live_emotes::ChatMessage::new(&user, &text, &emotes);
+                    message.kind = kind;
+                    let fresh = crate::live_emotes::push_history(&mut self.chat_history, message);
                     if self.settings.danmu_requests
+                        && fresh && allows_request
                         && !self.danmu_session.switching()
                         && let Some(query) = crate::live_mode::song_request(&text)
                         {
@@ -2117,8 +2130,14 @@ impl Drop for Caps {
 
 fn start_stats(tx: mpsc::Sender<Message>) {
     std::thread::spawn(move || {
-        let mut system = sysinfo::System::new();
-        let mut networks = sysinfo::Networks::new_with_refreshed_list();
+        let Ok(mut system) = sysinfo::System::new() else {
+            log::warn!("System metrics are unavailable");
+            return;
+        };
+        let Ok(mut networks) = sysinfo::Networks::new_with_refreshed_list() else {
+            log::warn!("Network metrics are unavailable");
+            return;
+        };
         let mut last = Instant::now();
         loop {
             system.refresh_cpu_usage();

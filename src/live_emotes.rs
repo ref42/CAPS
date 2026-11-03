@@ -1,4 +1,5 @@
 //! Inline live-chat images. Network and decoding never block chat reception or UI ticks.
+use crate::bilibili_live::activity::Kind;
 use crate::bilibili_live::danmu::{Emote, image_url};
 use gpui_kit::{App, Image, ImageFormat, ImageSource};
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -7,6 +8,49 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 pub enum Segment {
     Text(String),
     Emote(Emote),
+}
+
+/// History keeps the original text for requests/fallbacks and the image metadata
+/// for rendering. Reducing events to (user, text) loses all sticker information.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChatMessage {
+    pub user: String,
+    pub body: Vec<Segment>,
+    pub kind: Kind,
+}
+
+impl ChatMessage {
+    pub fn new(user: &str, text: &str, emotes: &[Emote]) -> Self {
+        let mut body = segments("", text, emotes);
+        if body.is_empty() {
+            body.push(Segment::Text(text.to_owned()));
+        }
+        Self {
+            user: user.to_owned(),
+            body,
+            kind: Kind::Danmu,
+        }
+    }
+}
+
+/// A retransmission (or the old and new gift formats arriving together) updates
+/// one row rather than displaying the same transaction twice.
+pub fn push_history(history: &mut Vec<ChatMessage>, message: ChatMessage) -> bool {
+    if let Some(id) = message.kind.id()
+        && let Some(existing) = history.iter_mut().find(|old| old.kind.id() == Some(id))
+    {
+        *existing = message;
+        return false;
+    }
+    history.push(message);
+    if history.len() > 200 {
+        history.drain(..history.len() - 200);
+    }
+    true
+}
+
+pub fn delete_super_chats(history: &mut Vec<ChatMessage>, ids: &[String]) {
+    history.retain(|message| !matches!(&message.kind, Kind::SuperChat { id: Some(id), .. } if ids.contains(id)));
 }
 
 /// Match only in the message body, never in a viewer's name. Keep Unicode intact.
@@ -69,8 +113,7 @@ impl Cache {
         }
     }
 
-    /// At most four downloads and 64 cached images, including failure entries.
-    /// Only the latest visible message requests images, not a busy room's backlog.
+    /// Release decoded assets and cancel outstanding downloads on room/proxy changes.
     pub fn reset(&mut self, cx: &mut App) {
         for (_, entry) in self.entries.drain() {
             if let Some(image) = entry.image {
@@ -82,6 +125,8 @@ impl Cache {
         }
     }
 
+    /// At most four downloads and 64 cached images, including failure entries.
+    /// Callers supply only visible messages, not a busy room's entire backlog.
     pub fn update(&mut self, segments: &[Segment], proxy: &str, cx: &mut App) -> bool {
         self.clock = self.clock.wrapping_add(1);
         let mut changed = false;
@@ -202,6 +247,61 @@ async fn load(url: &str, proxy: &str) -> Option<Arc<Image>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_deduplicates_paid_events_and_honors_sc_removal() {
+        let mut history = Vec::new();
+        let mut sc = ChatMessage::new("viewer", "hello", &[]);
+        sc.kind = Kind::SuperChat {
+            id: Some("sc:42".into()),
+            yuan: Some(30),
+        };
+        assert!(push_history(&mut history, sc.clone()));
+        assert!(!push_history(&mut history, sc));
+        let mut gift = ChatMessage::new("viewer", "Rose ×2", &[]);
+        gift.kind = Kind::Gift {
+            id: Some("gift:abc:7".into()),
+            name: "Rose".into(),
+            quantity: 2,
+        };
+        assert!(push_history(&mut history, gift.clone()));
+        assert!(!push_history(&mut history, gift));
+        assert_eq!(history.len(), 2);
+        delete_super_chats(&mut history, &["sc:42".into()]);
+        assert_eq!(history.len(), 1);
+        assert!(matches!(history[0].kind, Kind::Gift { .. }));
+        for _ in 0..250 {
+            push_history(
+                &mut history,
+                ChatMessage::new("viewer", "repeated plain message", &[]),
+            );
+        }
+        assert_eq!(history.len(), 200);
+    }
+
+    #[test]
+    fn history_retains_stickers_and_plain_unicode_messages() {
+        let emote = Emote {
+            text: "[微笑]".into(),
+            url: "https://i0.hdslb.com/smile.png".into(),
+            width: 180,
+            height: 60,
+        };
+        let message = ChatMessage::new("观众", "你好[微笑]", &[emote.clone()]);
+        assert_eq!(message.user, "观众");
+        assert_eq!(
+            message.body,
+            vec![Segment::Text("你好".into()), Segment::Emote(emote.clone())]
+        );
+        assert_eq!(
+            ChatMessage::new("观众", "[微笑]", &[emote.clone()]).body,
+            vec![Segment::Emote(emote)]
+        );
+        assert_eq!(
+            ChatMessage::new("观众", "晚安👩‍💻[未提供图片]", &[]).body,
+            vec![Segment::Text("晚安👩‍💻[未提供图片]".into())]
+        );
+    }
 
     #[test]
     fn text_fallback_is_only_used_after_failure_not_while_waiting_for_images() {

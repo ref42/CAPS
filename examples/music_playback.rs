@@ -1,15 +1,15 @@
 //! Live provider check: cargo run --example music_playback -- qishui "晴天"
 //! Search providers accept a song/artist query.
 #![allow(dead_code)]
-#[path = "../src/kugou.rs"]
+#[path = "../src/providers/kugou.rs"]
 mod kugou;
-#[path = "../src/qishui.rs"]
+#[path = "../src/providers/qishui.rs"]
 mod qishui;
-#[path = "../src/qqmusic.rs"]
+#[path = "../src/providers/qqmusic.rs"]
 mod qqmusic;
-#[path = "../src/shitease.rs"]
+#[path = "../src/providers/shitease.rs"]
 mod shitease;
-#[path = "../src/streaming.rs"]
+#[path = "../src/providers/streaming.rs"]
 mod streaming;
 #[path = "../src/track.rs"]
 mod track;

@@ -30,7 +30,9 @@ pub enum Event {
         user: String,
         text: String,
         emotes: Vec<bilibili_live::danmu::Emote>,
+        kind: bilibili_live::activity::Kind,
     },
+    DeleteSuperChats(Vec<String>),
     Requested {
         epoch: u64,
         query: String,
@@ -109,18 +111,18 @@ impl Session {
                         None
                     }
                     LiveEvent::Heartbeat => None,
-                    LiveEvent::Command(command) => bilibili_live::danmu::chat(&command, resolved)
-                        .map(|chat| Event::Chat {
-                            emotes: serde_json::from_value(chat["emotes"].clone())
-                                .unwrap_or_default(),
-                            user: chat["user"].as_str().unwrap_or("").to_owned(),
-                            text: chat["text"]
-                                .as_str()
-                                .unwrap_or("")
-                                .chars()
-                                .take(500)
-                                .collect(),
-                        }),
+                    LiveEvent::Command(command) => {
+                        for activity in bilibili_live::activity::events(&command, resolved) {
+                            let event = match activity {
+                                bilibili_live::activity::Event::Message(message) => Event::Chat {
+                                    user: message.user, text: message.text, emotes: message.emotes, kind: message.kind,
+                                },
+                                bilibili_live::activity::Event::DeleteSuperChats(ids) => Event::DeleteSuperChats(ids),
+                            };
+                            let _ = tx.try_send(event);
+                        }
+                        None
+                    }
                 };
                 // Never let a busy room block heartbeats or allocate an unbounded backlog.
                 if let Some(event) = event {
@@ -249,7 +251,7 @@ impl Rooms {
             }
         }
         while let Some(event) = self.active.as_mut().and_then(Session::poll) {
-            if self.switching() && !matches!(event, Event::Chat { .. }) {
+            if self.switching() && !matches!(event, Event::Chat { .. } | Event::DeleteSuperChats(_)) {
                 continue;
             }
             return Some(event);
@@ -365,45 +367,6 @@ impl RequestGate {
     }
 }
 
-#[derive(Default)]
-pub struct Display {
-    // The capsule has one text slot. Keep the latest arrival rather than replaying
-    // a room's history several seconds (or minutes) behind the live conversation.
-    pending: Option<String>,
-    current: String,
-    until: Option<Instant>,
-    pending_segments: Vec<crate::live_emotes::Segment>,
-    pub segments: Vec<crate::live_emotes::Segment>,
-}
-impl Display {
-    pub fn push_chat(&mut self, user: &str, text: &str, emotes: &[bilibili_live::danmu::Emote]) {
-        self.push(if user.is_empty() {
-            text.into()
-        } else {
-            format!("{user}：{text}")
-        });
-        self.pending_segments = crate::live_emotes::segments(user, text, emotes);
-    }
-    pub fn push(&mut self, text: String) {
-        self.pending = Some(text);
-        self.pending_segments.clear();
-    }
-    pub fn text(&mut self, now: Instant) -> &str {
-        if let Some(next) = self.pending.take() {
-            // Reading time applies only while no newer message has arrived.
-            let seconds = (next.chars().count() as f32 * 0.4).clamp(4., 120.);
-            self.current = next;
-            self.segments = std::mem::take(&mut self.pending_segments);
-            self.until = Some(now + Duration::from_secs_f32(seconds));
-        } else if self.until.is_some_and(|until| now >= until) {
-            self.current.clear();
-            self.segments.clear();
-            self.until = None;
-        }
-        &self.current
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,6 +397,7 @@ mod tests {
             user: "viewer".into(),
             text: text.into(),
             emotes: Vec::new(),
+            kind: bilibili_live::activity::Kind::Danmu,
         }
     }
 
@@ -544,28 +508,7 @@ mod tests {
         assert!(old_worker.is_finished());
         assert!(pending_worker.is_finished());
     }
-    #[test]
-    fn sticker_metadata_follows_the_latest_message_and_expires_with_it() {
-        let now = Instant::now();
-        let mut display = Display::default();
-        let emote = bilibili_live::danmu::Emote {
-            text: "[doge]".into(),
-            url: "https://i0.hdslb.com/doge.png".into(),
-            width: 1,
-            height: 1,
-        };
-        display.push_chat("viewer", "[doge]", &[emote]);
-        assert_eq!(display.text(now), "viewer：[doge]");
-        assert_eq!(display.segments.len(), 2);
-        display.push_chat("viewer", "plain", &[]);
-        assert_eq!(
-            display.text(now + Duration::from_millis(8)),
-            "viewer：plain"
-        );
-        assert!(display.segments.is_empty());
-        display.text(now + Duration::from_secs(121));
-        assert!(display.segments.is_empty());
-    }
+
     #[test]
     fn parses_title_and_optional_artist_without_guessing_spaces() {
         assert_eq!(song_request("点歌 晴天"), Some("晴天".into()));
@@ -592,38 +535,9 @@ mod tests {
         assert!(!gate.allows("晴天  周杰伦", now + Duration::from_secs(59)));
         assert!(gate.allows("晴天 周杰伦", now + Duration::from_secs(60)));
     }
-    #[test]
-    fn fresh_danmu_replaces_a_long_message_on_the_next_ui_tick() {
-        let now = Instant::now();
-        let mut display = Display::default();
-        display.push("long username and message ".repeat(20));
-        assert!(!display.text(now).is_empty());
-        display.push("new arrival".into());
-        assert_eq!(display.text(now + Duration::from_millis(8)), "new arrival");
-    }
-    #[test]
-    fn bursts_show_the_latest_message_without_replaying_stale_lines() {
-        let now = Instant::now();
-        let mut display = Display::default();
-        display.push("first".into());
-        assert_eq!(display.text(now), "first");
-        for i in 0..100 {
-            display.push(format!("message {i}"));
-        }
-        assert_eq!(display.text(now + Duration::from_millis(8)), "message 99");
-        assert_eq!(display.text(now + Duration::from_secs(121)), "");
-    }
-    #[test]
-    fn a_new_arrival_gets_its_own_reading_time_then_returns_to_lyrics() {
-        let now = Instant::now();
-        let mut display = Display::default();
-        display.push("first".into());
-        assert_eq!(display.text(now), "first");
-        display.push("next".into());
-        assert_eq!(display.text(now + Duration::from_secs(2)), "next");
-        assert_eq!(display.text(now + Duration::from_secs(5)), "next");
-        assert_eq!(display.text(now + Duration::from_secs(6)), "");
-    }
+
+
+
     #[test]
     fn artist_match_beats_a_title_only_match() {
         let track = |artist: &str| Track {
@@ -690,16 +604,7 @@ mod tests {
         assert_eq!(selected.source, "shitease");
     }
 
-    #[test]
-    fn display_returns_to_lyrics_after_the_last_message_and_keeps_full_name() {
-        let now = Instant::now();
-        let mut display = Display::default();
-        assert_eq!(display.text(now), "");
-        let full = format!("{}：hello", "完整用户名".repeat(10));
-        display.push(full.clone());
-        assert_eq!(display.text(now), full);
-        assert_eq!(display.text(now + Duration::from_secs(121)), "");
-    }
+
     #[tokio::test]
     async fn disabling_requests_discards_already_completed_results() {
         let (mut session, tx) = session(1);

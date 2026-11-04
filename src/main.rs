@@ -63,4 +63,7 @@ fn main() {
                 log::error!("CAPS: could not open its window: {err}");
             }
         });
+    drop(_runtime_guard);
+    runtime.shutdown_timeout(std::time::Duration::from_secs(2));
+    live::archive::shutdown();
 }

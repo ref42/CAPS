@@ -9,17 +9,15 @@ use std::{
 /// The shared artwork client. Building it can fail (a missing TLS backend, for
 /// instance); artwork then simply never loads, which is better than taking the
 /// window down over a cover image.
-static HTTP: LazyLock<Option<reqwest::Client>> = LazyLock::new(|| {
-    match reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 CAPS")
-        .timeout(Duration::from_secs(15))
-        .build()
-    {
-        Ok(client) => Some(client),
-        Err(err) => {
-            log::error!("artwork: could not build the HTTP client: {err}");
-            None
-        }
+static HTTP: LazyLock<Option<reqwest::Client>> = LazyLock::new(|| match reqwest::Client::builder()
+    .user_agent("Mozilla/5.0 CAPS")
+    .timeout(Duration::from_secs(15))
+    .build()
+{
+    Ok(client) => Some(client),
+    Err(err) => {
+        log::error!("artwork: could not build the HTTP client: {err}");
+        None
     }
 });
 static DOWNLOADS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(6);

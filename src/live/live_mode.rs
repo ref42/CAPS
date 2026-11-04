@@ -1,4 +1,4 @@
-//! Bounded live chat and song-request jobs; dropping a session cancels both workers.
+//! Lossless in-process live-chat delivery and bounded song-request jobs; dropping a session cancels both workers.
 use crate::{
     app::actions,
     live::bilibili_live::{self, LiveEvent},
@@ -46,7 +46,7 @@ pub struct Session {
     connected_room: Arc<AtomicU64>,
     state: watch::Receiver<Option<ConnectionState>>,
     _state_sender: watch::Sender<Option<ConnectionState>>,
-    rx: mpsc::Receiver<Event>,
+    rx: mpsc::UnboundedReceiver<Event>,
     requests: mpsc::Sender<(u64, String)>,
     epoch: Arc<AtomicU64>,
     connection: JoinHandle<()>,
@@ -61,7 +61,7 @@ impl Session {
         let ready = connected_room.clone();
         let (state_tx, state) = watch::channel(None);
         let state_sender = state_tx.clone();
-        let (tx, rx) = mpsc::channel(128);
+        let (tx, rx) = mpsc::unbounded_channel();
         let (requests, mut pending) = mpsc::channel::<(u64, String)>(8);
         let epoch = Arc::new(AtomicU64::new(0));
         let search_epoch = epoch.clone();
@@ -90,7 +90,6 @@ impl Session {
                             query,
                             result,
                         })
-                        .await
                         .is_err()
                 {
                     break;
@@ -99,35 +98,35 @@ impl Session {
         });
         let connection = tokio::spawn(async move {
             let mut resolved = room;
-            let result = bilibili_live::listen(room, proxy, |event| {
-                let event = match event {
-                    LiveEvent::Status(text) => {
-                        state_tx.send_replace(Some(ConnectionState::Status(text)));
-                        None
-                    }
-                    LiveEvent::Connected(room) => {
-                        resolved = room;
-                        state_tx.send_replace(Some(ConnectionState::Connected(room)));
-                        ready.store(room, Ordering::Release);
-                        None
-                    }
-                    LiveEvent::Heartbeat => None,
-                    LiveEvent::Command(command) => {
-                        for activity in bilibili_live::activity::events(&command, resolved) {
-                            let event = match activity {
-                                bilibili_live::activity::Event::Message(message) => Event::Chat {
-                                    user: message.user, text: message.text, emotes: message.emotes, kind: message.kind, author: message.author,
-                                },
-                                bilibili_live::activity::Event::DeleteSuperChats(ids) => Event::DeleteSuperChats(ids),
-                            };
-                            let _ = tx.try_send(event);
+            let result = bilibili_live::listen(room, proxy, |event| match event {
+                LiveEvent::Status(text) => {
+                    state_tx.send_replace(Some(ConnectionState::Status(text)));
+                }
+                LiveEvent::Connected(room) => {
+                    resolved = room;
+                    state_tx.send_replace(Some(ConnectionState::Connected(room)));
+                    ready.store(room, Ordering::Release);
+                }
+                LiveEvent::Heartbeat => {}
+                LiveEvent::Command(command) => {
+                    crate::live::archive::record(resolved, &command);
+                    for activity in bilibili_live::activity::events(&command, resolved) {
+                        let event = match activity {
+                            bilibili_live::activity::Event::Message(message) => Event::Chat {
+                                user: message.user,
+                                text: message.text,
+                                emotes: message.emotes,
+                                kind: message.kind,
+                                author: message.author,
+                            },
+                            bilibili_live::activity::Event::DeleteSuperChats(ids) => {
+                                Event::DeleteSuperChats(ids)
+                            }
+                        };
+                        if tx.send(event).is_err() {
+                            log::debug!("Chat consumer closed");
                         }
-                        None
                     }
-                };
-                // Never let a busy room block heartbeats or allocate an unbounded backlog.
-                if let Some(event) = event {
-                    let _ = tx.try_send(event);
                 }
             })
             .await;
@@ -204,6 +203,10 @@ pub struct Rooms {
 }
 
 impl Rooms {
+    pub fn pending_events(&self) -> usize {
+        self.active.as_ref().map_or(0, |session| session.rx.len())
+    }
+
     pub fn has_session(&self) -> bool {
         self.active.is_some() || self.pending.is_some()
     }
@@ -252,7 +255,8 @@ impl Rooms {
             }
         }
         while let Some(event) = self.active.as_mut().and_then(Session::poll) {
-            if self.switching() && !matches!(event, Event::Chat { .. } | Event::DeleteSuperChats(_)) {
+            if self.switching() && !matches!(event, Event::Chat { .. } | Event::DeleteSuperChats(_))
+            {
                 continue;
             }
             return Some(event);
@@ -372,8 +376,8 @@ impl RequestGate {
 mod tests {
     use super::*;
 
-    fn session(room: u64) -> (Session, mpsc::Sender<Event>) {
-        let (tx, rx) = mpsc::channel(128);
+    fn session(room: u64) -> (Session, mpsc::UnboundedSender<Event>) {
+        let (tx, rx) = mpsc::unbounded_channel();
         let (requests, _) = mpsc::channel(1);
         let (state_tx, state) = watch::channel(None);
         (
@@ -414,16 +418,16 @@ mod tests {
             active: Some(old),
             pending: Some(new),
         };
-        old_tx.try_send(chat("old while connecting")).unwrap();
-        new_tx.try_send(chat("first new message")).unwrap();
-        new_tx.try_send(chat("second new message")).unwrap();
+        old_tx.send(chat("old while connecting")).unwrap();
+        new_tx.send(chat("first new message")).unwrap();
+        new_tx.send(chat("second new message")).unwrap();
         assert!(
             matches!(rooms.poll(), Some(Event::Chat { text, .. }) if text == "old while connecting")
         );
         // The pending room's messages have not been consumed.
         assert!(rooms.poll().is_none());
         assert_eq!(rooms.active_room(), Some(1));
-        old_tx.try_send(chat("stale old message")).unwrap();
+        old_tx.send(chat("stale old message")).unwrap();
         ready.store(2, Ordering::Release);
         assert!(matches!(rooms.poll(), Some(Event::Connected(2))));
         assert_eq!(rooms.active_room(), Some(2));
@@ -442,7 +446,7 @@ mod tests {
     async fn full_chat_buffer_cannot_drop_room_authentication() {
         let (new, tx) = session(2);
         for index in 0..128 {
-            tx.try_send(chat(&index.to_string())).unwrap();
+            tx.send(chat(&index.to_string())).unwrap();
         }
         new._state_sender
             .send_replace(Some(ConnectionState::Connected(2)));
@@ -459,6 +463,36 @@ mod tests {
             }
         }
         assert_eq!(count, 128);
+    }
+
+    #[tokio::test]
+    async fn paused_consumer_keeps_a_hundred_thousand_messages_in_order() {
+        let (new, tx) = session(2);
+        let start = Instant::now();
+        // Intentionally do not poll: model a window blocked by a dialog or
+        // resize while the socket is still receiving a large burst.
+        for index in 0..100_000 {
+            tx.send(chat(&index.to_string())).unwrap();
+        }
+        new.connected_room.store(2, Ordering::Release);
+        let mut rooms = Rooms {
+            active: None,
+            pending: Some(new),
+        };
+        assert!(matches!(rooms.poll(), Some(Event::Connected(2))));
+        assert_eq!(rooms.pending_events(), 100_000);
+        let queued = start.elapsed();
+        for index in 0..100_000 {
+            assert!(
+                matches!(rooms.poll(), Some(Event::Chat { text, .. }) if text == index.to_string())
+            );
+        }
+        assert!(rooms.poll().is_none());
+        assert_eq!(rooms.pending_events(), 0);
+        eprintln!(
+            "100,000 ordered events: enqueue {queued:?}, enqueue+drain {:?}",
+            start.elapsed()
+        );
     }
 
     #[tokio::test]
@@ -496,7 +530,7 @@ mod tests {
             active: Some(old),
             pending: Some(new),
         };
-        tx.try_send(Event::Requested {
+        tx.send(Event::Requested {
             epoch: 0,
             query: "old".into(),
             result: Err("old result".into()),
@@ -538,8 +572,6 @@ mod tests {
         assert!(gate.allows("晴天 周杰伦", now + Duration::from_secs(60)));
     }
 
-
-
     #[test]
     fn artist_match_beats_a_title_only_match() {
         let track = |artist: &str| Track {
@@ -576,36 +608,55 @@ mod tests {
         };
         for platform in ["qq", "QQ音乐", "platform:qq", "@qq"] {
             let query = song_request(&format!("点歌 晴天 周杰伦 {platform}")).unwrap();
-            let selected = choose_track(&query, vec![
-                track("netease", "晴天", "周杰伦"),
-                track("qqmusic", "晴天", "翻唱"),
-                track("qqmusic", "晴天", "周杰伦"),
-            ]).unwrap();
+            let selected = choose_track(
+                &query,
+                vec![
+                    track("netease", "晴天", "周杰伦"),
+                    track("qqmusic", "晴天", "翻唱"),
+                    track("qqmusic", "晴天", "周杰伦"),
+                ],
+            )
+            .unwrap();
             assert_eq!(selected.source, "qqmusic");
             assert_eq!(selected.artist, "周杰伦");
         }
-        let selected = choose_track("晴天 周杰伦 qq", vec![
-            track("netease", "晴天", "周杰伦"),
-            track("qqmusic", "晴天", "翻唱"),
-        ]).unwrap();
+        let selected = choose_track(
+            "晴天 周杰伦 qq",
+            vec![
+                track("netease", "晴天", "周杰伦"),
+                track("qqmusic", "晴天", "翻唱"),
+            ],
+        )
+        .unwrap();
         assert_eq!(selected.source, "qqmusic");
-        let selected = choose_track("晴天 qq", vec![
-            track("qqmusic", "晴天 qq", "翻唱"),
-            track("qqmusic", "晴天", "周杰伦"),
-        ]).unwrap();
+        let selected = choose_track(
+            "晴天 qq",
+            vec![
+                track("qqmusic", "晴天 qq", "翻唱"),
+                track("qqmusic", "晴天", "周杰伦"),
+            ],
+        )
+        .unwrap();
         assert_eq!(selected.name, "晴天");
-        let selected = choose_track("晴天 周杰伦 qq", vec![
-            track("kugou", "晴天", "翻唱"),
-            track("netease", "晴天", "周杰伦"),
-        ]).unwrap();
+        let selected = choose_track(
+            "晴天 周杰伦 qq",
+            vec![
+                track("kugou", "晴天", "翻唱"),
+                track("netease", "晴天", "周杰伦"),
+            ],
+        )
+        .unwrap();
         assert_eq!(selected.artist, "周杰伦");
-        let selected = choose_track("晴天 neteast", vec![
-            track("qqmusic", "晴天", "周杰伦"),
-            track("shitease", "晴天", "周杰伦"),
-        ]).unwrap();
+        let selected = choose_track(
+            "晴天 neteast",
+            vec![
+                track("qqmusic", "晴天", "周杰伦"),
+                track("shitease", "晴天", "周杰伦"),
+            ],
+        )
+        .unwrap();
         assert_eq!(selected.source, "shitease");
     }
-
 
     #[tokio::test]
     async fn disabling_requests_discards_already_completed_results() {
@@ -615,7 +666,6 @@ mod tests {
             query: "old".into(),
             result: Err("old result".into()),
         })
-        .await
         .unwrap();
         session.cancel_requests();
         assert!(session.poll().is_none());

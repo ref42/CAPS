@@ -1,7 +1,7 @@
 //! Anonymous Bilibili live connection shared by CAPS and the CLI example.
-pub mod danmu;
-pub mod activity;
 pub mod account;
+pub mod activity;
+pub mod danmu;
 use futures_util::{SinkExt, StreamExt};
 use md5::{Digest, Md5};
 use serde_json::{Value, json};
@@ -273,6 +273,10 @@ async fn session(
                                 }
                                 danmu::Event::Command(command) => {
                                     emit(LiveEvent::Command(command));
+                                }
+                                danmu::Event::Warning(reason) => {
+                                    log::warn!("chat room {room}: {reason}");
+                                    emit(LiveEvent::Status(format!("Room {room}: malformed packet ({reason}); valid messages preserved")));
                                 }
                             }
                         }

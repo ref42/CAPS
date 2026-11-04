@@ -58,12 +58,12 @@ pub struct Account {
 }
 
 pub fn restore() {
-    if let Some(credentials) = vault::load() {
-        if let Ok(mut session) = SESSION.write() {
+    if let Some(credentials) = vault::load()
+        && let Ok(mut session) = SESSION.write() {
             *session = Some(credentials);
         }
     }
-}
+
 
 pub fn connection_identity() -> (u64, String) {
     current().map(|c| (c.uid, cookie(&c))).unwrap_or_default()

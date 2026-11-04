@@ -17,6 +17,9 @@ const CHAT_ACCENT: u32 = 0x91d8c2;
 pub struct ChatIsland {
     parent: WeakEntity<Caps>,
     history: Vec<ChatMessage>,
+    presence: crate::live::presence::Presence,
+    backlog: usize,
+    archive_error: Option<String>,
     language: String,
     font: Font,
     message_size: u32,
@@ -54,7 +57,23 @@ impl ChatIsland {
             });
         let subscription = parent.upgrade().map(|entity| {
             cx.observe(&entity, |this, main, cx| {
-                if this.sync(main.read(cx)) {
+                let main = main.read(cx);
+                // The main capsule animates at 60 fps. Those notifications
+                // must not relayout up to 200 unchanged chat rows every frame.
+                let changed = this.history != main.chat_history
+                    || this.presence != main.chat_presence
+                    || this.backlog != main.chat_backlog
+                    || this.archive_error != main.chat_archive_error
+                    || this.language != main.settings.language
+                    || this.message_size != main.settings.chat_font_size
+                    || this.room != main.danmu_active_room
+                    || this.status != main.danmu_status
+                    || this.proxy != main.settings.danmu_proxy
+                    || this.font != capsule_font(main.latin_family(), main.han_fallbacks.clone());
+                if !changed {
+                    return;
+                }
+                if this.sync(main) {
                     this.cache.reset(cx);
                 }
                 cx.notify();
@@ -73,6 +92,7 @@ impl ChatIsland {
         // the physical button, even after the cursor leaves the moving window.
         cx.spawn_in(window, async move |view, cx| {
             let mut image_tick = Instant::now();
+            let mut presence_tick = Instant::now();
             loop {
                 tokio::time::sleep(Duration::from_millis(16)).await;
                 if cx
@@ -90,17 +110,16 @@ impl ChatIsland {
                                 {
                                     ImageSource::from(image).remove_asset(cx);
                                 }
-                                if matches!(this.account.send_state, SendState::Sent) {
-                                    if let Some(sent) = this.in_flight_draft.take()
-                                        && this.composer.read(cx).value().as_ref() == sent
-                                    {
-                                        this.composer.update(cx, |input, cx| {
-                                            input.set_value("", window, cx)
-                                        });
-                                    }
+                                if matches!(this.account.send_state, SendState::Sent)
+                                    && let Some(sent) = this.in_flight_draft.take()
+                                    && this.composer.read(cx).value().as_ref() == sent
+                                {
+                                    this.composer
+                                        .update(cx, |input, cx| input.set_value("", window, cx));
                                 }
                                 cx.notify();
                             }
+
                             if std::mem::take(&mut this.account.identity_changed) {
                                 let _ = this
                                     .parent
@@ -137,7 +156,15 @@ impl ChatIsland {
                                 }
                             }
                             if image_tick.elapsed() >= Duration::from_millis(100) {
+                                // Last-seen labels age even when the main capsule
+                                // is idle and the room has stopped sending messages.
+                                let refresh_presence =
+                                    presence_tick.elapsed() >= Duration::from_secs(1);
                                 image_tick = Instant::now();
+                                if refresh_presence {
+                                    presence_tick = Instant::now();
+                                    cx.notify();
+                                }
                                 if this.spotlight.as_ref().is_some_and(|(message, since)| {
                                     since.elapsed()
                                         > Duration::from_secs(
@@ -190,6 +217,9 @@ impl ChatIsland {
         let mut island = Self {
             parent,
             history: Vec::new(),
+            presence: crate::live::presence::Presence::default(),
+            backlog: 0,
+            archive_error: None,
             language: "en".into(),
             font: font("Segoe UI"),
             message_size: 14,
@@ -224,11 +254,10 @@ impl ChatIsland {
             self.spotlight = None;
         }
         if self.history != main.chat_history {
-            if let Some(message) = main
-                .chat_history
-                .iter()
-                .rev()
-                .find(|message| !matches!(message.kind, Kind::Danmu))
+            if let Some(message) =
+                main.chat_history.iter().rev().find(|message| {
+                    matches!(message.kind, Kind::SuperChat { .. } | Kind::Gift { .. })
+                })
                 && !self.history.contains(message)
                 && (matches!(message.kind, Kind::SuperChat { .. })
                     || !self
@@ -252,6 +281,9 @@ impl ChatIsland {
             self.spotlight = None;
         }
         self.language.clone_from(&main.settings.language);
+        self.presence = main.chat_presence.clone();
+        self.backlog = main.chat_backlog;
+        self.archive_error.clone_from(&main.chat_archive_error);
         self.font = capsule_font(main.latin_family(), main.han_fallbacks.clone());
         self.message_size = main.settings.chat_font_size;
         self.room = main.danmu_active_room;
@@ -265,10 +297,10 @@ impl ChatIsland {
     }
 
     fn adjust_font_size(&mut self, delta: i32, cx: &mut Context<Self>) {
-        self.message_size = self
-            .message_size
-            .saturating_add_signed(delta)
-            .clamp(crate::app::storage::CHAT_FONT_MIN, crate::app::storage::CHAT_FONT_MAX);
+        self.message_size = self.message_size.saturating_add_signed(delta).clamp(
+            crate::app::storage::CHAT_FONT_MIN,
+            crate::app::storage::CHAT_FONT_MAX,
+        );
         let size = self.message_size;
         let _ = self.parent.update(cx, |main, cx| {
             main.settings.chat_font_size = size;
@@ -292,9 +324,10 @@ impl ChatIsland {
                     .text_color(rgb(CHAT_TEXT))
                     .aria_label(self.tr("Decrease message font size", "缩小弹幕字号"))
                     .hover(|style| style.bg(rgba(0xffffff14)).text_color(rgb(CHAT_TEXT)))
-                    .when(self.message_size == crate::app::storage::CHAT_FONT_MIN, |d| {
-                        d.opacity(0.4)
-                    })
+                    .when(
+                        self.message_size == crate::app::storage::CHAT_FONT_MIN,
+                        |d| d.opacity(0.4),
+                    )
                     .on_click(cx.listener(|this, _, _, cx| this.adjust_font_size(-1, cx))),
             )
             .child(
@@ -313,9 +346,10 @@ impl ChatIsland {
                     .text_color(rgb(CHAT_TEXT))
                     .aria_label(self.tr("Increase message font size", "放大弹幕字号"))
                     .hover(|style| style.bg(rgba(0xffffff14)).text_color(rgb(CHAT_TEXT)))
-                    .when(self.message_size == crate::app::storage::CHAT_FONT_MAX, |d| {
-                        d.opacity(0.4)
-                    })
+                    .when(
+                        self.message_size == crate::app::storage::CHAT_FONT_MAX,
+                        |d| d.opacity(0.4),
+                    )
                     .on_click(cx.listener(|this, _, _, cx| this.adjust_font_size(1, cx))),
             )
             .into_any_element()
@@ -410,6 +444,24 @@ impl ChatIsland {
     }
 
     fn message(&self, index: usize, message: &ChatMessage) -> AnyElement {
+        if matches!(message.kind, Kind::Entry { .. }) {
+            return row()
+                .id(("chat-entry", index))
+                .w_full()
+                .flex_shrink_0()
+                .gap(px(6.))
+                .py(px(7.))
+                .flex_wrap()
+                .text_size(px((self.message_size as f32 * 0.85).max(12.)))
+                .text_color(rgb(CHAT_SECONDARY))
+                .child(
+                    div()
+                        .text_color(rgb(CHAT_ACCENT))
+                        .child(message.user.clone()),
+                )
+                .child(self.tr("entered the room", "进入直播间"))
+                .into_any_element();
+        }
         let sticker_only = matches!(message.body.as_slice(), [Segment::Emote(_)]);
         let scale = self.message_size as f32 / 14.;
         let is_gift = matches!(message.kind, Kind::Gift { .. });
@@ -474,7 +526,7 @@ impl ChatIsland {
             };
         }
         let badge = match &message.kind {
-            Kind::Danmu => None,
+            Kind::Danmu | Kind::Entry { .. } => None,
             Kind::SuperChat { yuan, .. } => Some((
                 yuan.map(|value| format!("SC · ¥{value}"))
                     .unwrap_or_else(|| "SC".into()),
@@ -502,6 +554,35 @@ impl ChatIsland {
                         .text_size(px(11.))
                         .text_color(rgb(CHAT_ACCENT))
                         .child(self.tr("You", "你")),
+                )
+            })
+            .when(message.author.uid != 0, |d| {
+                let age = self.presence.age(message.author.uid, Instant::now());
+                let label = match age {
+                    Some(age) if age.as_secs() < 60 => {
+                        self.tr("Recently seen", "刚刚活跃").to_owned()
+                    }
+                    Some(age) if age.as_secs() < 3600 => {
+                        if self.language == "zh" {
+                            format!("{} 分钟前活跃", age.as_secs() / 60)
+                        } else {
+                            format!("Seen {}m ago", age.as_secs() / 60)
+                        }
+                    }
+                    Some(age) => {
+                        if self.language == "zh" {
+                            format!("{} 小时前活跃", age.as_secs() / 3600)
+                        } else {
+                            format!("Seen {}h ago", age.as_secs() / 3600)
+                        }
+                    }
+                    None => self.tr("Presence unknown", "在场状态未知").to_owned(),
+                };
+                d.child(
+                    div()
+                        .text_size(px(11.))
+                        .text_color(rgb(CHAT_SECONDARY))
+                        .child(label),
                 )
             })
             .when_some(message.author.medal.as_ref(), |d, (name, level)| {
@@ -711,6 +792,35 @@ impl Render for ChatIsland {
             .gap(px(6.))
             .border_t_1()
             .border_color(rgba(0xffffff12))
+            .when_some(self.archive_error.as_ref(), |d, error| {
+                d.child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(0xffb4ab))
+                        .child(error.clone()),
+                )
+            })
+            .when(self.backlog > 0, |d| {
+                d.child(
+                    div()
+                        .text_size(px(11.))
+                        .text_color(rgb(CHAT_SECONDARY))
+                        .child(if self.language == "zh" {
+                            format!("正在追赶 {} 条已接收消息", self.backlog)
+                        } else {
+                            format!("Catching up: {} received events", self.backlog)
+                        }),
+                )
+            })
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(rgb(CHAT_SECONDARY))
+                    .child(self.tr(
+                        "Last seen is activity, not confirmed presence.",
+                        "活跃时间不代表仍在场；B 站不提供可靠的离场通知。",
+                    )),
+            )
             .child(
                 row().w_full().gap(px(6.)).child(
                     div()
@@ -732,6 +842,18 @@ impl Render for ChatIsland {
                     .justify_between()
                     .gap(px(8.))
                     .child(self.font_controls(cx))
+                    .child(
+                        button("chat-archive", self.tr("Archive", "记录文件"), false, 1.)
+                            .h(px(30.))
+                            .text_size(px(12.))
+                            .aria_label(self.tr(
+                                "Open complete received chat archive",
+                                "打开完整的已接收聊天记录",
+                            ))
+                            .on_click(|_, _, cx| {
+                                cx.reveal_path(&crate::live::archive::directory())
+                            }),
+                    )
                     .child(
                         button(
                             "chat-latest",

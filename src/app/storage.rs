@@ -248,22 +248,49 @@ mod tests {
 
     #[test]
     fn chat_size_and_font_are_saved_independently_of_the_capsule() {
-        let settings = AppSettings { chat_window_size: Some((640., 720.)), chat_font_size: 22,
-            capsule_size: 120, ..AppSettings::default() };
-        let restored: AppSettings = serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        let settings = AppSettings {
+            chat_window_size: Some((640., 720.)),
+            chat_font_size: 22,
+            capsule_size: 120,
+            ..AppSettings::default()
+        };
+        let restored: AppSettings =
+            serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
         let restored = restored.normalized();
         assert_eq!(restored.chat_window_size, Some((640., 720.)));
         assert_eq!(restored.chat_font_size, 22);
         assert_eq!(restored.capsule_size, 120);
-        assert_eq!(AppSettings { chat_font_size: 0, ..settings.clone() }.normalized().chat_font_size, CHAT_FONT_MIN);
-        assert_eq!(AppSettings { chat_font_size: 200, ..settings }.normalized().chat_font_size, CHAT_FONT_MAX);
+        assert_eq!(
+            AppSettings {
+                chat_font_size: 0,
+                ..settings.clone()
+            }
+            .normalized()
+            .chat_font_size,
+            CHAT_FONT_MIN
+        );
+        assert_eq!(
+            AppSettings {
+                chat_font_size: 200,
+                ..settings
+            }
+            .normalized()
+            .chat_font_size,
+            CHAT_FONT_MAX
+        );
     }
 
     #[test]
     fn remembers_live_room_mode_proxy_and_request_choice() {
-        let settings = AppSettings { danmu_enabled: true, danmu_room: "1747113738".into(),
-            danmu_proxy: "http://127.0.0.1:10808".into(), danmu_requests: false, ..AppSettings::default() };
-        let restored: AppSettings = serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        let settings = AppSettings {
+            danmu_enabled: true,
+            danmu_room: "1747113738".into(),
+            danmu_proxy: "http://127.0.0.1:10808".into(),
+            danmu_requests: false,
+            ..AppSettings::default()
+        };
+        let restored: AppSettings =
+            serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
         let restored = restored.normalized();
         assert!(restored.danmu_enabled);
         assert_eq!(restored.danmu_room, settings.danmu_room);

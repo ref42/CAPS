@@ -168,7 +168,11 @@ fn in_rounded_rect(
     {
         return true;
     }
-    let corner_x = if local_x < radius { radius } else { width - radius };
+    let corner_x = if local_x < radius {
+        radius
+    } else {
+        width - radius
+    };
     let corner_y = if local_y < radius {
         radius
     } else {
@@ -358,10 +362,7 @@ pub fn clamp_to_bounds(
     let (left, top, right, bottom) = bounds;
     let max_x = (right - size.0).max(left);
     let max_y = (bottom - size.1).max(top);
-    (
-        position.0.clamp(left, max_x),
-        position.1.clamp(top, max_y),
-    )
+    (position.0.clamp(left, max_x), position.1.clamp(top, max_y))
 }
 
 /// Keep a window of `size` on the monitor nearest `near`, in device pixels.
@@ -573,14 +574,22 @@ mod tests {
         let collapsed = geometry(0.);
         // The bleed margin around the capsule belongs to the desktop underneath.
         assert!(!contains_point(collapsed, 4., 4.));
-        assert!(!contains_point(collapsed, BLEED + EXPANDED_W / 2., BLEED - 2.));
+        assert!(!contains_point(
+            collapsed,
+            BLEED + EXPANDED_W / 2.,
+            BLEED - 2.
+        ));
         assert!(contains_point(
             collapsed,
             BLEED + EXPANDED_W / 2.,
             BLEED + COLLAPSED_H / 2.
         ));
         // Collapsed, the area below the capsule is not part of the capsule.
-        assert!(!contains_point(collapsed, BLEED + 40., BLEED + COLLAPSED_H + 20.));
+        assert!(!contains_point(
+            collapsed,
+            BLEED + 40.,
+            BLEED + COLLAPSED_H + 20.
+        ));
     }
 
     #[test]
@@ -589,7 +598,11 @@ mod tests {
         let middle = BLEED + EXPANDED_W / 2.;
         assert!(contains_point(open, middle, BLEED + header_height(1.) - 4.));
         assert!(contains_point(open, middle, panel_top(1.) + 4.));
-        assert!(contains_point(open, middle, panel_top(1.) + panel_height(1.) - 4.));
+        assert!(contains_point(
+            open,
+            middle,
+            panel_top(1.) + panel_height(1.) - 4.
+        ));
         // Outside the rounded ends, but inside the bounding box.
         assert!(!contains_point(open, BLEED + 1., BLEED + 1.));
     }

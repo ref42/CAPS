@@ -90,7 +90,7 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
     let mut stream: Option<crate::providers::streaming::Control> = None;
 
     loop {
-        match rx.recv_timeout(Duration::from_millis(100)) {
+        match rx.recv_timeout(Duration::from_millis(25)) {
             Ok(AudioCommand::Load {
                 generation,
                 audio,
@@ -145,7 +145,10 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                 player = Some(new_player);
                 {
                     let mut current = state.lock().unwrap_or_else(|e| e.into_inner());
-                    *current = AudioState { generation, ..AudioState::default() };
+                    *current = AudioState {
+                        generation,
+                        ..AudioState::default()
+                    };
                 }
                 update_state(
                     &state,
@@ -180,6 +183,18 @@ fn audio_thread(rx: std::sync::mpsc::Receiver<AudioCommand>, state: Arc<Mutex<Au
                 if let Some(player) = &player {
                     player.set_volume(volume);
                 }
+                // Slider events can arrive faster than recv_timeout. Publish
+                // the clock here too, or dragging volume freezes lyric timing
+                // until the input stream goes quiet.
+                update_state(
+                    &state,
+                    &player,
+                    duration_secs,
+                    &current_path,
+                    &current_title,
+                    &current_detail,
+                    stream.as_ref(),
+                );
             }
             Ok(AudioCommand::Seek(position)) => {
                 if let Some(player) = &player {

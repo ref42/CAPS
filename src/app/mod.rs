@@ -5,17 +5,17 @@ pub(crate) mod updater;
 use crate::{
     music::audio::{AudioCommand, AudioPlayer, AudioState},
     music::audio_spectrum,
-    ui::HoverLine,
     music::lyrics::{self, LyricLine},
     music::mode::{MusicMode, PlayOrder},
-    ui::motion::Motion,
     music::track::Track,
+    ui::HoverLine,
+    ui::motion::Motion,
 };
 use gpui_kit::{
     component::{
+        Root,
         input::{InputEvent, InputState},
         slider::{SliderEvent, SliderState},
-        Root,
     },
     *,
 };
@@ -95,9 +95,7 @@ struct Thumbnail {
 /// been off screen the longest. Picking a hash map's first key instead is
 /// arbitrary, and an evicted cover is re-requested by the next frame that needs
 /// it.
-fn least_recently_used<'a>(
-    entries: impl Iterator<Item = (&'a String, u64)>,
-) -> Option<&'a String> {
+fn least_recently_used<'a>(entries: impl Iterator<Item = (&'a String, u64)>) -> Option<&'a String> {
     entries.min_by_key(|(_, used)| *used).map(|(url, _)| url)
 }
 
@@ -204,9 +202,32 @@ fn han_family_chain(picked: Option<&str>) -> Vec<String> {
 /// for are matched too; the check only decides ordering, never availability.
 fn looks_han(family: &str) -> bool {
     const MARKERS: [&str; 26] = [
-        "yahei", "simsun", "simhei", "nsimsun", "dengxian", "fangsong", "kaiti", "songti", "song",
-        "hei", "ming", "kai", "fang", "misans", "noto sans sc", "noto sans tc", "noto sans cjk",
-        "source han", "pingfang", "harmonyos", "思源", "黑体", "宋体", "楷体", "雅黑", "等线",
+        "yahei",
+        "simsun",
+        "simhei",
+        "nsimsun",
+        "dengxian",
+        "fangsong",
+        "kaiti",
+        "songti",
+        "song",
+        "hei",
+        "ming",
+        "kai",
+        "fang",
+        "misans",
+        "noto sans sc",
+        "noto sans tc",
+        "noto sans cjk",
+        "source han",
+        "pingfang",
+        "harmonyos",
+        "思源",
+        "黑体",
+        "宋体",
+        "楷体",
+        "雅黑",
+        "等线",
     ];
     let lower = family.to_ascii_lowercase();
     MARKERS
@@ -333,6 +354,9 @@ pub struct Caps {
     danmu_session: crate::live::live_mode::Rooms,
     pub danmu_active_room: Option<u64>,
     pub chat_history: Vec<crate::live::live_emotes::ChatMessage>,
+    pub chat_presence: crate::live::presence::Presence,
+    pub chat_backlog: usize,
+    pub chat_archive_error: Option<String>,
     pub chat_window_open: bool,
     pub chat_deleted_sc: Vec<String>,
     pub opacity_slider: Entity<SliderState>,
@@ -459,7 +483,11 @@ impl Caps {
     }
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Closing the main capsule ends the app, including auxiliary chat windows.
-        cx.on_release(|this, cx| { this.save(); cx.quit(); }).detach();
+        cx.on_release(|this, cx| {
+            this.save();
+            cx.quit();
+        })
+        .detach();
         let saved = storage::load_state();
         let language = crate::ui::locale::Language::from_code(&saved.settings.language);
         let query =
@@ -467,10 +495,16 @@ impl Caps {
         let count = cx.new(|cx| {
             InputState::new(window, cx).default_value(saved.settings.random_count.to_string())
         });
-        let danmu_room = cx.new(|cx| InputState::new(window, cx)
-            .placeholder("1747113738").default_value(saved.settings.danmu_room.clone()));
-        let danmu_proxy = cx.new(|cx| InputState::new(window, cx)
-            .placeholder("http://127.0.0.1:10808").default_value(saved.settings.danmu_proxy.clone()));
+        let danmu_room = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("1747113738")
+                .default_value(saved.settings.danmu_room.clone())
+        });
+        let danmu_proxy = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("http://127.0.0.1:10808")
+                .default_value(saved.settings.danmu_proxy.clone())
+        });
         let opacity_slider = cx.new(|_| {
             SliderState::new()
                 // Down to nothing: the capsule's text is plain white whatever the
@@ -533,8 +567,10 @@ impl Caps {
         }
         // The font search filters as you type, and Enter takes the first match so
         // the list can be driven from the keyboard alone.
-        subscriptions.push(cx.subscribe_in(&font_search, window, |this, _, event, _, cx| {
-            match event {
+        subscriptions.push(cx.subscribe_in(
+            &font_search,
+            window,
+            |this, _, event, _, cx| match event {
                 InputEvent::Change => {
                     this.refilter_fonts(cx);
                 }
@@ -547,8 +583,8 @@ impl Caps {
                     }
                 }
                 _ => {}
-            }
-        }));
+            },
+        ));
         for (kind, slider) in [
             (0, &opacity_slider),
             (1, &volume_slider),
@@ -599,9 +635,10 @@ impl Caps {
                 // A shared entity can be read by another window (chat). Resolve
                 // the timer through its captured window, never the entity's
                 // most recently associated window.
-                match cx.update(|window, app| {
-                    view.update(app, |this, cx| this.tick(window, cx))
-                }).and_then(|result| result) {
+                match cx
+                    .update(|window, app| view.update(app, |this, cx| this.tick(window, cx)))
+                    .and_then(|result| result)
+                {
                     Ok(()) => misses = 0,
                     // The app is briefly borrowed by a frame on the main thread.
                     // Give up only once the window is genuinely gone.
@@ -628,8 +665,16 @@ impl Caps {
         // The picker lists what this machine can actually draw, so a family the
         // user chose on another machine cannot be offered here as a dead entry.
         let installed = cx.text_system().all_font_names();
-        let latin_fonts = font_choices(&installed, FontSlot::Latin, saved.settings.latin_font.as_deref());
-        let han_fonts = font_choices(&installed, FontSlot::Han, saved.settings.han_font.as_deref());
+        let latin_fonts = font_choices(
+            &installed,
+            FontSlot::Latin,
+            saved.settings.latin_font.as_deref(),
+        );
+        let han_fonts = font_choices(
+            &installed,
+            FontSlot::Han,
+            saved.settings.han_font.as_deref(),
+        );
         // Read before `saved.settings` is moved into the struct below.
         let play_order = PlayOrder::from_key(&saved.settings.play_order);
         Self {
@@ -677,6 +722,9 @@ impl Caps {
             danmu_session: crate::live::live_mode::Rooms::default(),
             danmu_active_room: None,
             chat_history: Vec::new(),
+            chat_presence: crate::live::presence::Presence::default(),
+            chat_backlog: 0,
+            chat_archive_error: None,
             chat_window_open: false,
             chat_deleted_sc: Vec::new(),
             opacity_slider,
@@ -685,7 +733,11 @@ impl Caps {
             seek_slider,
             expanded: false,
             expand_motion: Motion::with_durations(0., forward, reverse),
-            width_motion: Motion::with_durations(crate::ui::windowing::COLLAPSED_W, forward, reverse),
+            width_motion: Motion::with_durations(
+                crate::ui::windowing::COLLAPSED_W,
+                forward,
+                reverse,
+            ),
             last_width: crate::ui::windowing::COLLAPSED_W,
             hover: false,
             input_focused: false,
@@ -749,7 +801,11 @@ impl Caps {
     /// spelled out in full rather than assembled from fragments, so the two
     /// languages are free to order their words differently.
     pub fn say(&self, en: String, zh: String) -> String {
-        if self.settings.language == "zh" { zh } else { en }
+        if self.settings.language == "zh" {
+            zh
+        } else {
+            en
+        }
     }
 
     /// The family Latin runs are drawn in: the user's pick, or the platform's
@@ -884,7 +940,9 @@ impl Caps {
         let cap = window
             .display(cx)
             .map(|display| {
-                f32::from(display.bounds().size.width) / scale - 2. * crate::ui::windowing::BLEED - 24.
+                f32::from(display.bounds().size.width) / scale
+                    - 2. * crate::ui::windowing::BLEED
+                    - 24.
             })
             .unwrap_or(crate::ui::windowing::MAX_EXPANDED_W)
             .clamp(
@@ -987,7 +1045,9 @@ impl Caps {
             self.width_motion.value(now),
         );
         let target = match crate::ui::windowing::window_size(window) {
-            Some(size) => crate::ui::windowing::clamp_painted(window, geometry, target, size, cursor),
+            Some(size) => {
+                crate::ui::windowing::clamp_painted(window, geometry, target, size, cursor)
+            }
             None => target,
         };
         if (target.0 - drag.requested.0).abs() < 1. && (target.1 - drag.requested.1).abs() < 1. {
@@ -1012,7 +1072,8 @@ impl Caps {
         }
         if self.audio.is_playing && !self.reduce_motion {
             self.cover_turn = (self.cover_turn
-                + now.duration_since(self.last_frame).as_secs_f32() / crate::music::artwork::SPIN_SECONDS)
+                + now.duration_since(self.last_frame).as_secs_f32()
+                    / crate::music::artwork::SPIN_SECONDS)
                 % 1.;
             dirty = true;
         }
@@ -1104,8 +1165,12 @@ impl Caps {
         }
         if crate::ui::motion::should_collapse(
             self.hover,
-            self.drag.is_some() || self.slider_dragging
-                || self.export_selection.as_ref().is_some_and(|selection| selection.dragging()),
+            self.drag.is_some()
+                || self.slider_dragging
+                || self
+                    .export_selection
+                    .as_ref()
+                    .is_some_and(|selection| selection.dragging()),
             self.dialog_open,
             self.leave_at,
             now,
@@ -1129,19 +1194,36 @@ impl Caps {
         dirty |= self.expand_motion.animating(now) || self.width_motion.animating(now);
         self.audio = self.player.get_state();
         let audio_current = self.audio.generation == self.play_generation;
-        if let Some(error) = self.audio.error.clone() && audio_current && self.current_track.is_some() && !self.loading {
+        if let Some(error) = self.audio.error.clone()
+            && audio_current
+            && self.current_track.is_some()
+            && !self.loading
+        {
             self.playback_failed(error);
             dirty = true;
-        } else if audio_current && self.current_track.is_some() && !self.loading && self.audio.buffering {
+        } else if audio_current
+            && self.current_track.is_some()
+            && !self.loading
+            && self.audio.buffering
+        {
             self.status = self.tr("Buffering audio…", "正在缓冲音频…").into();
             dirty = true;
-        } else if audio_current && !self.audio.buffering && (self.status == "Buffering audio…" || self.status == "正在缓冲音频…") {
+        } else if audio_current
+            && !self.audio.buffering
+            && (self.status == "Buffering audio…" || self.status == "正在缓冲音频…")
+        {
             if let Some(track) = &self.current_track {
-                self.status = self.say(format!("Playing {}.", track.name), format!("正在播放 {}。", track.name));
+                self.status = self.say(
+                    format!("Playing {}.", track.name),
+                    format!("正在播放 {}。", track.name),
+                );
             }
             dirty = true;
         }
-        if audio_current && self.audio.is_finished && !self.loading && self.current_track.is_some()
+        if audio_current
+            && self.audio.is_finished
+            && !self.loading
+            && self.current_track.is_some()
             && !self.advance_chat_requests()
         {
             match self.play_order {
@@ -1172,7 +1254,14 @@ impl Caps {
             *value += (goal - *value) * 0.22;
         }
         let text = {
-            lyrics::current_lyric_line(&self.lyrics, self.audio.position).unwrap_or_else(|| {
+            // A freshly fetched lyric must not use the previous track's clock
+            // while the new source is still loading.
+            let position = if audio_current {
+                self.audio.position
+            } else {
+                0.
+            };
+            lyrics::current_lyric_line(&self.lyrics, position).unwrap_or_else(|| {
                 self.current_track
                     .as_ref()
                     .map(|t| t.name.to_owned())
@@ -1185,7 +1274,9 @@ impl Caps {
             self.outgoing_segments = std::mem::replace(&mut self.lyric_segments, segments);
             self.lyric_changed = now;
         }
-        dirty |= self.emote_cache.update(&self.lyric_segments, &self.settings.danmu_proxy, cx);
+        dirty |= self
+            .emote_cache
+            .update(&self.lyric_segments, &self.settings.danmu_proxy, cx);
         if self.lyric_changed.elapsed() < Duration::from_millis(500) {
             dirty = true;
         }
@@ -1227,7 +1318,12 @@ impl Caps {
 
     /// The painted capsules in the window's own device pixels. Hit testing reads
     /// exactly these numbers, so click-through always matches the last paint.
-    fn painted_geometry(&self, window: &Window, expansion: f32, width: f32) -> crate::ui::windowing::Geometry {
+    fn painted_geometry(
+        &self,
+        window: &Window,
+        expansion: f32,
+        width: f32,
+    ) -> crate::ui::windowing::Geometry {
         let unit = self.settings.capsule_size as f32 / 100. * window.scale_factor();
         crate::ui::windowing::Geometry {
             unit,
@@ -1313,13 +1409,14 @@ impl Caps {
             }
         }
         if (shift.0 != 0. || shift.1 != 0.)
-            && let Some(origin) = crate::ui::windowing::window_origin(window) {
-                // The resting spot moves with the window, or the tick would put
-                // the capsule back where it was before the width changed.
-                if let Some(rest) = self.rest_origin {
-                    self.rest_origin = Some((rest.0 + shift.0, rest.1 + shift.1));
-                }
-                crate::ui::windowing::move_window(window, cx, (origin.0 + shift.0, origin.1 + shift.1));
+            && let Some(origin) = crate::ui::windowing::window_origin(window)
+        {
+            // The resting spot moves with the window, or the tick would put
+            // the capsule back where it was before the width changed.
+            if let Some(rest) = self.rest_origin {
+                self.rest_origin = Some((rest.0 + shift.0, rest.1 + shift.1));
+            }
+            crate::ui::windowing::move_window(window, cx, (origin.0 + shift.0, origin.1 + shift.1));
         }
         changed
     }
@@ -1376,10 +1473,10 @@ impl Caps {
                         Ok(count) => {
                             self.export_selection = None;
                             self.say(
-                            format!("Exported {count} tracks to JSON."),
-                            format!("已导出 {count} 首歌曲到 JSON。"),
+                                format!("Exported {count} tracks to JSON."),
+                                format!("已导出 {count} 首歌曲到 JSON。"),
                             )
-                        },
+                        }
                         Err(err) => err,
                     };
                 }
@@ -1404,8 +1501,8 @@ impl Caps {
                             duration: track.duration.map(|d| d as f64),
                         });
                         let name = track.name.to_owned();
-                        self.status = self
-                            .say(format!("Playing {name}."), format!("正在播放 {name}。"));
+                        self.status =
+                            self.say(format!("Playing {name}."), format!("正在播放 {name}。"));
                         self.current_track = Some(track);
                     }
                     Err(err) => {
@@ -1452,10 +1549,8 @@ impl Caps {
             Message::UpdateProgress(bytes, total) => {
                 self.update_progress = total.filter(|t| *t > 0).map(|t| bytes as f32 / t as f32);
                 let size = crate::ui::formatting::format_bytes(bytes);
-                self.update_status = self.say(
-                    format!("Downloading {size}"),
-                    format!("正在下载 {size}"),
-                );
+                self.update_status =
+                    self.say(format!("Downloading {size}"), format!("正在下载 {size}"));
             }
             Message::Installed(result) => {
                 self.update_busy = false;
@@ -1476,6 +1571,7 @@ impl Caps {
             self.danmu_session = crate::live::live_mode::Rooms::default();
             self.chat_requests.cancel_waiting();
             self.danmu_active_room = None;
+            self.chat_presence.clear();
             self.emote_cache.reset(cx);
             self.danmu_status.clear();
             self.danmu_request_status.clear();
@@ -1485,8 +1581,11 @@ impl Caps {
 
     pub fn refresh_chat_identity(&mut self, cx: &mut Context<Self>) {
         self.danmu_session = crate::live::live_mode::Rooms::default();
+        self.chat_presence.clear();
         self.chat_requests.cancel_waiting();
-        if self.settings.danmu_enabled { self.connect_danmu(cx); }
+        if self.settings.danmu_enabled {
+            self.connect_danmu(cx);
+        }
         cx.notify();
     }
 
@@ -1498,7 +1597,9 @@ impl Caps {
         let parent = cx.entity().downgrade();
         let saved_size = self.settings.chat_window_size;
         cx.defer(move |app| {
-            if parent.upgrade().is_none() { return; }
+            if parent.upgrade().is_none() {
+                return;
+            }
             let failure_parent = parent.clone();
             let mut options = crate::ui::windowing::options(app);
             // The Windows backend maps PopUp to WS_EX_TOPMOST. Floating does
@@ -1511,7 +1612,8 @@ impl Caps {
             options.window_min_size = Some(size(px(minimum.0), px(minimum.1)));
             options.app_owns_titlebar_drag = true;
             let display = app.primary_display().map(|display| display.bounds());
-            let available = display.map(|b| (b.size.width.as_f32() - 56., b.size.height.as_f32() - 116.))
+            let available = display
+                .map(|b| (b.size.width.as_f32() - 56., b.size.height.as_f32() - 116.))
                 .unwrap_or((1280., 900.));
             let restored = crate::ui::windowing::chat_resize::restored_size(saved_size, available);
             let chat_size = size(px(restored.0), px(restored.1));
@@ -1550,22 +1652,40 @@ impl Caps {
         let proxy = self.danmu_proxy.read(cx).value().trim().to_string();
         let room = room_text.parse::<u64>().ok().filter(|id| *id > 0);
         let error = if room.is_none() {
-            Some(self.tr("Enter a valid room ID.", "请输入有效的直播间 ID。").to_string())
+            Some(
+                self.tr("Enter a valid room ID.", "请输入有效的直播间 ID。")
+                    .to_string(),
+            )
         } else if !proxy.is_empty() {
-            crate::live::bilibili_live::validate_proxy(&proxy).err().map(|_| self.tr(
-                "Use an HTTP proxy URL without credentials.", "代理需为不含账号密码的 HTTP 地址。"
-            ).to_string())
-        } else { None };
+            crate::live::bilibili_live::validate_proxy(&proxy)
+                .err()
+                .map(|_| {
+                    self.tr(
+                        "Use an HTTP proxy URL without credentials.",
+                        "代理需为不含账号密码的 HTTP 地址。",
+                    )
+                    .to_string()
+                })
+        } else {
+            None
+        };
         if let Some(error) = error {
             self.danmu_status = error;
-            if !self.danmu_session.has_session() { self.settings.danmu_enabled = false; }
+            if !self.danmu_session.has_session() {
+                self.settings.danmu_enabled = false;
+            }
             return;
         }
-        if !self.danmu_session.connect(room.unwrap(), (!proxy.is_empty()).then_some(proxy.clone())) {
+        if !self
+            .danmu_session
+            .connect(room.unwrap(), (!proxy.is_empty()).then_some(proxy.clone()))
+        {
             return;
         }
         self.chat_requests.cancel_waiting();
-        if self.settings.danmu_proxy != proxy { self.emote_cache.reset(cx); }
+        if self.settings.danmu_proxy != proxy {
+            self.emote_cache.reset(cx);
+        }
         self.danmu_request_status.clear();
         self.settings.danmu_room = room_text;
         self.settings.danmu_proxy = proxy.clone();
@@ -1574,7 +1694,10 @@ impl Caps {
             self.tr("Connecting…", "正在连接…").into()
         } else {
             let room = self.danmu_session.active_room().unwrap_or(room.unwrap());
-            self.say(format!("Connected to {room}"), format!("已连接直播间 {room}"))
+            self.say(
+                format!("Connected to {room}"),
+                format!("已连接直播间 {room}"),
+            )
         };
         self.persist();
     }
@@ -1590,16 +1713,24 @@ impl Caps {
     fn poll_danmu(&mut self, cx: &mut Context<Self>) -> bool {
         use crate::live::live_mode::Event;
         let mut changed = false;
-        // Bound per-frame work even when a popular room is busy.
-        for _ in 0..64 {
-            let Some(event) = self.danmu_session.poll() else { break; };
+        // Drain by elapsed time rather than 64 messages per tick. Bursts catch
+        // up as fast as possible while reserving time for audio/lyric rendering.
+        let deadline = Instant::now() + Duration::from_millis(2);
+        while Instant::now() < deadline {
+            let Some(event) = self.danmu_session.poll() else {
+                break;
+            };
             changed = true;
             match event {
-                Event::Status(text) => self.danmu_status = text,
+                Event::Status(text) => {
+                    self.chat_presence.clear();
+                    self.danmu_status = text;
+                }
                 Event::Connected(room) => {
                     if self.danmu_active_room != Some(room) {
                         self.danmu_active_room = Some(room);
                         self.chat_history.clear();
+                        self.chat_presence.clear();
                         self.chat_deleted_sc.clear();
                         self.emote_cache.reset(cx);
                         self.lyric.clear();
@@ -1607,27 +1738,48 @@ impl Caps {
                         self.lyric_segments.clear();
                         self.outgoing_segments.clear();
                     }
-                    self.danmu_status = self.say(format!("Connected to {room}"), format!("已连接直播间 {room}"));
+                    self.danmu_status = self.say(
+                        format!("Connected to {room}"),
+                        format!("已连接直播间 {room}"),
+                    );
                 }
                 Event::DeleteSuperChats(ids) => {
                     crate::live::live_emotes::delete_super_chats(&mut self.chat_history, &ids);
                     self.chat_deleted_sc.extend(ids);
-                    if self.chat_deleted_sc.len() > 200 { self.chat_deleted_sc.drain(..self.chat_deleted_sc.len() - 200); }
-                },
-                Event::Chat { user, text, emotes, kind, author } => {
+                    if self.chat_deleted_sc.len() > 200 {
+                        self.chat_deleted_sc
+                            .drain(..self.chat_deleted_sc.len() - 200);
+                    }
+                }
+                Event::Chat {
+                    user,
+                    text,
+                    emotes,
+                    kind,
+                    author,
+                } => {
                     let allows_request = kind.allows_song_request();
-                    let mut message = crate::live::live_emotes::ChatMessage::new(&user, &text, &emotes);
+                    self.chat_presence.observe(author.uid, Instant::now());
+                    let mut message =
+                        crate::live::live_emotes::ChatMessage::new(&user, &text, &emotes);
                     message.kind = kind;
                     message.author = author;
-                    let fresh = crate::live::live_emotes::push_history(&mut self.chat_history, message);
+                    let fresh =
+                        crate::live::live_emotes::push_history(&mut self.chat_history, message);
                     if self.settings.danmu_requests
-                        && fresh && allows_request
+                        && fresh
+                        && allows_request
                         && !self.danmu_session.switching()
                         && let Some(query) = crate::live::live_mode::song_request(&text)
+                    {
+                        self.danmu_request_status = match self.danmu_session.request(query.clone())
                         {
-                        self.danmu_request_status = match self.danmu_session.request(query.clone()) {
-                            Ok(()) => self.say(format!("Requested: {query}"), format!("正在点歌：{query}")),
-                            Err(err) => self.say(err.into(), "请求过快、重复或等待队列已满，请稍后再试。".into()),
+                            Ok(()) => self
+                                .say(format!("Requested: {query}"), format!("正在点歌：{query}")),
+                            Err(err) => self.say(
+                                err.into(),
+                                "请求过快、重复或等待队列已满，请稍后再试。".into(),
+                            ),
                         };
                     }
                 }
@@ -1636,13 +1788,16 @@ impl Caps {
                         Ok(track) => {
                             let name = track.name.clone();
                             let (index, added, start) = self.chat_requests.accept(
-                                &mut self.queue, track, self.current_track.as_ref(),
+                                &mut self.queue,
+                                track,
+                                self.current_track.as_ref(),
                             );
                             if added {
                                 // Moving an existing request to the tail shifts other rows.
                                 if let Some(current) = &self.current_track {
-                                    self.current_index = self.queue.iter().position(|track|
-                                        track.source == current.source && track.id == current.id);
+                                    self.current_index = self.queue.iter().position(|track| {
+                                        track.source == current.source && track.id == current.id
+                                    });
                                 }
                                 self.shuffle_history.clear();
                                 self.queue_scroll.scroll_to_bottom();
@@ -1651,20 +1806,37 @@ impl Caps {
                             if start {
                                 let name = self.queue[index].name.clone();
                                 self.play_inner(index);
-                                self.say(format!("Loading requested song: {name}…"), format!("正在加载点播歌曲：{name}…"))
+                                self.say(
+                                    format!("Loading requested song: {name}…"),
+                                    format!("正在加载点播歌曲：{name}…"),
+                                )
                             } else if added {
-                                self.say(format!("Chat request queued: {name}"), format!("已加入点歌队列：{name}"))
+                                self.say(
+                                    format!("Chat request queued: {name}"),
+                                    format!("已加入点歌队列：{name}"),
+                                )
                             } else {
-                                self.say(format!("Chat request active or waiting: {name}"), format!("点歌播放中或已排队：{name}"))
+                                self.say(
+                                    format!("Chat request active or waiting: {name}"),
+                                    format!("点歌播放中或已排队：{name}"),
+                                )
                             }
                         }
-                        Err(err) => self.say(format!("{query}: {err}"), format!("点歌失败（{query}）：{err}")),
+                        Err(err) => self.say(
+                            format!("{query}: {err}"),
+                            format!("点歌失败（{query}）：{err}"),
+                        ),
                     };
                     self.status = self.danmu_request_status.clone();
                 }
                 _ => {}
             }
         }
+        let backlog = self.danmu_session.pending_events();
+        let archive_error = crate::live::archive::error();
+        changed |= self.chat_backlog != backlog || self.chat_archive_error != archive_error;
+        self.chat_backlog = backlog;
+        self.chat_archive_error = archive_error;
         changed
     }
 
@@ -1703,15 +1875,19 @@ impl Caps {
         let previous = actions::move_or_append_track(&mut self.queue, track);
         if let Some(moved) = previous {
             let last = self.queue.len() - 1;
-            self.current_index = self.current_index.map(|index|
-                actions::index_after_move_to_end(index, moved, last));
+            self.current_index = self
+                .current_index
+                .map(|index| actions::index_after_move_to_end(index, moved, last));
             for index in &mut self.shuffle_history {
                 *index = actions::index_after_move_to_end(*index, moved, last);
             }
         }
         self.queue_scroll.scroll_to_bottom();
         self.status = if previous.is_some() {
-            self.say(format!("Moved {name} to the end of the queue."), format!("已将 {name} 移到队列末尾。"))
+            self.say(
+                format!("Moved {name} to the end of the queue."),
+                format!("已将 {name} 移到队列末尾。"),
+            )
         } else {
             self.say(format!("Added {name}"), format!("已添加 {name}"))
         };
@@ -1720,37 +1896,62 @@ impl Caps {
 
     pub fn locate_current_song(&mut self) {
         if let Some(current) = &self.current_track
-            && let Some(index) = self.queue.iter().position(|track|
-                track.source == current.source && track.id == current.id)
+            && let Some(index) = self
+                .queue
+                .iter()
+                .position(|track| track.source == current.source && track.id == current.id)
         {
-            self.queue_scroll.scroll_to_item_strict(index, ScrollStrategy::Center);
+            self.queue_scroll
+                .scroll_to_item_strict(index, ScrollStrategy::Center);
         }
     }
 
     pub fn export_queue(&mut self) {
-        if self.dialog_open { return; }
+        if self.dialog_open {
+            return;
+        }
         if self.queue.is_empty() {
-            self.status = self.tr("Add songs before exporting.", "请先添加要导出的歌曲。").into();
+            self.status = self
+                .tr("Add songs before exporting.", "请先添加要导出的歌曲。")
+                .into();
             return;
         }
         self.export_selection = Some(crate::music::queue_file::ExportSelection::new(&self.queue));
         self.export_scroll = UniformListScrollHandle::new();
-        self.status = self.tr("Drag across songs or Shift-click to select a range.", "按住拖动或 Shift+点击可选择连续歌曲。").into();
+        self.status = self
+            .tr(
+                "Drag across songs or Shift-click to select a range.",
+                "按住拖动或 Shift+点击可选择连续歌曲。",
+            )
+            .into();
     }
 
     fn update_export_drag(&mut self, window: &Window) -> bool {
-        let Some(selection) = &mut self.export_selection else { return false; };
-        if !selection.dragging() { return false; }
-        if self.dialog_open || self.settings.active_tab != "queue" || !crate::ui::windowing::left_button_down() {
+        let Some(selection) = &mut self.export_selection else {
+            return false;
+        };
+        if !selection.dragging() {
+            return false;
+        }
+        if self.dialog_open
+            || self.settings.active_tab != "queue"
+            || !crate::ui::windowing::left_button_down()
+        {
             selection.end_range();
             return true;
         }
         let state = self.export_scroll.0.borrow();
         let bounds = state.base_handle.bounds();
-        let Some(item) = state.last_item_size else { return false; };
-        if selection.tracks.is_empty() { return false; }
+        let Some(item) = state.last_item_size else {
+            return false;
+        };
+        if selection.tracks.is_empty() {
+            return false;
+        }
         let height = item.contents.height.as_f32() / selection.tracks.len() as f32;
-        if height <= 0. { return false; }
+        if height <= 0. {
+            return false;
+        }
         let pointer = window.mouse_position();
         let top = bounds.origin.y.as_f32();
         let bottom = bounds.bottom_right().y.as_f32();
@@ -1758,11 +1959,16 @@ impl Caps {
         // Scroll while held near either edge, including when the pointer stops.
         let edge = height * 0.35;
         let y = pointer.y.as_f32();
-        if y < top + edge { offset.y += px(4.); }
-        else if y > bottom - edge { offset.y -= px(4.); }
+        if y < top + edge {
+            offset.y += px(4.);
+        } else if y > bottom - edge {
+            offset.y -= px(4.);
+        }
         state.base_handle.set_offset(offset);
         let y = y.clamp(top, (bottom - 1.).max(top));
-        let index = ((y - top - state.base_handle.offset().y.as_f32()) / height).floor().max(0.) as usize;
+        let index = ((y - top - state.base_handle.offset().y.as_f32()) / height)
+            .floor()
+            .max(0.) as usize;
         selection.extend_range(index.min(selection.tracks.len() - 1));
         true
     }
@@ -1771,10 +1977,14 @@ impl Caps {
         if self.dialog_open {
             return;
         }
-        let Some(selection) = &self.export_selection else { return; };
+        let Some(selection) = &self.export_selection else {
+            return;
+        };
         let tracks = selection.chosen();
         if tracks.is_empty() {
-            self.status = self.tr("Select at least one song.", "请至少选择一首歌曲。").into();
+            self.status = self
+                .tr("Select at least one song.", "请至少选择一首歌曲。")
+                .into();
             return;
         }
         self.dialog_open = true;
@@ -1835,9 +2045,11 @@ impl Caps {
         let tx = self.tx.to_owned();
         self.status = self.tr("Loading local audio…", "正在加载本地音乐…").into();
         tokio::task::spawn_blocking(move || {
-            if let Err(err) = crate::music::local_music::load_all_batched(&folder, 80, |batch, _| {
-                tx.send(Message::Queue(Ok(batch), false)).is_ok()
-            }) {
+            if let Err(err) =
+                crate::music::local_music::load_all_batched(&folder, 80, |batch, _| {
+                    tx.send(Message::Queue(Ok(batch), false)).is_ok()
+                })
+            {
                 let _ = tx.send(Message::Queue(Err(err), false));
             }
         });
@@ -1876,13 +2088,16 @@ impl Caps {
             return;
         };
         self.play_generation += 1;
-        if let Some(job) = self.playback_job.take() { job.abort(); }
+        if let Some(job) = self.playback_job.take() {
+            job.abort();
+        }
         let id = self.play_generation;
         self.current_index = Some(index);
         self.current_track = Some(track.to_owned());
         // Keep the playing row in view whenever playback changes, including
         // automatic advancement through the queue.
-        self.queue_scroll.scroll_to_item_strict(index, ScrollStrategy::Center);
+        self.queue_scroll
+            .scroll_to_item_strict(index, ScrollStrategy::Center);
         // Not `Normal` outright: Quiet is a mode, and it has to outlive the
         // track that was playing when it was chosen.
         self.mode = self.mode.after_track_change();
@@ -1942,7 +2157,8 @@ impl Caps {
             if spin
                 && let Some(cover) = cover
                 && let Ok(Some(spin)) =
-                    tokio::task::spawn_blocking(move || crate::music::artwork::spin_frames(&cover)).await
+                    tokio::task::spawn_blocking(move || crate::music::artwork::spin_frames(&cover))
+                        .await
             {
                 let _ = tx.send(Message::Spin(id, spin));
             }
@@ -1950,7 +2166,9 @@ impl Caps {
     }
     pub fn stop(&mut self) {
         self.chat_requests = crate::music::request_queue::Requests::default();
-        if let Some(job) = self.playback_job.take() { job.abort(); }
+        if let Some(job) = self.playback_job.take() {
+            job.abort();
+        }
         if let Some(old) = self.spinning_cover.take() {
             self.retired_covers.push(old);
         }
@@ -2038,7 +2256,9 @@ impl Caps {
         self.queue.remove(index);
         match self.current_index {
             Some(i) if i == index => {
-                if !self.advance_chat_requests() { self.stop(); }
+                if !self.advance_chat_requests() {
+                    self.stop();
+                }
             }
             Some(i) if i > index => self.current_index = Some(i - 1),
             _ => {}
@@ -2131,7 +2351,9 @@ impl Caps {
 
 impl Drop for Caps {
     fn drop(&mut self) {
-        if let Some(job) = self.playback_job.take() { job.abort(); }
+        if let Some(job) = self.playback_job.take() {
+            job.abort();
+        }
         self.save();
         self.player.send(AudioCommand::Stop);
     }
@@ -2270,4 +2492,3 @@ mod tests {
         assert_eq!(choices.first().map(String::as_str), Some("Removed Face"));
     }
 }
-

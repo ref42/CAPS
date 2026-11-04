@@ -10,6 +10,9 @@ use serde_json::Value;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Kind {
     Danmu,
+    Entry {
+        id: Option<String>,
+    },
     SuperChat {
         id: Option<String>,
         yuan: Option<u64>,
@@ -25,12 +28,14 @@ impl Kind {
     pub fn id(&self) -> Option<&str> {
         match self {
             Self::Danmu => None,
-            Self::SuperChat { id, .. } | Self::Gift { id, .. } => id.as_deref(),
+            Self::Entry { id } | Self::SuperChat { id, .. } | Self::Gift { id, .. } => {
+                id.as_deref()
+            }
         }
     }
 
     pub fn allows_song_request(&self) -> bool {
-        !matches!(self, Self::Gift { .. })
+        matches!(self, Self::Danmu | Self::SuperChat { .. })
     }
 }
 
@@ -156,6 +161,15 @@ pub fn events(command: &Value, room: u64) -> Vec<Event> {
         .unwrap_or("");
     let data = &command["data"];
     match kind {
+        "INTERACT_WORD" if number(&data["msg_type"]) == Some(1) => entry(
+            number(&data["uid"]).unwrap_or(0),
+            data["uname"].as_str().unwrap_or(""),
+            data["face"].as_str().unwrap_or(""),
+            number(&data["timestamp"]).unwrap_or(0),
+        )
+        .into_iter()
+        .collect(),
+        "INTERACT_WORD_V2" => entry_v2(data).into_iter().collect(),
         "DANMU_MSG" | "SUPER_CHAT_MESSAGE" => danmu::chat(command, room)
             .map(|chat| {
                 Event::Message(Message {
@@ -221,6 +235,67 @@ pub fn events(command: &Value, room: u64) -> Vec<Event> {
         }
         _ => Vec::new(),
     }
+}
+
+fn entry(uid: u64, user: &str, avatar: &str, timestamp: u64) -> Option<Event> {
+    if uid == 0 && user.is_empty() {
+        return None;
+    }
+    Some(Event::Message(Message {
+        user: bounded(user),
+        text: String::new(),
+        emotes: Vec::new(),
+        author: Author {
+            uid,
+            avatar: danmu::image_url(avatar),
+            ..Author::default()
+        },
+        kind: Kind::Entry {
+            id: (uid != 0 && timestamp != 0).then(|| format!("entry:{uid}:{timestamp}")),
+        },
+    }))
+}
+
+// Field numbers match blivedm/models/pb.py's InteractWordV2 schema.
+#[derive(Clone, PartialEq, prost::Message)]
+struct InteractWord {
+    #[prost(uint64, tag = "1")]
+    uid: u64,
+    #[prost(string, tag = "2")]
+    user: String,
+    #[prost(uint64, tag = "5")]
+    kind: u64,
+    #[prost(uint64, tag = "7")]
+    timestamp: u64,
+    #[prost(message, optional, tag = "22")]
+    info: Option<InteractUser>,
+}
+#[derive(Clone, PartialEq, prost::Message)]
+struct InteractUser {
+    #[prost(message, optional, tag = "2")]
+    base: Option<InteractBase>,
+}
+#[derive(Clone, PartialEq, prost::Message)]
+struct InteractBase {
+    #[prost(string, tag = "2")]
+    face: String,
+}
+fn entry_v2(data: &Value) -> Option<Event> {
+    let encoded = data["pb"]
+        .as_str()
+        .filter(|text| text.len() <= 256 * 1024)?;
+    let bytes = STANDARD.decode(encoded).ok()?;
+    let packet = InteractWord::decode(bytes.as_slice()).ok()?;
+    if packet.kind != 1 {
+        return None;
+    }
+    let face = packet
+        .info
+        .as_ref()
+        .and_then(|info| info.base.as_ref())
+        .map(|base| base.face.as_str())
+        .unwrap_or("");
+    entry(packet.uid, &packet.user, face, packet.timestamp)
 }
 
 // Partial protobuf definitions intentionally skip fields not displayed by CAPS.
@@ -306,6 +381,47 @@ fn gifts_v2(data: &Value) -> Vec<Event> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn parses_silent_arrivals_without_treating_follows_as_entries_or_requests() {
+        let packet = InteractWord {
+            uid: 42,
+            user: "Viewer 点歌".into(),
+            kind: 1,
+            timestamp: 123,
+            info: Some(InteractUser {
+                base: Some(InteractBase {
+                    face: "https://i0.hdslb.com/avatar.png".into(),
+                }),
+            }),
+        };
+        let command = json!({"cmd":"INTERACT_WORD_V2", "data":{"pb": STANDARD.encode(packet.encode_to_vec())}});
+        let arrival = message(command);
+        assert!(matches!(arrival.kind, Kind::Entry { .. }));
+        assert!(!arrival.kind.allows_song_request());
+        assert_eq!(arrival.author.uid, 42);
+        assert!(arrival.author.avatar.is_some());
+        let legacy = message(json!({"cmd":"INTERACT_WORD", "data":{
+            "uid":42, "uname":"Viewer 点歌", "msg_type":1, "timestamp":123
+        }}));
+        assert_eq!(arrival.kind.id(), legacy.kind.id());
+        let follow = InteractWord { kind: 2, ..packet };
+        assert!(events(&json!({"cmd":"INTERACT_WORD_V2", "data":{"pb": STANDARD.encode(follow.encode_to_vec())}}), 1).is_empty());
+        assert!(
+            events(
+                &json!({"cmd":"INTERACT_WORD", "data":{"msg_type":2,"uid":42}}),
+                1
+            )
+            .is_empty()
+        );
+        assert!(
+            events(
+                &json!({"cmd":"INTERACT_WORD_V2", "data":{"pb":"invalid!"}}),
+                1
+            )
+            .is_empty()
+        );
+    }
 
     fn message(command: Value) -> Message {
         let Event::Message(message) = events(&command, 1).remove(0) else {

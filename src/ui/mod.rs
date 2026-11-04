@@ -11,8 +11,8 @@ pub(crate) mod windowing;
 use crate::{
     app::{Caps, FontSlot, Source},
     music::audio::AudioCommand,
-    ui::formatting::format_rate,
     music::mode::{MusicMode, PlayOrder},
+    ui::formatting::format_rate,
     ui::windowing::*,
 };
 use gpui_kit::base::{
@@ -461,11 +461,7 @@ pub fn width_for_lyric(want: f32, expansion: f32) -> f32 {
     if want <= 0. {
         return 0.;
     }
-    let chrome = 2. * (12. + 4. * expansion)
-        + (42. + 10. * expansion)
-        + 10.
-        + 10.
-        + 53.;
+    let chrome = 2. * (12. + 4. * expansion) + (42. + 10. * expansion) + 10. + 10. + 53.;
     want + chrome + 6.
 }
 
@@ -511,13 +507,7 @@ struct LineStyle {
 ///
 /// One function covers all three lines — a row's metadata and the capsule's
 /// title and artist — because they need exactly this and differ only in type.
-fn scroll_line(
-    slot: usize,
-    text: String,
-    style: LineStyle,
-    offset: f32,
-    hovered: bool,
-) -> Div {
+fn scroll_line(slot: usize, text: String, style: LineStyle, offset: f32, hovered: bool) -> Div {
     let scrolling = hovered && line_overflows(slot);
     let measured = text.to_owned();
     let size = style.size;
@@ -545,8 +535,7 @@ fn scroll_line(
                             &[run],
                             None,
                         );
-                        LINE_WANT[slot]
-                            .store(f32::from(shaped.width).to_bits(), Ordering::Relaxed);
+                        LINE_WANT[slot].store(f32::from(shaped.width).to_bits(), Ordering::Relaxed);
                     }
                 },
                 |_, _, _, _| {},
@@ -729,7 +718,11 @@ fn button(
         .cursor_pointer()
         .text_size(px(BODY * s))
         .font_weight(MEDIUM)
-        .text_color(if active { rgb(accent()) } else { rgb(text_secondary()) })
+        .text_color(if active {
+            rgb(accent())
+        } else {
+            rgb(text_secondary())
+        })
         .bg(if active {
             rgba(selection())
         } else {
@@ -1018,7 +1011,11 @@ fn row_button(
         .rounded(px(10. * s))
         .cursor_pointer()
         .text_size(px(BODY * s))
-        .text_color(if active { rgb(accent()) } else { rgb(text_secondary()) })
+        .text_color(if active {
+            rgb(accent())
+        } else {
+            rgb(text_secondary())
+        })
         .bg(if active {
             rgba(selection())
         } else {
@@ -1166,8 +1163,15 @@ impl Render for Caps {
                 .gap(px(10. * s))
                 .rounded(px(PANEL_RADIUS * s))
                 .bg(rgba(if tab == "settings" {
-                    ((if BACKDROP_IS_LIGHT.load(Ordering::Relaxed) { 0xf4f5f7 } else { SURFACE_RAISED }) << 8) | 0xff
-                } else { (SURFACE_RAISED << 8) | alpha }))
+                    ((if BACKDROP_IS_LIGHT.load(Ordering::Relaxed) {
+                        0xf4f5f7
+                    } else {
+                        SURFACE_RAISED
+                    }) << 8)
+                        | 0xff
+                } else {
+                    (SURFACE_RAISED << 8) | alpha
+                }))
                 .border_1()
                 .border_color(rgba(hairline()))
                 .overflow_hidden()
@@ -1217,59 +1221,59 @@ impl Caps {
             .justify_between()
             .gap(px(READ_GAP * s))
             .children(
-            [
-                (
-                    Mark::Cpu,
-                    self.tr("CPU", "处理器"),
-                    format!("{:.0}%", self.stats.cpu),
-                    READ_PERCENT_W,
-                ),
-                (
-                    Mark::Memory,
-                    self.tr("Memory", "内存"),
-                    format!("{:.0}%", self.stats.memory),
-                    READ_PERCENT_W,
-                ),
-                (
-                    Mark::Download,
-                    self.tr("Download", "下载"),
-                    format_rate(self.stats.download),
-                    READ_RATE_W,
-                ),
-                (
-                    Mark::Upload,
-                    self.tr("Upload", "上传"),
-                    format_rate(self.stats.upload),
-                    READ_RATE_W,
-                ),
-            ]
-            .into_iter()
-            .map(|(glyph, name, value, cell)| {
-                row()
-                    .id(name)
-                    .flex_shrink_0()
-                    .gap(px(READ_TEXT_GAP * s))
-                    // The mark takes the colour it inherits from here; the figure
-                    // sets its own below.
-                    .text_color(rgb(text_tertiary()))
-                    .aria_label(format!("{name} {value}"))
-                    .child(mark(glyph, READ_ICON * s))
-                    .child(
-                        div()
-                            .w(px(cell * s))
-                            .flex_shrink_0()
-                            // A figure wider than its cell (a gigabit download)
-                            // overruns the cell rather than wrapping onto a
-                            // second line, which would double the row's height.
-                            .whitespace_nowrap()
-                            .text_size(px(type_size(TITLE, s)))
-                            .font_weight(SEMIBOLD)
-                            .text_color(rgb(text()))
-                            .font_features(tabular_figures())
-                            .child(value),
-                    )
-            }),
-        )
+                [
+                    (
+                        Mark::Cpu,
+                        self.tr("CPU", "处理器"),
+                        format!("{:.0}%", self.stats.cpu),
+                        READ_PERCENT_W,
+                    ),
+                    (
+                        Mark::Memory,
+                        self.tr("Memory", "内存"),
+                        format!("{:.0}%", self.stats.memory),
+                        READ_PERCENT_W,
+                    ),
+                    (
+                        Mark::Download,
+                        self.tr("Download", "下载"),
+                        format_rate(self.stats.download),
+                        READ_RATE_W,
+                    ),
+                    (
+                        Mark::Upload,
+                        self.tr("Upload", "上传"),
+                        format_rate(self.stats.upload),
+                        READ_RATE_W,
+                    ),
+                ]
+                .into_iter()
+                .map(|(glyph, name, value, cell)| {
+                    row()
+                        .id(name)
+                        .flex_shrink_0()
+                        .gap(px(READ_TEXT_GAP * s))
+                        // The mark takes the colour it inherits from here; the figure
+                        // sets its own below.
+                        .text_color(rgb(text_tertiary()))
+                        .aria_label(format!("{name} {value}"))
+                        .child(mark(glyph, READ_ICON * s))
+                        .child(
+                            div()
+                                .w(px(cell * s))
+                                .flex_shrink_0()
+                                // A figure wider than its cell (a gigabit download)
+                                // overruns the cell rather than wrapping onto a
+                                // second line, which would double the row's height.
+                                .whitespace_nowrap()
+                                .text_size(px(type_size(TITLE, s)))
+                                .font_weight(SEMIBOLD)
+                                .text_color(rgb(text()))
+                                .font_features(tabular_figures())
+                                .child(value),
+                        )
+                }),
+            )
     }
 
     /// FFT bars tinted with the album's colours: the one piece of ornament the
@@ -1365,15 +1369,19 @@ impl Caps {
                             .size(px(halo))
                             .rounded_full()
                             .bg(rgba((live() << 8) | 0x66))
-                            .opacity(if self.reduce_motion { 0.2 } else { 0.45 * pulse }),
+                            .opacity(if self.reduce_motion {
+                                0.2
+                            } else {
+                                0.45 * pulse
+                            }),
                     )
-                    .child(
-                        div()
-                            .size(px(dot))
-                            .rounded_full()
-                            .bg(rgb(live()))
-                            .opacity(if self.reduce_motion { 1. } else { 0.5 + 0.5 * pulse }),
-                    ),
+                    .child(div().size(px(dot)).rounded_full().bg(rgb(live())).opacity(
+                        if self.reduce_motion {
+                            1.
+                        } else {
+                            0.5 + 0.5 * pulse
+                        },
+                    )),
             )
     }
 
@@ -1631,19 +1639,39 @@ impl Caps {
     }
 
     /// Measure the same text runs and image slots used by the lyric view.
-    pub fn lyric_content_width(&self, window: &Window, text: &str, segments: &[crate::live::live_emotes::Segment]) -> f32 {
-        let text_width = |text: &str| lyric_want(window, self.latin_family(), self.han_fallbacks.to_owned(), text);
-        if segments.is_empty() { return text_width(text); }
-        segments.iter().map(|segment| match segment {
-            crate::live::live_emotes::Segment::Text(text) => text_width(text),
-            crate::live::live_emotes::Segment::Emote(emote) => {
-                match self.emote_cache.state(&emote.url) {
-                    crate::live::live_emotes::ImageState::Failed => text_width(&emote.text),
-                    // Keep the same geometry before and after the image arrives.
-                    _ => 20. * (emote.width as f32 / emote.height.max(1) as f32).clamp(0.5, 4.) + 2.,
+    pub fn lyric_content_width(
+        &self,
+        window: &Window,
+        text: &str,
+        segments: &[crate::live::live_emotes::Segment],
+    ) -> f32 {
+        let text_width = |text: &str| {
+            lyric_want(
+                window,
+                self.latin_family(),
+                self.han_fallbacks.to_owned(),
+                text,
+            )
+        };
+        if segments.is_empty() {
+            return text_width(text);
+        }
+        segments
+            .iter()
+            .map(|segment| match segment {
+                crate::live::live_emotes::Segment::Text(text) => text_width(text),
+                crate::live::live_emotes::Segment::Emote(emote) => {
+                    match self.emote_cache.state(&emote.url) {
+                        crate::live::live_emotes::ImageState::Failed => text_width(&emote.text),
+                        // Keep the same geometry before and after the image arrives.
+                        _ => {
+                            20. * (emote.width as f32 / emote.height.max(1) as f32).clamp(0.5, 4.)
+                                + 2.
+                        }
+                    }
                 }
-            }
-        }).sum()
+            })
+            .sum()
     }
 
     /// Lyrics remain a single shaped run. Live chat splits only at image boundaries.
@@ -1672,7 +1700,11 @@ impl Caps {
             if text.is_empty() || (outgoing && elapsed > 0.3) {
                 continue;
             }
-            let segments = if outgoing { &self.outgoing_segments } else { &self.lyric_segments };
+            let segments = if outgoing {
+                &self.outgoing_segments
+            } else {
+                &self.lyric_segments
+            };
             let want = self.lyric_content_width(window, text, segments) * s;
             let (lyric_size, overflow) = lyric_fit(want, room, base, floor);
             let mut content = row().flex_shrink_0().whitespace_nowrap();
@@ -1681,19 +1713,32 @@ impl Caps {
             } else {
                 for segment in segments {
                     content = match segment {
-                        crate::live::live_emotes::Segment::Text(text) => content.child(div().flex_shrink_0().child(text.clone())),
+                        crate::live::live_emotes::Segment::Text(text) => {
+                            content.child(div().flex_shrink_0().child(text.clone()))
+                        }
                         crate::live::live_emotes::Segment::Emote(emote) => {
                             let height = 20. * lyric_size / LYRIC;
-                            let width = height * (emote.width as f32 / emote.height.max(1) as f32).clamp(0.5, 4.);
+                            let width = height
+                                * (emote.width as f32 / emote.height.max(1) as f32).clamp(0.5, 4.);
                             match self.emote_cache.state(&emote.url) {
-                                crate::live::live_emotes::ImageState::Ready(image) => {
-                                    content.child(img(image).h(px(height)).w(px(width)).mx(px(lyric_size / LYRIC))
-                                        .flex_shrink_0().object_fit(ObjectFit::Contain))
-                                }
-                                crate::live::live_emotes::ImageState::Loading => {
-                                    content.child(div().h(px(height)).w(px(width)).mx(px(lyric_size / LYRIC))
-                                        .flex_shrink_0().rounded(px(3. * s)).bg(rgba(well())))
-                                }
+                                crate::live::live_emotes::ImageState::Ready(image) => content
+                                    .child(
+                                        img(image)
+                                            .h(px(height))
+                                            .w(px(width))
+                                            .mx(px(lyric_size / LYRIC))
+                                            .flex_shrink_0()
+                                            .object_fit(ObjectFit::Contain),
+                                    ),
+                                crate::live::live_emotes::ImageState::Loading => content.child(
+                                    div()
+                                        .h(px(height))
+                                        .w(px(width))
+                                        .mx(px(lyric_size / LYRIC))
+                                        .flex_shrink_0()
+                                        .rounded(px(3. * s))
+                                        .bg(rgba(well())),
+                                ),
                                 crate::live::live_emotes::ImageState::Failed => {
                                     content.child(div().flex_shrink_0().child(emote.text.clone()))
                                 }
@@ -1706,9 +1751,25 @@ impl Caps {
                 scrolling = true;
             }
             let offset = lyric_scroll_offset(elapsed, overflow, s);
-            let p = motion::ease((elapsed / if outgoing { 0.22 } else { 0.36 }).clamp(0., 1.));
-            let variant = self.lyric.bytes().fold(0u32, |hash, byte| hash.wrapping_mul(31).wrapping_add(byte as u32)) % 3;
-            let rise = if self.reduce_motion { 0. } else { match variant { 0 => 0., 1 => 8., _ => -8. } };
+            // The incoming line must be readable on its timestamp, including
+            // fast verses. A long fade made correctly timed lyrics look late.
+            let p = if self.reduce_motion {
+                1.
+            } else {
+                motion::ease((elapsed / 0.12).clamp(0., 1.))
+            };
+            let variant = self.lyric.bytes().fold(0u32, |hash, byte| {
+                hash.wrapping_mul(31).wrapping_add(byte as u32)
+            }) % 3;
+            let rise = if self.reduce_motion {
+                0.
+            } else {
+                match variant {
+                    0 => 0.,
+                    1 => 8.,
+                    _ => -8.,
+                }
+            };
             let mut letters = row()
                 .absolute()
                 .right_0()
@@ -1863,7 +1924,11 @@ impl Caps {
                 row()
                     .justify_between()
                     .text_color(rgb(text_secondary()))
-                    .child(format!("{} {}", self.queue.len(), self.tr("tracks", "首歌曲")))
+                    .child(format!(
+                        "{} {}",
+                        self.queue.len(),
+                        self.tr("tracks", "首歌曲")
+                    ))
                     .child(
                         row()
                             .gap(px(6. * s))
@@ -1935,12 +2000,17 @@ impl Caps {
                                 ),
                         )
                         .child(
-                            button("locate-current", self.tr("Jump to song", "Jump to song"), true, s)
-                                .flex_shrink_0()
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.locate_current_song();
-                                    cx.notify();
-                                })),
+                            button(
+                                "locate-current",
+                                self.tr("Jump to song", "Jump to song"),
+                                true,
+                                s,
+                            )
+                            .flex_shrink_0()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.locate_current_song();
+                                cx.notify();
+                            })),
                         ),
                 )
             })
@@ -1957,77 +2027,179 @@ impl Caps {
     }
 
     fn export_panel(&self, s: f32, cx: &mut Context<Self>) -> AnyElement {
-        let selection = self.export_selection.as_ref().expect("export selection open");
-        let count = selection.selected.iter().filter(|selected| **selected).count();
+        let selection = self
+            .export_selection
+            .as_ref()
+            .expect("export selection open");
+        let count = selection
+            .selected
+            .iter()
+            .filter(|selected| **selected)
+            .count();
         let total = selection.tracks.len();
         let view = cx.entity().downgrade();
         let list = uniform_list("export-songs", total, move |range, _, cx| {
             view.update(cx, |this, cx| {
-                range.filter_map(|index| {
-                    let selection = this.export_selection.as_ref()?;
-                    let track = selection.tracks.get(index)?;
-                    let selected = selection.selected[index];
-                    Some(column().w_full().min_w_0().h(px(54. * s)).justify_center().gap(px(3. * s))
-                        .id(("export-range-row", index)).cursor_pointer()
-                        .capture_any_mouse_down(cx.listener(move |this, event: &MouseDownEvent, _, cx| {
-                            if event.button == MouseButton::Left && !this.dialog_open
-                                && let Some(selection) = &mut this.export_selection {
-                                selection.begin_range(index, event.modifiers.shift);
-                                // Handle pointer selection once, including clicks on the checkbox.
-                                // The checkbox retains its native keyboard interaction.
-                                cx.stop_propagation();
-                                cx.notify();
-                            }
-                        }))
-                        .px(px(8. * s)).rounded(px(7. * s))
-                        .bg(if selected { rgba(crate::ui::selection()) } else { rgba(0xffffff00) })
-                        .child(gpui_kit::component::checkbox::Checkbox::new(("export-song", index))
-                            .w_full().checked(selected)
-                            .accessibility_label(track.name.clone())
-                            .child(div().text_ellipsis().child(track.name.clone()))
-                            .on_click(cx.listener(move |this, checked: &bool, _, cx| {
-                                if !this.dialog_open && let Some(selection) = &mut this.export_selection {
-                                    selection.set_one(index, *checked);
+                range
+                    .filter_map(|index| {
+                        let selection = this.export_selection.as_ref()?;
+                        let track = selection.tracks.get(index)?;
+                        let selected = selection.selected[index];
+                        Some(
+                            column()
+                                .w_full()
+                                .min_w_0()
+                                .h(px(54. * s))
+                                .justify_center()
+                                .gap(px(3. * s))
+                                .id(("export-range-row", index))
+                                .cursor_pointer()
+                                .capture_any_mouse_down(cx.listener(
+                                    move |this, event: &MouseDownEvent, _, cx| {
+                                        if event.button == MouseButton::Left
+                                            && !this.dialog_open
+                                            && let Some(selection) = &mut this.export_selection
+                                        {
+                                            selection.begin_range(index, event.modifiers.shift);
+                                            // Handle pointer selection once, including clicks on the checkbox.
+                                            // The checkbox retains its native keyboard interaction.
+                                            cx.stop_propagation();
+                                            cx.notify();
+                                        }
+                                    },
+                                ))
+                                .px(px(8. * s))
+                                .rounded(px(7. * s))
+                                .bg(if selected {
+                                    rgba(crate::ui::selection())
+                                } else {
+                                    rgba(0xffffff00)
+                                })
+                                .child(
+                                    gpui_kit::component::checkbox::Checkbox::new((
+                                        "export-song",
+                                        index,
+                                    ))
+                                    .w_full()
+                                    .checked(selected)
+                                    .accessibility_label(track.name.clone())
+                                    .child(div().text_ellipsis().child(track.name.clone()))
+                                    .on_click(cx.listener(
+                                        move |this, checked: &bool, _, cx| {
+                                            if !this.dialog_open
+                                                && let Some(selection) = &mut this.export_selection
+                                            {
+                                                selection.set_one(index, *checked);
+                                                cx.notify();
+                                            }
+                                        },
+                                    )),
+                                )
+                                .child(
+                                    div()
+                                        .pl(px(24. * s))
+                                        .text_size(px(LABEL * s))
+                                        .text_color(rgb(text_secondary()))
+                                        .text_ellipsis()
+                                        .child(format!("{} · {}", track.artist, track.source)),
+                                ),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+        })
+        .flex_1()
+        .min_h_0()
+        .pr(px(9. * s))
+        .track_scroll(&self.export_scroll);
+        column()
+            .flex_1()
+            .min_h_0()
+            .gap(px(8. * s))
+            .child(
+                row()
+                    .justify_between()
+                    .child(
+                        div()
+                            .font_weight(SEMIBOLD)
+                            .child(self.tr("Choose songs to export", "选择导出歌曲")),
+                    )
+                    .child(
+                        button("cancel-export", self.tr("Cancel", "取消"), false, s).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                if !this.dialog_open {
+                                    this.export_selection = None;
                                     cx.notify();
                                 }
-                            })))
-                        .child(div().pl(px(24. * s)).text_size(px(LABEL * s))
-                            .text_color(rgb(text_secondary())).text_ellipsis()
-                            .child(format!("{} · {}", track.artist, track.source))))
-                }).collect::<Vec<_>>()
-            }).unwrap_or_default()
-        }).flex_1().min_h_0().pr(px(9. * s)).track_scroll(&self.export_scroll);
-        column().flex_1().min_h_0().gap(px(8. * s))
-            .child(row().justify_between()
-                .child(div().font_weight(SEMIBOLD).child(self.tr("Choose songs to export", "选择导出歌曲")))
-                .child(button("cancel-export", self.tr("Cancel", "取消"), false, s)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if !this.dialog_open { this.export_selection = None; cx.notify(); }
-                    }))))
-            .child(row().gap(px(8. * s))
-                .child(button("export-all", self.tr("Select all", "全选"), false, s)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if !this.dialog_open && let Some(selection) = &mut this.export_selection {
-                            selection.set_all(true); cx.notify();
-                        }
-                    })))
-                .child(button("export-none", self.tr("Deselect all", "全不选"), false, s)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if !this.dialog_open && let Some(selection) = &mut this.export_selection {
-                            selection.set_all(false); cx.notify();
-                        }
-                    })))
-                .child(div().flex_1())
-                .child(self.say(format!("{count} / {total} selected"), format!("已选 {count} / {total}"))))
-            .child(column().id("export-list-view").relative().flex_1().min_h_0()
-                .child(list)
-                .child(div().absolute().right_0().top_0().bottom_0()
-                    .child(Scrollbar::vertical(&self.export_scroll).mode(ScrollbarMode::Always))))
-            .child(button("save-export", self.tr("Export selected…", "导出所选…"), true, s)
+                            }),
+                        ),
+                    ),
+            )
+            .child(
+                row()
+                    .gap(px(8. * s))
+                    .child(
+                        button("export-all", self.tr("Select all", "全选"), false, s).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                if !this.dialog_open
+                                    && let Some(selection) = &mut this.export_selection
+                                {
+                                    selection.set_all(true);
+                                    cx.notify();
+                                }
+                            }),
+                        ),
+                    )
+                    .child(
+                        button("export-none", self.tr("Deselect all", "全不选"), false, s)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if !this.dialog_open
+                                    && let Some(selection) = &mut this.export_selection
+                                {
+                                    selection.set_all(false);
+                                    cx.notify();
+                                }
+                            })),
+                    )
+                    .child(div().flex_1())
+                    .child(self.say(
+                        format!("{count} / {total} selected"),
+                        format!("已选 {count} / {total}"),
+                    )),
+            )
+            .child(
+                column()
+                    .id("export-list-view")
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .child(list)
+                    .child(div().absolute().right_0().top_0().bottom_0().child(
+                        Scrollbar::vertical(&self.export_scroll).mode(ScrollbarMode::Always),
+                    )),
+            )
+            .child(
+                button(
+                    "save-export",
+                    self.tr("Export selected…", "导出所选…"),
+                    true,
+                    s,
+                )
                 .when(count == 0 || self.dialog_open, |button| button.opacity(0.4))
-                .on_click(cx.listener(|this, _, _, cx| { this.save_selected_queue(); cx.notify(); })))
-            .child(div().text_size(px(LABEL * s)).text_color(rgb(text_tertiary()))
-                .max_h(px(32. * s)).overflow_hidden().child(self.status.clone()))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.save_selected_queue();
+                    cx.notify();
+                })),
+            )
+            .child(
+                div()
+                    .text_size(px(LABEL * s))
+                    .text_color(rgb(text_tertiary()))
+                    .max_h(px(32. * s))
+                    .overflow_hidden()
+                    .child(self.status.clone()),
+            )
             .into_any_element()
     }
 
@@ -2363,7 +2535,11 @@ impl Caps {
                     .flex_1()
                     .min_w_0()
                     .text_size(px(BODY * s))
-                    .text_color(if missing { rgb(text_tertiary()) } else { rgb(text()) })
+                    .text_color(if missing {
+                        rgb(text_tertiary())
+                    } else {
+                        rgb(text())
+                    })
                     .text_ellipsis()
                     .child(summary),
             )
@@ -2455,9 +2631,7 @@ impl Caps {
                                     styles
                                         .track(|style| style.bg(Hsla::from(rgba(well()))))
                                         .thumb(|style| style.bg(Hsla::from(rgba(track_tint()))))
-                                        .thumb_hover(|style| {
-                                            style.bg(Hsla::from(rgba(0xffffff44)))
-                                        })
+                                        .thumb_hover(|style| style.bg(Hsla::from(rgba(0xffffff44))))
                                         .thumb_active(|style| {
                                             style.bg(Hsla::from(rgba(0xffffff5c)))
                                         })
@@ -2474,12 +2648,13 @@ impl Caps {
                 row()
                     .gap(px(8. * s))
                     .child(
-                        button("font-back", self.tr("‹ Back", "‹ 返回"), false, s)
-                            .on_click(cx.listener(|this, _, window, cx| {
+                        button("font-back", self.tr("‹ Back", "‹ 返回"), false, s).on_click(
+                            cx.listener(|this, _, window, cx| {
                                 this.font_picker = None;
                                 window.blur(cx);
                                 cx.notify();
-                            })),
+                            }),
+                        ),
                     )
                     .child(
                         div()
@@ -2519,7 +2694,10 @@ impl Caps {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let (default, stored) = match slot {
-            FontSlot::Latin => (self.system_font.to_string(), self.settings.latin_font.as_deref()),
+            FontSlot::Latin => (
+                self.system_font.to_string(),
+                self.settings.latin_font.as_deref(),
+            ),
             FontSlot::Han => (
                 self.han_families().into_iter().next().unwrap_or_default(),
                 self.settings.han_font.as_deref(),
@@ -2723,34 +2901,54 @@ impl Caps {
         if let Some(slot) = self.font_picker {
             return self.font_picker_panel(slot, s, cx);
         }
-        let navigation = row().gap(px(6. * s)).pb(px(8. * s))
-            .border_b_1().border_color(rgba(hairline()))
-            .children([
-                ("settings-general", false, self.tr("General", "常规")),
-                ("settings-live", true, self.tr("Live chat", "直播互动")),
-            ].into_iter().map(|(id, live, label)| {
-                button(id, label, self.settings_live_tab == live, s)
-                    .h(px(30. * s)).min_w(px(88. * s))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.settings_live_tab = live;
-                        this.settings_scroll.set_offset(point(px(0.), px(0.)));
-                        window.blur(cx);
-                        this.input_focused = false;
-                        cx.notify();
-                    }))
-            }));
+        let navigation = row()
+            .gap(px(6. * s))
+            .pb(px(8. * s))
+            .border_b_1()
+            .border_color(rgba(hairline()))
+            .children(
+                [
+                    ("settings-general", false, self.tr("General", "常规")),
+                    ("settings-live", true, self.tr("Live chat", "直播互动")),
+                ]
+                .into_iter()
+                .map(|(id, live, label)| {
+                    button(id, label, self.settings_live_tab == live, s)
+                        .h(px(30. * s))
+                        .min_w(px(88. * s))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.settings_live_tab = live;
+                            this.settings_scroll.set_offset(point(px(0.), px(0.)));
+                            window.blur(cx);
+                            this.input_focused = false;
+                            cx.notify();
+                        }))
+                }),
+            );
         // A solid reading surface keeps dense settings legible over desktop content.
-        let frame = column().flex_1().min_h_0().p(px(10. * s))
+        let frame = column()
+            .flex_1()
+            .min_h_0()
+            .p(px(10. * s))
             .rounded(px(12. * s))
-            .bg(rgb(if BACKDROP_IS_LIGHT.load(Ordering::Relaxed) { 0xf4f5f7 } else { SURFACE_RAISED }))
+            .bg(rgb(if BACKDROP_IS_LIGHT.load(Ordering::Relaxed) {
+                0xf4f5f7
+            } else {
+                SURFACE_RAISED
+            }))
             .gap(px(12. * s))
             .child(navigation);
         if self.settings_live_tab {
-            let live = column().id("live-settings-scroll")
-                .flex_1().min_h_0().overflow_y_scroll()
-                .pr(px(16. * s)).track_scroll(&self.settings_scroll)
+            let live = column()
+                .id("live-settings-scroll")
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scroll()
+                .pr(px(16. * s))
+                .track_scroll(&self.settings_scroll)
                 .child(self.danmu_settings(s, cx).flex_shrink_0());
-            return frame.child(self.settings_scroll_area(live, s))
+            return frame
+                .child(self.settings_scroll_area(live, s))
                 .into_any_element();
         }
         let mut panel = column()
@@ -2758,9 +2956,14 @@ impl Caps {
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
-            .pr(px(16. * s)).track_scroll(&self.settings_scroll)
+            .pr(px(16. * s))
+            .track_scroll(&self.settings_scroll)
             .gap(px(16. * s))
-            .child(div().font_weight(SEMIBOLD).child(self.tr("Playback & appearance", "播放与外观")));
+            .child(
+                div()
+                    .font_weight(SEMIBOLD)
+                    .child(self.tr("Playback & appearance", "播放与外观")),
+            );
         for (label, value, slider) in [
             (
                 self.tr("Opacity", "透明度"),
@@ -2797,57 +3000,48 @@ impl Caps {
         panel = panel.child(Self::setting_row(
             self.tr("Mode", "模式"),
             s,
-            row()
-                .flex_1()
-                .gap(px(6. * s))
-                .children(
-                    [
-                        ("normal", MusicMode::Normal, self.tr("Normal", "普通")),
-                        ("silent", MusicMode::Silent, self.tr("Silent", "静音")),
-                        ("quiet", MusicMode::Quiet, self.tr("Quiet", "安静")),
-                    ]
-                    .into_iter()
-                    .map(|(id, mode, label)| {
-                        button(id, label, self.mode == mode, s)
-                            .flex_1()
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                if mode == MusicMode::Silent {
-                                    this.stop();
-                                } else if this.current_track.is_some() {
-                                    this.mode = mode;
-                                } else {
-                                    this.status = this
-                                        .tr(
-                                            "Pick a song from the queue first.",
-                                            "请先从队列播放歌曲。",
-                                        )
-                                        .into();
-                                }
-                                cx.notify();
-                            }))
-                    }),
-                ),
+            row().flex_1().gap(px(6. * s)).children(
+                [
+                    ("normal", MusicMode::Normal, self.tr("Normal", "普通")),
+                    ("silent", MusicMode::Silent, self.tr("Silent", "静音")),
+                    ("quiet", MusicMode::Quiet, self.tr("Quiet", "安静")),
+                ]
+                .into_iter()
+                .map(|(id, mode, label)| {
+                    button(id, label, self.mode == mode, s)
+                        .flex_1()
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if mode == MusicMode::Silent {
+                                this.stop();
+                            } else if this.current_track.is_some() {
+                                this.mode = mode;
+                            } else {
+                                this.status = this
+                                    .tr("Pick a song from the queue first.", "请先从队列播放歌曲。")
+                                    .into();
+                            }
+                            cx.notify();
+                        }))
+                }),
+            ),
         ));
         panel = panel.child(Self::setting_row(
             self.tr("Language", "语言"),
             s,
-            row()
-                .flex_1()
-                .gap(px(6. * s))
-                .children(
-                    [
-                        ("en", self.tr("English", "英语")),
-                        ("zh", self.tr("Chinese", "中文")),
-                    ]
-                    .into_iter()
-                    .map(|(code, label)| {
-                        button(code, label, self.settings.language == code, s)
-                            .flex_1()
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.set_language(code, window, cx);
-                            }))
-                    }),
-                ),
+            row().flex_1().gap(px(6. * s)).children(
+                [
+                    ("en", self.tr("English", "英语")),
+                    ("zh", self.tr("Chinese", "中文")),
+                ]
+                .into_iter()
+                .map(|(code, label)| {
+                    button(code, label, self.settings.language == code, s)
+                        .flex_1()
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.set_language(code, window, cx);
+                        }))
+                }),
+            ),
         ));
         // Two font choices, one per script. This is an override of something
         // the app already detects — `settings.md › Best practices`: "Avoid using
@@ -2876,12 +3070,17 @@ impl Caps {
                         .child(self.update_status.to_owned()),
                 )
                 .child(
-                    button("check-update", self.tr("Check update", "检查更新"), false, s)
-                        .opacity(if self.update_busy { 0.4 } else { 1. })
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.check_update();
-                            cx.notify();
-                        })),
+                    button(
+                        "check-update",
+                        self.tr("Check update", "检查更新"),
+                        false,
+                        s,
+                    )
+                    .opacity(if self.update_busy { 0.4 } else { 1. })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.check_update();
+                        cx.notify();
+                    })),
                 )
                 .when(self.pending_update.is_some(), |d| {
                     d.child(
@@ -2919,18 +3118,29 @@ impl Caps {
                     "按住 Shift 拖动胶囊可移动位置。右键点击胶囊退出。",
                 )),
         );
-        frame.child(self.settings_scroll_area(panel, s)).into_any_element()
+        frame
+            .child(self.settings_scroll_area(panel, s))
+            .into_any_element()
     }
 
     fn settings_scroll_area(&self, content: impl IntoElement, s: f32) -> Div {
-        column().relative().flex_1().min_h_0()
-            .child(content)
-            .child(div().absolute().right_0().top_0().bottom_0().w(px(6. * s))
-                .child(Scrollbar::vertical(&self.settings_scroll)
-                    .mode(ScrollbarMode::Always)
-                    .styles(|styles| styles
-                        .track(|style| style.bg(Hsla::from(rgba(well()))))
-                        .thumb(|style| style.bg(Hsla::from(rgba(track_tint())))))))
+        column().relative().flex_1().min_h_0().child(content).child(
+            div()
+                .absolute()
+                .right_0()
+                .top_0()
+                .bottom_0()
+                .w(px(6. * s))
+                .child(
+                    Scrollbar::vertical(&self.settings_scroll)
+                        .mode(ScrollbarMode::Always)
+                        .styles(|styles| {
+                            styles
+                                .track(|style| style.bg(Hsla::from(rgba(well()))))
+                                .thumb(|style| style.bg(Hsla::from(rgba(track_tint()))))
+                        }),
+                ),
+        )
     }
 }
 
@@ -3032,4 +3242,3 @@ mod tests {
         );
     }
 }
-

@@ -76,6 +76,7 @@ pub enum Event {
     Auth(i64),
     Heartbeat(u32),
     Command(Value),
+    Warning(String),
 }
 
 pub fn packet(operation: u32, body: &[u8]) -> Vec<u8> {
@@ -92,7 +93,13 @@ pub fn packet(operation: u32, body: &[u8]) -> Vec<u8> {
 pub fn decode(bytes: &[u8]) -> Result<Vec<Event>, String> {
     let mut events = Vec::new();
     let mut budget = LIMIT;
-    decode_inner(bytes, 0, &mut budget, &mut events)?;
+    if let Err(error) = decode_inner(bytes, 0, &mut budget, &mut events) {
+        if events.is_empty() {
+            return Err(error);
+        }
+        // A malformed tail must not discard already decoded chat in this frame.
+        events.push(Event::Warning(error));
+    }
     Ok(events)
 }
 
@@ -132,12 +139,10 @@ fn decode_inner(
                     .map_err(|err| format!("Invalid compressed danmu: {err}"))?;
                 decode_inner(&expanded, depth + 1, budget, events)?;
             }
-            (5, 0 | 1) if !body.is_empty() => {
-                events.push(Event::Command(
-                    serde_json::from_slice(body)
-                        .map_err(|err| format!("Invalid danmu JSON: {err}"))?,
-                ));
-            }
+            (5, 0 | 1) if !body.is_empty() => match serde_json::from_slice(body) {
+                Ok(command) => events.push(Event::Command(command)),
+                Err(err) => events.push(Event::Warning(format!("Invalid danmu JSON: {err}"))),
+            },
             (8, _) => {
                 let auth: Value = serde_json::from_slice(body).map_err(|err| err.to_string())?;
                 let code = auth["code"]
@@ -268,6 +273,27 @@ mod tests {
         assert_eq!(events.len(), 3);
         assert_eq!(events[0], Event::Auth(0));
         assert_eq!(events[1], Event::Heartbeat(42));
+    }
+
+    #[test]
+    fn malformed_json_does_not_discard_adjacent_messages_or_force_reconnect() {
+        let mut frame = packet(5, br#"{"cmd":"FIRST"}"#);
+        frame.extend(packet(5, b"broken JSON"));
+        frame.extend(packet(5, br#"{"cmd":"LAST"}"#));
+        let events = decode(&frame).unwrap();
+        assert!(matches!(&events[0], Event::Command(value) if value["cmd"] == "FIRST"));
+        assert!(matches!(&events[1], Event::Warning(_)));
+        assert!(matches!(&events[2], Event::Command(value) if value["cmd"] == "LAST"));
+        frame.extend_from_slice(&[0; 5]);
+        let events = decode(&frame).unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, Event::Command(_)))
+                .count(),
+            2
+        );
+        assert!(matches!(events.last(), Some(Event::Warning(_))));
     }
 
     #[test]

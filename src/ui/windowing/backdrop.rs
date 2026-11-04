@@ -86,7 +86,17 @@ unsafe extern "system" {
     ) -> Hbitmap;
     fn SelectObject(hdc: Hdc, object: Hgdiobj) -> Hgdiobj;
     fn DeleteObject(object: Hgdiobj) -> i32;
-    fn BitBlt(dst: Hdc, x: i32, y: i32, w: i32, h: i32, src: Hdc, sx: i32, sy: i32, rop: u32) -> i32;
+    fn BitBlt(
+        dst: Hdc,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        src: Hdc,
+        sx: i32,
+        sy: i32,
+        rop: u32,
+    ) -> i32;
 }
 
 /// The desktop behind the capsule, as samples of sRGB with the weight of the

@@ -1,7 +1,7 @@
 //! Qishui's public catalogue and public track playback. No private session is used.
 use crate::{
-    providers::streaming::RemoteMedia,
     music::track::{SOURCE_QISHUI, Track},
+    providers::streaming::RemoteMedia,
 };
 use reqwest::Url;
 use serde_json::Value;

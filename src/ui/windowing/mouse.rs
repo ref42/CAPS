@@ -192,7 +192,10 @@ pub fn client_size(window: &Window) -> Option<(f32, f32)> {
     if unsafe { GetClientRect(hwnd, &mut rect) } == 0 {
         return None;
     }
-    Some(((rect.right - rect.left) as f32, (rect.bottom - rect.top) as f32))
+    Some((
+        (rect.right - rect.left) as f32,
+        (rect.bottom - rect.top) as f32,
+    ))
 }
 
 /// `(left, top, right, bottom)` of the monitor nearest a screen point, in device
@@ -249,16 +252,22 @@ pub fn move_window(cx: &App, hwnd: isize, origin: (f32, f32)) {
 
 /// One deferred native operation avoids re-entering GPUI with the App borrowed.
 pub fn resize_window(cx: &App, hwnd: isize, bounds: (f32, f32, f32, f32)) {
-    cx.foreground_executor().spawn(async move {
-        let (left, top, right, bottom) = bounds;
-        unsafe {
-            SetWindowPos(hwnd as Hwnd, std::ptr::null_mut(),
-                left.round() as i32, top.round() as i32,
-                (right - left).round().max(1.) as i32,
-                (bottom - top).round().max(1.) as i32,
-                SWP_NOZORDER | SWP_NOACTIVATE);
-        }
-    }).detach();
+    cx.foreground_executor()
+        .spawn(async move {
+            let (left, top, right, bottom) = bounds;
+            unsafe {
+                SetWindowPos(
+                    hwnd as Hwnd,
+                    std::ptr::null_mut(),
+                    left.round() as i32,
+                    top.round() as i32,
+                    (right - left).round().max(1.) as i32,
+                    (bottom - top).round().max(1.) as i32,
+                    SWP_NOZORDER | SWP_NOACTIVATE,
+                );
+            }
+        })
+        .detach();
 }
 
 /// Whether a right-button message landed on the capsule rather than the panel.
@@ -351,22 +360,35 @@ pub fn apply_region(window: &Window, geometry: super::Geometry, slack: f32) {
 /// Clip both the transparent corners and the native non-client frame. Defer
 /// SetWindowRgn: Windows may synchronously dispatch layout/paint messages.
 pub fn apply_chat_region(window: &Window, cx: &App, radius: f32) {
-    let Some(hwnd) = window_handle(window) else { return; };
+    let Some(hwnd) = window_handle(window) else {
+        return;
+    };
     // Leave the painted antialiased curve inside the 1-bit native mask.
     let radius = (radius - super::REGION_OUTSET).max(0.) * window.scale_factor();
-    cx.foreground_executor().spawn(async move {
-        let hwnd = hwnd as Hwnd;
-        let mut rect = Rect::default();
-        unsafe {
-            let Some((x, y)) = client_offset(hwnd) else { return; };
-            if GetClientRect(hwnd, &mut rect) == 0 { return; }
-            let region = round_rect(x, y, (rect.right - rect.left) as f32,
-                (rect.bottom - rect.top) as f32, radius);
-            if !region.is_null() && SetWindowRgn(hwnd, region, 1) == 0 {
-                DeleteObject(region);
+    cx.foreground_executor()
+        .spawn(async move {
+            let hwnd = hwnd as Hwnd;
+            let mut rect = Rect::default();
+            unsafe {
+                let Some((x, y)) = client_offset(hwnd) else {
+                    return;
+                };
+                if GetClientRect(hwnd, &mut rect) == 0 {
+                    return;
+                }
+                let region = round_rect(
+                    x,
+                    y,
+                    (rect.right - rect.left) as f32,
+                    (rect.bottom - rect.top) as f32,
+                    radius,
+                );
+                if !region.is_null() && SetWindowRgn(hwnd, region, 1) == 0 {
+                    DeleteObject(region);
+                }
             }
-        }
-    }).detach();
+        })
+        .detach();
 }
 
 /// Where the client area starts inside the window rectangle. Windows draws a
@@ -399,7 +421,8 @@ unsafe fn round_rect(left: f32, top: f32, width: f32, height: f32, radius: f32) 
     }
 }
 
-unsafe extern "system" fn mouse_proc(    hwnd: Hwnd,
+unsafe extern "system" fn mouse_proc(
+    hwnd: Hwnd,
     message: u32,
     wparam: usize,
     lparam: isize,
